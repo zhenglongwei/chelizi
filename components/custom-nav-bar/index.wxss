@@ -1,0 +1,62 @@
+/* 自定义导航栏：解决标题过近/被遮挡，确保垂直居中 */
+.custom-nav-bar {
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+}
+.nav-bar-status {
+  width: 100%;
+}
+.nav-bar-content {
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: var(--page-padding-x);
+  padding-right: 120rpx;
+  box-sizing: border-box;
+}
+.nav-bar-left {
+  width: 140rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.nav-bar-left-slot {
+  width: auto;
+  min-width: 140rpx;
+  max-width: 200rpx;
+}
+.nav-bar-back {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 16rpx 16rpx 16rpx 0;
+}
+.nav-bar-back-icon {
+  width: 44rpx;
+  height: 44rpx;
+  opacity: 0.9;
+}
+.nav-bar-back-text {
+  font-size: var(--nav-bar-title-font-size);
+  font-weight: var(--nav-bar-title-font-weight);
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.nav-bar-placeholder {
+  width: 140rpx;
+  flex-shrink: 0;
+}
+.nav-bar-title {
+  flex: 1;
+  font-size: var(--nav-bar-title-font-size);
+  font-weight: var(--nav-bar-title-font-weight);
+  line-height: 1.2;
+  text-align: center;
+}

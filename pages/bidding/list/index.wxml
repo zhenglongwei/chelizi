@@ -1,0 +1,73 @@
+<!-- 我的竞价 - 09-我的竞价列表页 -->
+<custom-nav-bar title="我的竞价" showBack="{{true}}" />
+<view class="page-root bidding-list-page" style="{{pageRootStyle}}">
+  <block wx:if="{{!hasToken}}">
+    <view class="bidding-empty card">
+      <view class="bidding-empty-icon-wrap">
+        <image class="bidding-empty-icon" src="/images/icon/compete_active.png" mode="aspectFit"/>
+      </view>
+      <text class="text-muted fs-body">请先登录后查看竞价</text>
+      <navigator class="bidding-login-link" url="/pages/auth/login/index?redirect=%2Fpages%2Fbidding%2Flist%2Findex">去登录</navigator>
+    </view>
+  </block>
+  <block wx:elif="{{loading && list.length === 0}}">
+    <view class="bidding-loading">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="bidding-tabs">
+      <view class="bidding-tab {{status === '' ? 'active' : ''}}" bindtap="onTabTap" data-status="">全部</view>
+      <view class="bidding-tab {{status === '0' ? 'active' : ''}}" bindtap="onTabTap" data-status="0">进行中</view>
+      <view class="bidding-tab {{status === '1' ? 'active' : ''}}" bindtap="onTabTap" data-status="1">已结束</view>
+    </view>
+    <view class="bidding-empty card" wx:if="{{list.length === 0}}">
+      <view class="bidding-empty-icon-wrap">
+        <image class="bidding-empty-icon" src="/images/icon/compete_active.png" mode="aspectFit"/>
+      </view>
+      <text class="text-muted fs-body">暂无竞价记录</text>
+      <navigator class="bidding-link" url="/pages/damage/upload/index">去定损</navigator>
+    </view>
+    <scroll-view wx:else class="bidding-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
+      <view class="bidding-list">
+        <view class="bidding-card card" wx:for="{{list}}" wx:key="bidding_id">
+          <view class="bidding-card-main">
+            <view class="bidding-card-thumb">
+              <image class="bidding-thumb-img" src="/images/icon/compete_active.png" mode="aspectFit"/>
+            </view>
+            <view class="bidding-card-info">
+              <view class="bidding-card-head">
+                <text class="bidding-card-title fs-body fw-bold">{{item.title}}</text>
+                <view class="bidding-status-badge {{item.isOngoing ? 'ongoing' : 'ended'}}">{{item.statusText}}</view>
+              </view>
+              <view class="bidding-card-meta">
+                <view class="bidding-meta-item">
+                  <text class="bidding-meta-label">范围</text>
+                  <text class="bidding-meta-value">{{item.range_km || 5}}km</text>
+                </view>
+                <view class="bidding-meta-item">
+                  <text class="bidding-meta-label">{{item.isOngoing ? '剩余' : '结束'}}</text>
+                  <text class="bidding-meta-value {{item.isOngoing ? 'text-star' : ''}}">{{item.countdownText}}</text>
+                </view>
+                <view class="bidding-meta-item">
+                  <text class="bidding-meta-label">报价</text>
+                  <text class="bidding-meta-value">{{item.quote_count || 0}}家</text>
+                </view>
+              </view>
+            </view>
+          </view>
+          <view class="bidding-card-actions">
+            <button plain class="bidding-btn bidding-btn-primary" data-id="{{item.bidding_id}}" catchtap="onViewQuotesTap">查看报价</button>
+            <button wx:if="{{item.isOngoing}}" plain class="bidding-btn bidding-btn-outline" data-id="{{item.bidding_id}}" catchtap="onEndBiddingTap">结束</button>
+            <button wx:elif="{{item.canRecreate}}" plain class="bidding-btn bidding-btn-outline" data-report-id="{{item.report_id}}" catchtap="onRecreateTap">重新发起</button>
+            <button wx:elif="{{item.order_id}}" plain class="bidding-btn bidding-btn-outline" data-order-id="{{item.order_id}}" catchtap="onOrderTap">查看订单</button>
+          </view>
+        </view>
+      </view>
+      <view class="bidding-load-more" wx:if="{{hasMore && !loading}}">
+        <text class="text-muted fs-cap">上拉加载更多</text>
+      </view>
+      <view class="bidding-bottom-pad"></view>
+    </scroll-view>
+  </block>
+</view>

@@ -1,0 +1,33 @@
+/* 服务商订单详情 - M07 */
+.merchant-order-detail {
+  padding: var(--space-md);
+}
+
+.detail-section {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.section-title {
+  margin-bottom: var(--space-xs);
+  margin-top: var(--space-md);
+  font-weight: 500;
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+.status-text {
+  font-size: var(--fs-body);
+  color: var(--primary);
+}
+
+.link {
+  color: var(--primary);
+  margin-left: var(--space-sm);
+}
+
+.action-btns {
+  margin-top: var(--space-lg);
+}

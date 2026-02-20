@@ -1,0 +1,176 @@
+/**
+ * 预约页 - 04a-预约页
+ * 以《设计规范.md》、design-system 为准
+ */
+.book-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding-bottom: 140rpx;
+}
+
+.book-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.book-scroll {
+  height: 100vh;
+}
+
+/* ========== 维修厂信息 ========== */
+.book-shop {
+  margin: var(--space-lg) var(--page-padding-x);
+  padding: var(--space-xl);
+}
+
+.book-shop-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.book-shop-logo {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  background: var(--bg-placeholder);
+}
+
+.book-shop-info {
+  flex: 1;
+  margin-left: var(--space-xl);
+  min-width: 0;
+}
+
+.book-shop-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-shop-addr {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== 区块 ========== */
+.book-section {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.book-section-title {
+  margin-bottom: var(--space-lg);
+  color: var(--text-primary);
+}
+
+/* ========== 服务类型 ========== */
+.book-categories {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.book-cat {
+  padding: var(--space-md) var(--space-xl);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 2rpx solid var(--border);
+}
+
+.book-cat.selected {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ========== 选择器 ========== */
+.book-picker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) 0;
+}
+
+.book-picker-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  opacity: 0.5;
+}
+
+/* ========== 服务项目 ========== */
+.book-services {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.book-service {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 2rpx solid var(--border);
+}
+
+.book-service.selected {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: var(--primary);
+}
+
+/* ========== 备注 ========== */
+.book-remark {
+  width: 100%;
+  min-height: 160rpx;
+  padding: var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+  box-sizing: border-box;
+}
+
+.book-remark-ph {
+  color: var(--text-hint);
+}
+
+.book-bottom-pad {
+  height: var(--space-2xl);
+}
+
+/* ========== 底部提交 ========== */
+.book-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-md) var(--page-padding-x);
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-top: 1rpx solid var(--border);
+  z-index: 100;
+}
+
+.book-submit {
+  width: 100%;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
+}

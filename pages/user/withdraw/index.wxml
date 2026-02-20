@@ -1,0 +1,17 @@
+<!-- 提现 -->
+<custom-nav-bar title="提现" showBack="{{true}}" />
+<view class="page-root withdraw-page" style="{{pageRootStyle}}">
+  <view class="withdraw-card card">
+    <view class="withdraw-balance">
+      <text class="text-muted fs-body">可提现余额</text>
+      <text class="withdraw-amount fs-h2 fw-bold text-gold">¥{{balance}}</text>
+    </view>
+    <view class="withdraw-input-wrap">
+      <text class="text-muted fs-body">提现金额</text>
+      <input class="withdraw-input" type="digit" placeholder="最低10元" value="{{amount}}" bindinput="onAmountInput"/>
+      <view class="withdraw-all" bindtap="onWithdrawAll">全部提现</view>
+    </view>
+    <view class="withdraw-tip text-muted fs-sm">1-3个工作日到账至微信零钱</view>
+    <button class="btn-primary withdraw-submit" disabled="{{loading}}" bindtap="onSubmit">确认提现</button>
+  </view>
+</view>

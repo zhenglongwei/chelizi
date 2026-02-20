@@ -1,0 +1,95 @@
+<!-- 个人中心 -->
+<custom-nav-bar title="我的" />
+<view class="page-root user-page" style="{{pageRootStyle}}">
+  <!-- 用户信息区：头像左、昵称等级右、定位按钮右上角 -->
+  <view class="user-header card">
+    <block wx:if="{{hasToken}}">
+      <view class="user-header-location" bindtap="onChooseLocation">
+        <image class="user-header-location-icon" src="/images/icon/location.png" mode="aspectFit"/>
+        <text class="user-header-location-text">{{locationShort || '位置'}}</text>
+        <image class="user-header-location-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+      <view class="user-header-inner">
+        <view class="user-avatar" wx:if="{{userInfo.avatar_url}}">
+          <image src="{{userInfo.avatar_url}}" mode="aspectFill"/>
+        </view>
+        <view class="user-avatar user-avatar-placeholder" wx:else>
+          <image src="/images/icon/person.png" mode="aspectFit"/>
+        </view>
+        <view class="user-header-info">
+          <text class="user-name fs-body fw-bold">{{userInfo.nickname || '用户'}}</text>
+          <text class="user-level text-muted fs-sm" wx:if="{{userInfo.level}}">会员等级 Lv{{userInfo.level}}</text>
+        </view>
+      </view>
+      <navigator wx:if="{{needCompleteProfile}}" url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-complete-profile">完善资料</navigator>
+    </block>
+    <navigator wx:else url="/pages/auth/login/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-login-btn">登录</navigator>
+  </view>
+
+  <!-- 服务商快捷入口：仅对已登录过服务商的用户显示，一键进入工作台（token 已缓存即自动登录） -->
+  <view class="user-merchant-entry card" wx:if="{{hasMerchantToken}}">
+    <navigator class="user-merchant-btn" url="/pages/merchant/home">
+      <text class="fs-body fw-bold">进入服务商工作台</text>
+      <text class="text-muted fs-cap">维修厂报价、接单、订单管理</text>
+    </navigator>
+  </view>
+
+  <!-- 我的钱包（需登录） -->
+  <navigator class="user-wallet card" wx:if="{{hasToken}}" url="/pages/user/balance/index">
+    <view class="user-wallet-title fs-body fw-bold">我的钱包</view>
+    <view class="user-wallet-content">
+      <view class="user-wallet-item">
+        <text class="text-muted fs-sm">奖励金余额</text>
+        <text class="fs-h3 fw-bold text-gold">¥{{balanceText}}</text>
+      </view>
+      <view class="user-wallet-item">
+        <text class="text-muted fs-sm">累计奖励金</text>
+        <text class="fs-body">¥{{totalRebateText}}</text>
+      </view>
+    </view>
+    <view class="user-wallet-actions">
+      <button class="btn-primary user-withdraw-btn" catchtap="onWithdraw">提现</button>
+    </view>
+  </navigator>
+
+  <!-- 我的订单 -->
+  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/order/list/index?status=">
+    <view class="user-section-header">
+      <text class="fs-body fw-bold">我的订单</text>
+      <view class="user-section-more">全部</view>
+    </view>
+    <view class="user-section-tabs">
+      <view class="user-tab" >全部</view>
+      <navigator class="user-tab" url="/pages/order/list/index?status=2">待评价</navigator>
+      <navigator class="user-tab" url="/pages/order/list/index?status=3">已完成</navigator>
+    </view>
+  </navigator>
+
+  <!-- 我的竞价 -->
+  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/bidding/list/index">
+    <view class="user-section-header">
+      <text class="fs-body fw-bold">我的竞价</text>
+      <view class="user-section-more" >全部</view>
+    </view>
+    <view class="user-section-tabs">
+      <navigator class="user-tab" url="/pages/bidding/list/index?status=0">进行中</navigator>
+      <navigator class="user-tab" url="/pages/bidding/list/index?status=1">已结束</navigator>
+    </view>
+  </navigator>
+
+  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/damage/history/index">
+    <view class="user-section-header">
+      <text class="fs-body fw-bold">定损历史</text>
+      <view class="user-section-more" >全部</view>
+    </view>    
+  </navigator>
+
+  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/user/settings/index">
+    <view class="user-section-header">      
+      <view class="user-section-more" >
+        <text class="fs-body fw-bold text-primary">设置</text>
+      </view>
+    </view>    
+  </navigator>
+  
+</view>

@@ -1,0 +1,98 @@
+<!-- 预约页 - 04a-预约页 -->
+<custom-nav-bar title="预约" showBack="{{true}}" />
+<view class="page-root book-page" style="{{pageRootStyle}}">
+  <block wx:if="{{loading}}">
+    <view class="book-loading text-muted fs-body">加载中...</view>
+  </block>
+  <block wx:elif="{{shop}}">
+    <scroll-view class="book-scroll" scroll-y style="height: 100vh">
+      <!-- 维修厂信息 -->
+      <view class="book-shop card">
+        <view class="book-shop-main">
+          <image class="book-shop-logo" src="{{shop.logo}}" mode="aspectFill"/>
+          <view class="book-shop-info">
+            <text class="book-shop-name text-primary fs-h3 fw-bold">{{shop.name}}</text>
+            <text class="book-shop-addr text-muted fs-cap" wx:if="{{shop.address}}">{{shop.address}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 服务类型 -->
+      <view class="book-section card">
+        <view class="book-section-title fs-body fw-bold">服务类型</view>
+        <view class="book-categories">
+          <view
+            class="book-cat {{item.value === serviceCategory ? 'selected' : ''}}"
+            wx:for="{{serviceCategories}}"
+            wx:key="value"
+            data-value="{{item.value}}"
+            bindtap="onCategoryTap"
+          >
+            <text class="fs-body">{{item.label}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 预约日期 -->
+      <view class="book-section card">
+        <view class="book-section-title fs-body fw-bold">预约日期</view>
+        <picker mode="selector" range="{{dateOpts}}" range-key="label" value="{{dateIndex}}" bindchange="onDateChange">
+          <view class="book-picker">
+            <text class="text-primary fs-body">{{dateOpts[dateIndex].label}}</text>
+            <image class="book-picker-arrow" src="/images/icon/arrow-down.png" mode="aspectFit"/>
+          </view>
+        </picker>
+      </view>
+
+      <!-- 预约时段 -->
+      <view class="book-section card">
+        <view class="book-section-title fs-body fw-bold">预约时段</view>
+        <picker mode="selector" range="{{timeSlotLabels}}" value="{{timeSlotIndex}}" bindchange="onTimeSlotChange">
+          <view class="book-picker">
+            <text class="text-primary fs-body">{{timeSlotLabels[timeSlotIndex]}}</text>
+            <image class="book-picker-arrow" src="/images/icon/arrow-down.png" mode="aspectFit"/>
+          </view>
+        </picker>
+      </view>
+
+      <!-- 服务项目 -->
+      <view class="book-section card" wx:if="{{shop.services && shop.services.length}}">
+        <view class="book-section-title fs-body fw-bold">服务项目（可选）</view>
+        <view class="book-services">
+          <view
+            class="book-service {{item.selected ? 'selected' : ''}}"
+            wx:for="{{shop.services}}"
+            wx:key="name"
+            data-index="{{index}}"
+            bindtap="onServiceTap"
+          >
+            <text class="fs-body">{{item.name}}</text>
+            <text class="text-muted fs-cap" wx:if="{{item.min_price || item.max_price}}">{{item.min_price || 0}}-{{item.max_price || 0}}元</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 备注 -->
+      <view class="book-section card">
+        <view class="book-section-title fs-body fw-bold">备注（可选）</view>
+        <textarea
+          class="book-remark"
+          placeholder="补充说明，如车型、故障描述等"
+          placeholder-class="book-remark-ph"
+          value="{{remark}}"
+          bindinput="onRemarkInput"
+          maxlength="200"
+        />
+      </view>
+
+      <view class="book-bottom-pad"></view>
+    </scroll-view>
+
+    <!-- 提交按钮 -->
+    <view class="book-footer">
+      <view class="book-submit btn-primary" bindtap="onSubmit">
+        <text class="fs-body fw-bold">{{submitting ? '提交中...' : '提交预约'}}</text>
+      </view>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,81 @@
+<custom-nav-bar title="服务商工作台" showBack="{{true}}" />
+<view class="page-root merchant-home" style="{{pageRootStyle}}">
+  <!-- 资质未补充提示：仅当未提交时显示 -->
+  <view class="merchant-qualification-alert card" wx:if="{{qualificationStatus === 0 && !qualificationSubmitted}}" bindtap="onShopTap">
+    <view class="qualification-alert-icon">!</view>
+    <view class="qualification-alert-content">
+      <text class="qualification-alert-title fs-body fw-bold">请补充资质信息</text>
+      <text class="qualification-alert-desc fs-cap">填写维修资质等级、技师持证等，审核通过后可接单并在车主端展示</text>
+    </view>
+    <text class="qualification-alert-arrow">去完善 ›</text>
+  </view>
+  <!-- 资质驳回提示 -->
+  <view class="merchant-qualification-alert card merchant-qualification-rejected" wx:if="{{qualificationStatus === 2}}" bindtap="onShopTap">
+    <view class="qualification-alert-icon">×</view>
+    <view class="qualification-alert-content">
+      <text class="qualification-alert-title fs-body fw-bold">资质审核被驳回</text>
+      <text class="qualification-alert-desc fs-cap">{{qualificationAuditReason || '请修改后重新提交'}}</text>
+    </view>
+    <text class="qualification-alert-arrow">去修改 ›</text>
+  </view>
+  <view class="merchant-welcome card" wx:if="{{shopName}}">
+    <view class="merchant-shop-name-row">
+      <text class="fs-h3 fw-bold text-primary">{{shopName}}</text>
+      <view class="merchant-qual-badge merchant-qual-badge-pending" wx:if="{{qualificationStatus === 0 && qualificationSubmitted}}">审核中</view>
+      <view class="merchant-qual-badge merchant-qual-badge-rejected" wx:elif="{{qualificationStatus === 2}}">待修改</view>
+      <view class="merchant-qual-badge merchant-qual-badge-approved" wx:elif="{{qualificationStatus === 1}}">已认证</view>
+    </view>
+    <text class="text-muted fs-cap">欢迎使用车厘子服务商端</text>
+  </view>
+  <view class="merchant-stats">
+    <view class="merchant-stat-card card merchant-stat-bidding" data-status="pending" bindtap="onBiddingTap">
+      <text class="stat-num">{{pendingBidding}}</text>
+      <text class="stat-label fs-cap">待报价</text>
+    </view>
+    <view class="merchant-stat-card card merchant-stat-order" bindtap="onOrderTap">
+      <text class="stat-num">{{pendingOrder}}</text>
+      <text class="stat-label fs-cap">待接单</text>
+    </view>
+    <view class="merchant-stat-card card merchant-stat-repair" bindtap="onOrderTap">
+      <text class="stat-num">{{repairing}}</text>
+      <text class="stat-label fs-cap">维修中</text>
+    </view>
+    <view class="merchant-stat-card card merchant-stat-confirm" bindtap="onOrderTap">
+      <text class="stat-num">{{pendingConfirm}}</text>
+      <text class="stat-label fs-cap">待确认</text>
+    </view>
+  </view>
+  <view class="merchant-section-title fs-body fw-bold">快捷入口</view>
+  <view class="merchant-actions">
+    <view class="merchant-action card" bindtap="onBiddingTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/compete_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">竞价邀请</text>
+        <text class="text-muted fs-cap">查看并报价</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+    <view class="merchant-action card" bindtap="onOrderTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">我的订单</text>
+        <text class="text-muted fs-cap">待接单、维修中</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+    <view class="merchant-action card" bindtap="onShopTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/merchant_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">服务商信息</text>
+        <text class="text-muted fs-cap">{{shopInfoStatusText || '查看/编辑本店'}}</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+  </view>
+</view>

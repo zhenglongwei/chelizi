@@ -1,0 +1,10 @@
+.withdraw-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); }
+.withdraw-card { margin-top: var(--space-xl); }
+.withdraw-balance { margin-bottom: var(--space-xl); }
+.withdraw-amount { display: block; margin-top: var(--space-sm); }
+.withdraw-input-wrap { margin-bottom: var(--space-md); }
+.withdraw-input { margin-top: var(--space-sm); padding: var(--space-md); border: 1rpx solid var(--border); border-radius: var(--radius-md); }
+.withdraw-all { margin-top: var(--space-sm); color: var(--primary); font-size: var(--fs-cap); }
+.withdraw-tip { margin-bottom: var(--space-xl); }
+.withdraw-submit { width: 100%; }
+.withdraw-submit[disabled] { opacity: 0.5; }

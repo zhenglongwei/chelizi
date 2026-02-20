@@ -1,0 +1,50 @@
+<!-- 我的订单 -->
+<custom-nav-bar title="我的订单" showBack="{{true}}" />
+<view class="page-root order-list-page" style="{{pageRootStyle}}">
+  <block wx:if="{{!hasToken}}">
+    <view class="order-empty card">
+      <text class="text-muted fs-body">请先登录后查看订单</text>
+      <navigator class="order-login-link" url="/pages/auth/login/index?redirect=%2Fpages%2Forder%2Flist%2Findex">去登录</navigator>
+    </view>
+  </block>
+  <block wx:elif="{{loading && list.length === 0}}">
+    <view class="order-loading">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="order-tabs">
+      <view class="order-tab {{status === '' ? 'active' : ''}}" bindtap="onTabTap" data-status="">全部</view>
+      <view class="order-tab {{status === '0' ? 'active' : ''}}" bindtap="onTabTap" data-status="0">待接单</view>
+      <view class="order-tab {{status === '1' ? 'active' : ''}}" bindtap="onTabTap" data-status="1">维修中</view>
+      <view class="order-tab {{status === '2' ? 'active' : ''}}" bindtap="onTabTap" data-status="2">待评价</view>
+      <view class="order-tab {{status === '3' ? 'active' : ''}}" bindtap="onTabTap" data-status="3">已完成</view>
+      <view class="order-tab {{status === '4' ? 'active' : ''}}" bindtap="onTabTap" data-status="4">已取消</view>
+    </view>
+    <view class="order-empty card" wx:if="{{list.length === 0}}">
+      <text class="text-muted fs-body">暂无订单</text>
+    </view>
+    <scroll-view wx:else class="order-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
+      <view class="order-item card" wx:for="{{list}}" wx:key="order_id" data-id="{{item.order_id}}" bindtap="onItemTap">
+        <view class="order-item-header">
+          <text class="fs-body fw-bold">{{item.shop_name || '维修厂'}}</text>
+          <text class="order-status-badge">{{item.statusText}}</text>
+        </view>
+        <view class="order-item-body">
+          <view class="order-item-row">
+            <text class="text-muted fs-sm">订单金额：</text>
+            <text class="fs-body text-gold">¥{{item.quoted_amount}}</text>
+          </view>
+          <view class="order-item-row">
+            <text class="text-muted fs-sm">下单时间：</text>
+            <text class="fs-sm">{{item.created_at}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="order-load-more" wx:if="{{hasMore && !loading}}">
+        <text class="text-muted fs-sm">上拉加载更多</text>
+      </view>
+      <view class="order-bottom-pad"></view>
+    </scroll-view>
+  </block>
+</view>

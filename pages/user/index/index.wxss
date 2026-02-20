@@ -1,0 +1,75 @@
+/* 个人中心 */
+.user-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); }
+.user-header {
+  position: relative;
+  padding: var(--space-xl);
+}
+.user-header-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+.user-avatar, .user-avatar-placeholder {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.user-avatar { background: var(--bg-placeholder); }
+.user-avatar-placeholder {
+  background: var(--avatar-placeholder-bg);
+  border: 2rpx solid var(--avatar-placeholder-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-avatar image, .user-avatar-placeholder image { width: 100%; height: 100%; }
+.user-avatar-placeholder image { width: 48rpx; height: 48rpx; opacity: 0.9; }
+.user-header-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--space-xs);
+}
+.user-name { color: var(--text-primary); }
+.user-level { color: var(--text-secondary); }
+.user-header-location {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  max-width: 160rpx;
+}
+.user-header-location-icon { width: 28rpx; height: 28rpx; opacity: 0.85; flex-shrink: 0; }
+.user-header-location-text { font-size: var(--fs-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-header-location-arrow { width: 18rpx; height: 18rpx; opacity: 0.5; transform: rotate(90deg); flex-shrink: 0; }
+.user-login-btn { color: var(--primary); font-size: var(--fs-body); display: block; text-align: center; padding: var(--space-xl) 0; }
+.user-complete-profile { color: var(--primary); font-size: var(--fs-cap); display: block; text-align: center; margin-top: var(--space-md); }
+/* 服务商快捷入口（仅 hasMerchantToken 时显示） */
+.user-merchant-entry { margin-top: var(--space-lg); }
+.user-merchant-btn { display: flex; flex-direction: column; gap: var(--space-xs); }
+/* 钱包 */
+.user-wallet { margin-top: var(--space-lg); }
+.user-wallet-title { margin-bottom: var(--space-md); }
+.user-wallet-content { display: flex; gap: var(--space-2xl); margin-bottom: var(--space-lg); }
+.user-wallet-item { display: flex; flex-direction: column; gap: var(--space-xs); }
+.user-wallet-actions .user-withdraw-btn { min-width: 160rpx; height: 64rpx; line-height: 64rpx; }
+/* 订单/竞价区域 */
+.user-section { margin-top: var(--space-lg); }
+.user-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md); }
+.user-section-more { color: var(--primary); font-size: var(--fs-cap); }
+.user-section-tabs { display: flex; gap: var(--space-lg); }
+.user-tab { color: var(--text-secondary); font-size: var(--fs-body); padding: var(--space-sm) 0; }
+.user-tab:active { color: var(--primary); }
+/* 菜单 */
+.user-menu { margin-top: var(--space-lg); }
+.user-menu-item { display: flex; align-items: center; justify-content: space-between; padding: var(--space-xl); border-bottom: 1rpx solid var(--border); }
+.user-menu-item:last-child { border-bottom: none; }
+.user-arrow { width: 24rpx; height: 24rpx; opacity: 0.5; }

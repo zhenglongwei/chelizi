@@ -1,0 +1,89 @@
+<!-- 首页 - 以《设计规范.md》、01-首页 为准 -->
+<custom-nav-bar title="" />
+<view class="page-root idx-page" style="{{pageRootStyle}}">
+  <!-- 1. 广告区轮播（全宽，独立于滚动区） -->
+  <view class="idx-ad-wrap">
+    <swiper class="idx-ad-swiper" autoplay="{{true}}" interval="4000" circular="{{true}}" indicator-dots="{{true}}" indicator-color="rgba(255,255,255,0.3)" indicator-active-color="#EAB308">
+      <swiper-item wx:for="{{adSlides}}" wx:key="id">
+        <view class="idx-ad-item {{item.type}}" style="{{item.bgStyle}}" bindtap="onAdSlideTap" data-type="{{item.type}}" data-action="{{item.action}}" data-shop-id="{{item.shop_id}}">
+          <block wx:if="{{item.type === 'intro'}}">
+            <view class="idx-ad-intro-wrap">
+              <text class="idx-ad-title fs-h3 fw-bold">{{item.title}}</text>
+              <text class="idx-ad-desc fs-body">{{item.desc}}</text>
+              <image wx:if="{{item.action === 'damage'}}" class="idx-ad-camera" src="/images/icon/camera.png" mode="aspectFit"/>
+            </view>
+          </block>
+          <block wx:else>
+            <image class="idx-ad-shop-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
+            <view class="idx-ad-shop-logo idx-ad-shop-ph" wx:else></view>
+            <view class="idx-ad-shop-info">
+              <text class="idx-ad-shop-name fs-body fw-bold">{{item.name}}</text>
+              <text class="idx-ad-shop-rating fs-sm">{{item.starsFull}}{{item.starsEmpty}} {{item.rating}}分 · {{item.orderCount}}单</text>
+              <text class="idx-ad-shop-btn fs-cap">查看详情</text>
+            </view>
+          </block>
+        </view>
+      </swiper-item>
+    </swiper>
+  </view>
+
+  <scroll-view
+    class="page-scroll idx-scroll"
+    scroll-y
+    style="{{scrollStyle}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onPullRefresh"
+  >
+    <!-- 2. 搜索栏 -->
+    <view class="idx-search-wrap">
+      <view class="input-wrap idx-search" bindtap="onSearchTap">
+        <image class="idx-search-icon" src="/images/icon/search.png" mode="aspectFit"/>
+        <text class="idx-search-ph text-muted fs-body">搜索维修厂、车型、维修项目</text>
+      </view>
+    </view>
+
+    <!-- 3. 附近服务商 -->
+    <view class="idx-section">
+      <view class="idx-section-head">
+        <text class="idx-section-title">附近服务商</text>
+        <view class="idx-section-actions">
+          <text class="idx-section-more text-muted fs-cap" wx:if="{{!locationDenied && nearbyShops.length > 0}}" bindtap="onChooseLocation">重新选择</text>
+          <text class="idx-section-more text-muted fs-cap" bindtap="goToMoreShops">更多</text>
+        </view>
+      </view>
+      <view class="idx-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
+      <view class="idx-location-denied" wx:elif="{{!loading && locationDenied}}">
+        <view class="idx-location-desc text-muted fs-body">选择位置后可查看附近维修厂</view>
+        <button class="idx-location-btn btn-primary" bindtap="onChooseLocation">选择位置</button>
+      </view>
+      <view class="idx-empty text-muted fs-body" wx:elif="{{!loading && !locationDenied && nearbyShops.length === 0}}">暂无附近服务商</view>
+      <view class="idx-shop-list" wx:else>
+        <view class="idx-shop-card card" wx:for="{{nearbyShops}}" wx:key="shop_id" bindtap="goToShopDetail" data-id="{{item.shop_id}}">
+          <image class="idx-shop-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
+          <view class="idx-shop-logo idx-shop-logo-ph" wx:else></view>
+          <view class="idx-shop-info-wrap">
+          <view class="idx-shop-info">
+            <text class="idx-shop-name text-primary fs-body fw-bold">{{item.name}}</text>
+            <view class="idx-shop-rating">
+              <text class="idx-star-full text-star">{{item.starsFull}}</text>
+              <text class="idx-star-empty text-weak">{{item.starsEmpty}}</text>
+              <text class="idx-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+            </view>
+            <view class="idx-shop-foot">
+              <view class="idx-badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
+                <text class="fs-cap">{{item.badgeText}}</text>
+              </view>
+              <view class="idx-shop-addr text-muted fs-cap">
+                <image class="idx-addr-icon" src="/images/icon/location.png" mode="aspectFit"/>
+                <text class="idx-shop-addr-txt">{{item.locationText}}</text>
+              </view>
+            </view>
+          </view>
+          <image class="idx-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

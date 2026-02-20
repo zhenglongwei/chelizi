@@ -1,0 +1,86 @@
+<!-- 追评弹窗 - 15-追评页（1 个月/3 个月，弹窗形式） -->
+<view class="followup-mask" wx:if="{{!loading && !error && info}}" catchtap="onClose"></view>
+<view class="followup-page {{!loading && !error && info ? 'followup-modal' : ''}}">
+  <block wx:if="{{loading}}">
+    <view class="followup-loading card"><text class="text-muted fs-body">加载中...</text></view>
+  </block>
+  <block wx:elif="{{error}}">
+    <view class="followup-error card">
+      <text class="text-muted fs-body">{{error}}</text>
+      <view class="followup-back" bindtap="onToUser">返回</view>
+    </view>
+  </block>
+  <block wx:elif="{{submitted}}">
+    <view class="followup-success card">
+      <text class="fs-h3 fw-bold text-success">追评提交成功</text>
+      <text class="fs-body text-gold" style="margin-top: var(--space-md);">奖励金 {{rewardAmount}} 元已到账</text>
+      <view class="followup-success-actions">
+        <button class="btn-primary" bindtap="onToOrder">查看订单</button>
+        <button class="btn-secondary" bindtap="onToUser">返回个人中心</button>
+      </view>
+    </view>
+  </block>
+  <block wx:elif="{{info}}">
+    <view class="followup-card card">
+      <view class="followup-close" bindtap="onClose">×</view>
+      <view class="followup-section">
+        <view class="followup-section-title fs-body fw-bold">{{stage === '1m' ? '1 个月追评' : '3 个月追评'}}</view>
+        <text class="fs-body">{{info.shop_name || '维修厂'}}</text>
+        <text class="text-weak fs-sm" style="margin-top: var(--space-sm);">完工时间：{{info.created_at}}</text>
+      </view>
+      <view class="followup-section">
+        <view class="followup-section-title fs-body fw-bold">客观题 {{orderTier <= 2 ? '（选填）' : ''}}</view>
+        <view class="followup-objective">
+          <text class="fs-body">1. 故障是否复发</text>
+          <radio-group bindchange="onQ1" class="followup-radio-group">
+            <label><radio value="true" checked="{{q1_fault_recur === true}}"/>是</label>
+            <label><radio value="false" checked="{{q1_fault_recur === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="followup-objective" wx:if="{{stage === '1m'}}">
+          <text class="fs-body">2. 有无新增异常</text>
+          <radio-group bindchange="onQ2" class="followup-radio-group">
+            <label><radio value="true" checked="{{q2_new_abnormal === true}}"/>是</label>
+            <label><radio value="false" checked="{{q2_new_abnormal === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="followup-objective" wx:if="{{stage === '3m'}}">
+          <text class="fs-body">2. 配件是否正常</text>
+          <radio-group bindchange="onQ2b" class="followup-radio-group">
+            <label><radio value="true" checked="{{q2_parts_ok === true}}"/>是</label>
+            <label><radio value="false" checked="{{q2_parts_ok === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="followup-objective" wx:if="{{stage === '3m'}}">
+          <text class="fs-body">3. 售后是否响应</text>
+          <radio-group bindchange="onQ3" class="followup-radio-group">
+            <label><radio value="true" checked="{{q3_after_sales === true}}"/>是</label>
+            <label><radio value="false" checked="{{q3_after_sales === false}}"/>否</label>
+          </radio-group>
+        </view>
+      </view>
+      <view class="followup-section">
+        <view class="followup-section-title fs-body fw-bold">使用体验描述</view>
+        <textarea class="followup-textarea" placeholder="{{stage === '3m' ? '至少 20 字' : '至少 10 字'}}" value="{{content}}" bindinput="onContentInput" maxlength="500"/>
+      </view>
+      <view class="followup-section" wx:if="{{images.length < 6}}">
+        <view class="followup-upload-grid">
+          <view class="followup-upload-item" wx:for="{{images}}" wx:key="index">
+            <image class="followup-thumb" src="{{item}}" mode="aspectFill"/>
+            <view class="followup-del" data-index="{{index}}" bindtap="onDelImage">×</view>
+          </view>
+          <view class="followup-upload-btn" bindtap="onChooseImage">
+            <text class="followup-add-text">+</text>
+            <text class="text-muted fs-cap">图片</text>
+          </view>
+        </view>
+      </view>
+      <view class="followup-reward-tip">
+        <text class="fs-sm text-muted">{{rewardHint}}</text>
+      </view>
+      <button class="btn-primary followup-submit" bindtap="onSubmit" disabled="{{submitting}}">
+        {{submitting ? '提交中...' : '提交追评'}}
+      </button>
+    </view>
+  </block>
+</view>

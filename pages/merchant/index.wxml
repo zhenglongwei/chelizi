@@ -1,0 +1,36 @@
+<!-- 服务商入口 - 跳转到所有服务商页面 -->
+<custom-nav-bar title="服务商" />
+<view class="page-root merchant-page" style="{{pageRootStyle}}">
+  <view class="merchant-intro card">
+    <text class="fs-body text-muted">维修厂/服务商在此登录、注册并管理竞价与订单</text>
+  </view>
+  <view class="merchant-entries">
+    <navigator class="merchant-entry card" url="/pages/merchant/login">
+      <view class="merchant-entry-icon" style="background: rgba(37, 99, 235, 0.15);">
+        <image src="/images/icon/person.png" mode="aspectFit" class="entry-img"/>
+      </view>
+      <view class="merchant-entry-text">
+        <text class="fs-body fw-bold">服务商登录</text>
+        <text class="fs-sm text-muted">手机号+密码登录</text>
+      </view>
+    </navigator>
+    <navigator class="merchant-entry card" url="/pages/merchant/register">
+      <view class="merchant-entry-icon" style="background: rgba(234, 179, 8, 0.15);">
+        <image src="/images/icon/person.png" mode="aspectFit" class="entry-img"/>
+      </view>
+      <view class="merchant-entry-text">
+        <text class="fs-body fw-bold">服务商注册</text>
+        <text class="fs-sm text-muted">企业信息、资质、提交审核</text>
+      </view>
+    </navigator>
+    <navigator class="merchant-entry card" url="/pages/merchant/home">
+      <view class="merchant-entry-icon" style="background: rgba(34, 197, 94, 0.15);">
+        <image src="/images/icon/home.png" mode="aspectFit" class="entry-img"/>
+      </view>
+      <view class="merchant-entry-text">
+        <text class="fs-body fw-bold">服务商工作台</text>
+        <text class="fs-sm text-muted">待报价、待接单、订单管理</text>
+      </view>
+    </navigator>
+  </view>
+</view>

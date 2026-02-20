@@ -1,0 +1,46 @@
+<!-- 奖励金余额明细页 - 14-奖励金余额明细页 -->
+<custom-nav-bar title="奖励金余额" showBack="{{true}}" />
+<view class="page-root balance-page" style="{{pageRootStyle}}">
+  <block wx:if="{{!hasToken}}">
+    <view class="balance-empty card">
+      <text class="text-muted fs-body">请先登录后查看</text>
+      <navigator class="balance-login-link" url="/pages/auth/login/index?redirect=%2Fpages%2Fuser%2Fbalance%2Findex">去登录</navigator>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="balance-summary card">
+      <view class="balance-row">
+        <text class="text-muted fs-sm">可提现余额</text>
+        <text class="fs-h2 fw-bold text-gold">¥{{balanceText}}</text>
+      </view>
+      <view class="balance-row">
+        <text class="text-muted fs-sm">累计奖励金</text>
+        <text class="fs-body">¥{{totalRebateText}}</text>
+      </view>
+      <text class="text-weak fs-sm" style="display:block; margin-top: var(--space-sm);">单次奖励 ≤800 元无需扣税</text>
+      <button class="btn-primary balance-withdraw-btn {{canWithdraw ? '' : 'disabled'}}" bindtap="onWithdraw">提现</button>
+    </view>
+    <view class="balance-list-title fs-body fw-bold">明细记录</view>
+    <view class="balance-empty-tip card" wx:if="{{!loading && list.length === 0}}">
+      <text class="text-muted fs-body">暂无记录</text>
+    </view>
+    <scroll-view wx:else class="balance-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
+      <view class="balance-item card" wx:for="{{list}}" wx:key="transaction_id">
+        <view class="balance-item-header">
+          <text class="fs-body">{{item.typeLabel}}</text>
+          <text class="fs-body fw-bold {{item.isIncome ? 'text-success' : 'text-muted'}}">{{item.amountText}}</text>
+        </view>
+        <view class="balance-item-meta">
+          <text class="text-weak fs-sm">{{item.timeText}}</text>
+          <text class="text-weak fs-sm" wx:if="{{item.stageLabel}}">{{item.stageLabel}}</text>
+          <text class="text-weak fs-sm" wx:if="{{item.taxLabel}}">{{item.taxLabel}}</text>
+          <text class="text-weak fs-sm" wx:if="{{item.description}}">{{item.description}}</text>
+        </view>
+      </view>
+      <view class="balance-load-more" wx:if="{{hasMore && !loading}}">
+        <text class="text-muted fs-sm">上拉加载更多</text>
+      </view>
+      <view class="balance-bottom-pad"></view>
+    </scroll-view>
+  </block>
+</view>

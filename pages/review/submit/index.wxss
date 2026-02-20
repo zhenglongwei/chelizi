@@ -1,0 +1,181 @@
+/* 主评价页 - 05-评价页（3 模块 1 次提交） */
+.review-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: 140rpx;
+}
+.review-loading, .review-error {
+  padding: var(--space-2xl);
+  text-align: center;
+}
+.review-back-btn {
+  margin-top: var(--space-lg);
+  color: var(--primary);
+  font-size: var(--fs-body);
+}
+.review-compliance {
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  margin-bottom: var(--space-md);
+}
+.review-objective {
+  margin-top: var(--space-md);
+}
+.review-objective .fs-body { display: block; margin-bottom: var(--space-xs); }
+.review-radio-group { display: flex; gap: var(--space-lg); margin-top: var(--space-xs); }
+.review-radio-group label { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--fs-body); }
+.review-upload-row { margin-top: var(--space-md); }
+.review-upload-row .fs-body { display: block; margin-bottom: var(--space-sm); }
+.review-upload-single {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+.review-reward { }
+.review-reward-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs); }
+.review-reward-stages { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.review-footer .btn-primary.disabled { opacity: 0.6; }
+.review-success {
+  text-align: center;
+  padding: var(--space-2xl);
+}
+.review-success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+}
+.review-success-actions button {
+  width: 100%;
+}
+.review-scroll {
+  padding-bottom: var(--space-lg);
+}
+.review-section {
+  margin-bottom: var(--space-lg);
+}
+.review-section-title {
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+.review-repair-items {
+  margin-top: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.review-image-grid, .review-upload-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+.review-upload-item {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-placeholder);
+}
+.review-thumb {
+  width: 100%;
+  height: 100%;
+}
+.review-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.review-del-text {
+  color: #fff;
+  font-size: 36rpx;
+  line-height: 1;
+}
+.review-upload-btn {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+.review-add-text {
+  font-size: 48rpx;
+  color: var(--text-hint);
+  line-height: 1;
+}
+.review-analyze-btn {
+  margin-top: var(--space-sm);
+}
+.review-stars {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: 48rpx;
+}
+.review-stars-sm {
+  font-size: 36rpx;
+}
+.review-star {
+  color: var(--text-hint);
+}
+.review-star.filled {
+  color: var(--warning);
+}
+.review-sub-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+}
+.review-textarea {
+  width: 100%;
+  min-height: 160rpx;
+  padding: var(--space-md);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body);
+  margin-top: var(--space-sm);
+  box-sizing: border-box;
+}
+.review-anonymous {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.review-rebate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.review-bottom-pad {
+  height: var(--space-2xl);
+}
+.review-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
+  background: var(--bg-page);
+}
+.review-submit-btn {
+  width: 100%;
+}

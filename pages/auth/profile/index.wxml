@@ -1,0 +1,40 @@
+<!-- 完善资料 - 表格样式（参考微信个人信息页） -->
+<custom-nav-bar title="完善资料" showBack="{{true}}" />
+<view class="page-root profile-page" style="{{pageRootStyle}}">
+  <view class="profile-content">
+    <view class="profile-list card">
+      <!-- 头像行 -->
+      <view class="profile-row">
+        <text class="profile-row-label">头像</text>
+        <view class="profile-row-value">
+          <button class="profile-avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+            <image
+              class="profile-avatar-img"
+              src="{{avatarUrl || '/images/icon/person.png'}}"
+              mode="aspectFill"
+            />
+          </button>
+        </view>
+        <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+
+      <!-- 昵称行 -->
+      <view class="profile-row profile-row-input">
+        <text class="profile-row-label">昵称</text>
+        <input
+          class="profile-row-input-field"
+          type="nickname"
+          placeholder="请输入昵称"
+          placeholder-class="profile-placeholder"
+          value="{{nickname}}"
+          bindinput="onNicknameInput"
+        />
+        <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+    </view>
+
+    <button class="profile-submit btn-primary btn-brand" bindtap="onSubmit" disabled="{{!canSubmit || loading}}">
+      {{loading ? '保存中...' : '保存'}}
+    </button>
+  </view>
+</view>

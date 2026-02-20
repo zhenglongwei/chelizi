@@ -1,0 +1,27 @@
+---
+description: 小程序页面开发规范（样式、设计令牌、页面文档）
+globs: pages/**/*.wxml,pages/**/*.wxss,pages/**/*.js
+alwaysApply: false
+---
+
+# 小程序页面开发
+
+## 样式约束（强制）
+
+- 禁止硬编码颜色（如 `#333`、`#fff`）和尺寸（如 `24rpx`）
+- 必须使用 `var(--xxx)` 或 `styles/design-system.wxss` 预定义工具类
+- WXML 动态 style：禁止 `style="width: {{x}}%"`，须在 data 中维护完整字符串，如 `style="{{progressStyle}}"`
+
+## 必读文档
+
+- **设计规范**：`设计规范.md`（配色、令牌、组件模式）
+- **可执行样式**：`styles/design-system.wxss`（CSS 变量、工具类）
+- **页面功能说明**：`docs/pages/00-页面索引.md` → 找到对应 `docs/pages/XX-页面名.md`
+
+## 图标
+
+- 统一使用 `images/icon/` 目录下的 PNG，禁止网络图标或 emoji
+
+## 全局问题
+
+- 影响多页面的问题 → 写入 `design-system.wxss` 和《设计规范.md》

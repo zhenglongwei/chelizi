@@ -1,0 +1,43 @@
+/* 服务商入口页 */
+.merchant-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.merchant-intro {
+  margin-bottom: var(--space-xl);
+  text-align: center;
+}
+
+.merchant-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.merchant-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+}
+
+.merchant-entry-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.merchant-entry-icon .entry-img {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.merchant-entry-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}

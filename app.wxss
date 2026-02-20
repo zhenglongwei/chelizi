@@ -1,0 +1,5 @@
+/**
+ * 车厘子 - 全局样式
+ * 以《设计规范.md》为准，设计令牌与组件见 styles/design-system.wxss
+ */
+@import './styles/design-system.wxss';

@@ -1,0 +1,400 @@
+/**
+ * 首页 - 以《设计规范.md》、01-首页 为准
+ * 图标使用 /images/icon/ 目录
+ */
+.idx-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.idx-scroll {
+  padding-top: var(--space-lg);
+  padding-bottom: var(--tab-bar-bottom-padding);
+}
+
+/* ========== 1. 广告区轮播（全屏宽、增高，独立于滚动区） ========== */
+.idx-ad-wrap {
+  width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 0 0 32rpx 32rpx;
+  box-shadow: var(--shadow);
+}
+
+.idx-ad-swiper {
+  height: 300rpx;
+  overflow: hidden;
+}
+
+.idx-ad-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-2xl) 48rpx;
+  border-radius: 0;
+}
+
+.idx-ad-item.intro .idx-ad-title,
+.idx-ad-item.intro .idx-ad-desc {
+  color: #FFFFFF;
+}
+
+.idx-ad-intro-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.idx-ad-title {
+  display: block;
+  font-size: var(--fs-h2);
+}
+
+.idx-ad-desc {
+  display: block;
+  margin-top: var(--space-sm);
+  opacity: 0.9;
+}
+
+.idx-ad-camera {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.idx-ad-item.shop {
+  flex-direction: row;
+  align-items: center;
+}
+
+.idx-ad-shop-logo {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  margin-right: var(--space-xl);
+}
+
+.idx-ad-shop-ph {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.idx-ad-shop-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.idx-ad-shop-name {
+  color: #FFFFFF;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idx-ad-shop-rating {
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: var(--space-xs);
+}
+
+.idx-ad-shop-btn {
+  display: inline-block;
+  margin-top: var(--space-sm);
+  color: #EAB308;
+  font-weight: 500;
+}
+
+/* ========== 2. 搜索栏（更大、浮起+轻微阴影） ========== */
+.idx-search-wrap {
+  margin-bottom: var(--space-lg);
+}
+
+.idx-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl) var(--space-2xl);
+  min-height: 72rpx;
+  box-shadow: var(--shadow-sm);
+}
+
+.idx-search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: var(--space-lg);
+}
+
+.idx-search-ph {
+  flex: 1;
+  font-size: var(--fs-h3);
+}
+
+/* ========== 3. 快捷入口 ========== */
+.idx-quick {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+}
+
+.idx-quick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: calc(50% - var(--space-lg) / 2);
+  min-width: 0;
+  padding: var(--space-xl);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.idx-quick-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88rpx;
+  height: 88rpx;
+  margin-bottom: var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(234, 179, 8, 0.15);
+}
+
+.idx-quick-icon {
+  font-size: 44rpx;
+}
+
+.idx-quick-name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+/* ========== 4. 附近维修厂 ========== */
+.idx-section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-2xl);
+}
+
+.idx-section-head {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+  min-width: 0;
+}
+
+.idx-section-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  font-weight: 400;
+}
+
+.idx-section-actions {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-md);
+  flex-shrink: 0;
+}
+
+.idx-section-more {
+  flex-shrink: 0;
+}
+
+.idx-loading,
+.idx-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) 0;
+}
+
+/* 位置授权引导（方案四：未授权时展示） */
+.idx-location-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) 0;
+  gap: var(--space-xl);
+}
+
+.idx-location-desc {
+  text-align: center;
+}
+
+.idx-location-btn {
+  min-width: 240rpx;
+  border: none;
+}
+
+.idx-location-btn::after {
+  border: none;
+}
+
+.idx-shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* ========== 维修厂卡片（柔和阴影、点击态） ========== */
+.idx-shop-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  box-shadow: var(--shadow-card);
+}
+
+.idx-shop-card:active {
+  transform: scale(0.995);
+}
+
+.idx-shop-info-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.idx-shop-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: var(--space-md);
+  align-self: center;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.idx-shop-logo {
+  flex-shrink: 0;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+}
+
+.idx-shop-logo-ph {
+  background: var(--bg-placeholder);
+}
+
+.idx-shop-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  margin-left: var(--space-xl);
+}
+
+.idx-shop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idx-shop-rating {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
+.idx-star-full {
+  font-size: var(--fs-cap);
+  margin-right: var(--space-xs);
+}
+
+.idx-star-empty {
+  font-size: var(--fs-cap);
+  margin-right: var(--space-md);
+}
+
+.idx-rating-txt {
+  flex-shrink: 0;
+}
+
+.idx-shop-foot {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: var(--space-md);
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.idx-badge {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.idx-badge.badge-nearest {
+  background: rgba(234, 179, 8, 0.12);
+  color: var(--accent);
+  border: 1rpx solid rgba(234, 179, 8, 0.35);
+}
+
+.idx-badge.badge-distance {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+  border: 1rpx solid var(--border);
+}
+
+.idx-badge.badge-cert {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border: 1rpx solid rgba(37, 99, 235, 0.25);
+}
+
+.idx-shop-addr {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.idx-addr-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.idx-shop-addr-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

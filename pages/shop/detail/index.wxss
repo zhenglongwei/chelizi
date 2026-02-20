@@ -1,0 +1,298 @@
+/**
+ * 维修厂详情页 - 04-维修厂详情页
+ * 以《设计规范.md》、design-system 为准
+ */
+.shop-detail-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding-bottom: 140rpx;
+}
+
+.detail-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.detail-scroll {
+  height: 100vh;
+}
+
+/* ========== 维修厂信息区 ========== */
+.detail-header {
+  margin: var(--space-lg) var(--page-padding-x);
+  padding: var(--space-xl);
+}
+
+.detail-top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.detail-logo {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  background: var(--bg-placeholder);
+}
+
+.detail-main {
+  flex: 1;
+  margin-left: var(--space-xl);
+  min-width: 0;
+}
+
+.detail-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-rating {
+  margin-top: var(--space-sm);
+}
+
+.detail-stars {
+  margin-right: var(--space-sm);
+}
+
+.detail-rating-txt {
+  font-size: var(--fs-cap);
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+}
+
+.detail-tag {
+  padding: var(--space-xs) var(--space-md);
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--primary);
+  border-radius: var(--radius-sm);
+}
+
+.detail-fav {
+  width: 48rpx;
+  height: 48rpx;
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+}
+
+.detail-info {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-xl);
+  border-top: 1rpx solid var(--border);
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: var(--space-md);
+}
+
+.detail-row:last-child {
+  margin-bottom: 0;
+}
+
+.detail-row-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: var(--space-md);
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.detail-row-txt {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ========== 区块 ========== */
+.detail-section {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.detail-section-title {
+  margin-bottom: var(--space-lg);
+  color: var(--text-primary);
+}
+
+/* ========== 偏差率 ========== */
+.detail-deviation {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.detail-deviation-value {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+}
+
+.detail-deviation-value.deviation-low {
+  color: var(--success);
+}
+
+.detail-deviation-value.deviation-mid {
+  color: var(--warning);
+}
+
+.detail-deviation-value.deviation-high {
+  color: var(--danger);
+}
+
+.detail-deviation-desc {
+  margin-top: var(--space-xs);
+}
+
+/* ========== 服务项目 ========== */
+.detail-services {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.detail-service {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ========== 评价汇总 ========== */
+.detail-review-summary {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xl);
+}
+
+.detail-review-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.detail-score-num {
+  font-size: var(--fs-h1);
+  font-weight: 700;
+}
+
+.detail-no-review {
+  padding: var(--space-xl) 0;
+}
+
+/* ========== 评价列表 ========== */
+.detail-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.detail-review-item {
+  padding-bottom: var(--space-xl);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.detail-review-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-review-head {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.detail-review-user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-review-date {
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+}
+
+.detail-review-stars {
+  margin-bottom: var(--space-sm);
+}
+
+.detail-review-content {
+  display: block;
+  line-height: 1.5;
+}
+
+.detail-review-badge {
+  display: block;
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: rgba(0,0,0,0.04);
+  border-radius: var(--radius-sm);
+}
+
+.detail-more {
+  text-align: center;
+  padding: var(--space-lg) 0;
+}
+
+.detail-bottom-pad {
+  height: 140rpx;
+}
+
+/* ========== 底部操作栏 ========== */
+.detail-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg-card);
+  border-top: 1rpx solid var(--border);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-md) var(--page-padding-x);
+  z-index: 100;
+}
+
+.detail-footer-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.detail-footer-icon {
+  width: 44rpx;
+  height: 44rpx;
+  margin-bottom: var(--space-xs);
+}
+
+.detail-footer-book {
+  flex: 1;
+  min-width: 200rpx;
+  max-width: 280rpx;
+  min-height: 80rpx;
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-md);
+  margin-left: var(--space-md);
+}

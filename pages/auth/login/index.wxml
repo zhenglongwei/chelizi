@@ -1,0 +1,32 @@
+<!-- 登录授权页 - 11-登录授权页 -->
+<custom-nav-bar title="登录" showBack="{{true}}" />
+<view class="page-root login-page" style="{{pageRootStyle}}">
+  <view class="login-content">
+    <view class="login-logo">
+      <image class="login-logo-img" src="/images/logo/logo_white.png" mode="aspectFit"/>
+      <text class="login-title fs-h2 fw-bold text-primary">车厘子</text>
+      <text class="login-desc text-muted fs-cap">事故车维修点评平台</text>
+    </view>
+
+    <view class="login-benefits card">
+      <view class="login-benefits-title fs-body fw-bold">登录后可享受</view>
+      <view class="login-benefits-list">
+        <text class="text-muted fs-cap">· AI 定损分析与竞价</text>
+        <text class="text-muted fs-cap">· 维修厂预约</text>
+        <text class="text-muted fs-cap">· 订单管理与评价返点</text>
+      </view>
+    </view>
+
+    <view class="login-agree">
+      <view class="login-agree-row" bindtap="onToggleAgree">
+        <image class="login-check" src="{{agreed ? '/images/icon/checked.png' : '/images/icon/unchecked.png'}}" mode="aspectFit"/>
+        <text class="text-muted fs-cap">我已阅读并同意《服务协议》和《隐私政策》</text>
+      </view>
+    </view>
+
+    <button class="login-btn btn-primary" disabled="{{!agreed || loading}}" bindtap="onLogin">
+      <image class="login-btn-icon" src="/images/icon/wechat.png" mode="aspectFit"/>
+      <text class="fs-body fw-bold">{{loading ? '登录中...' : '微信快捷登录'}}</text>
+    </button>
+  </view>
+</view>

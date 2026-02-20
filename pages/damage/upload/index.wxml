@@ -1,0 +1,246 @@
+<!-- AI定损页 - 02-AI定损页 -->
+<custom-nav-bar title="AI定损" />
+<view class="page-root damage-page" style="{{pageRootStyle}}">
+  <block wx:if="{{!hasToken}}">
+    <view class="damage-empty card">
+      <text class="text-muted fs-body">请先登录后再使用 AI 定损</text>
+      <navigator class="damage-login-link" url="/pages/auth/login/index?redirect=%2Fpages%2Fdamage%2Fupload%2Findex">去登录</navigator>
+    </view>
+  </block>
+  <block wx:elif="{{step === 1}}">
+    <scroll-view class="damage-scroll" scroll-y style="{{scrollStyle}}">
+      <!-- 拍摄引导 -->
+      <view class="damage-guide card">
+        <view class="damage-guide-title fs-body fw-bold">拍摄建议</view>
+        <view class="damage-guide-tips">
+          <text class="text-muted fs-cap">· 车身 45 度角全景</text>
+          <text class="text-muted fs-cap">· 损伤部位特写</text>
+        </view>
+      </view>
+
+      <!-- 照片上传 -->
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">事故照片</view>
+        <view class="damage-upload-grid">
+          <view
+            class="damage-upload-item"
+            wx:for="{{images}}"
+            wx:key="index"
+          >
+            <image class="damage-thumb" src="{{item}}" mode="aspectFill"/>
+            <view class="damage-del" data-index="{{index}}" bindtap="onDelImage">
+              <image src="/images/icon/close.png" mode="aspectFit"/>
+            </view>
+          </view>
+          <block wx:if="{{images.length < 8}}">
+            <view class="damage-upload-btn" bindtap="onChooseImage">
+              <image class="damage-add-icon" src="/images/icon/add.png" mode="aspectFit"/>
+              <text class="text-muted fs-cap">添加照片</text>
+            </view>
+          </block>
+        </view>
+        <text class="damage-upload-hint text-weak fs-sm">{{images.length}}/8 张，单张不超过 5MB</text>
+      </view>
+
+      <!-- 车辆信息 -->
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">车辆信息</view>
+        <view class="damage-field-row-inline">
+          <text class="damage-label-inline fs-body">车牌号<text class="text-error">*</text></text>
+          <input class="damage-input-inline" placeholder="如：京A12345（必填）" value="{{vehicleInfo.plate_number}}" bindinput="onPlateInput"/>
+        </view>
+        <view class="damage-field-row-inline">
+          <text class="damage-label-inline fs-body">品牌</text>
+          <input class="damage-input-inline" placeholder="如：宝马" value="{{vehicleInfo.brand}}" bindinput="onBrandInput"/>
+        </view>
+        <view class="damage-field-row-inline">
+          <text class="damage-label-inline fs-body">车型</text>
+          <input class="damage-input-inline" placeholder="如：3系、Model Y（勿填 SUV 等通用类型）" value="{{vehicleInfo.model}}" bindinput="onModelInput"/>
+        </view>
+      </view>
+
+      <view class="damage-bottom-pad"></view>
+    </scroll-view>
+
+    <view class="damage-footer">
+      <view class="damage-btn btn-primary" bindtap="onStartAnalyze">
+        <text class="fs-body fw-bold">{{analyzing ? '分析中...' : '开始 AI 分析'}}</text>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{step === 2}}">
+    <scroll-view class="damage-scroll" scroll-y style="{{scrollStyle}}">
+      <!-- 分析进度 -->
+      <view class="damage-progress card" wx:if="{{analyzing}}">
+        <view class="damage-progress-bar">
+          <view class="damage-progress-fill" style="{{progressStyle}}"></view>
+        </view>
+        <text class="text-muted fs-cap">AI 正在分析中，请稍候...</text>
+      </view>
+
+      <!-- 分析结果 -->
+      <view class="damage-report card" wx:elif="{{report}}">
+        <view class="damage-report-header">
+          <text class="damage-report-title fs-h3 fw-bold">定损报告</text>
+          <view class="damage-report-close" bindtap="onCloseReport">
+            <text class="damage-report-close-text">关闭</text>
+          </view>
+        </view>
+
+        <!-- 多车时：提示选择车辆 -->
+        <view class="damage-vehicle-select-hint" wx:if="{{vehiclesList.length > 1}}">
+          <text class="fs-body fw-bold">请选择您的车辆</text>
+          <text class="text-muted fs-sm">根据车牌号、车型、颜色等综合判断（车牌号可能识别有误）</text>
+        </view>
+        <view class="damage-plate-match" wx:if="{{vehiclesList.length > 1}}">
+          <input class="damage-input-inline" placeholder="输入车牌号或车型匹配" value="{{plateMatchInput}}" bindinput="onPlateMatchInput"/>
+        </view>
+        <view class="damage-vehicle-tabs" wx:if="{{vehiclesList.length > 1}}">
+          <view
+            class="damage-vehicle-tab {{selectedVehicleIndex === index ? 'selected' : ''}}"
+            wx:for="{{vehiclesList}}"
+            wx:key="index"
+            data-index="{{index}}"
+            bindtap="onVehicleTabTap"
+          >
+            <text class="fs-body">{{item.vehicleId}}</text>
+            <text class="text-muted fs-sm" wx:if="{{item.plateNumber || item.brand || item.model || item.color}}">{{item.plateNumber || ''}}{{item.plateNumber && (item.brand || item.model) ? ' · ' : ''}}{{item.brand || ''}}{{item.brand && item.model ? ' ' : ''}}{{item.model || ''}}{{item.color ? ' ' + item.color : ''}}</text>
+          </view>
+        </view>
+
+        <!-- 车辆信息（可编辑） -->
+        <view class="damage-vehicle-info" wx:if="{{vehiclesList.length}}">
+          <view class="damage-section-title fs-body fw-bold">车辆信息</view>
+          <view wx:for="{{vehiclesList}}" wx:key="index" wx:if="{{selectedVehicleIndex === index}}">
+            <view class="damage-field-row-inline">
+              <text class="damage-label-inline fs-body">车牌号<text class="text-error">*</text></text>
+              <input class="damage-input-inline" placeholder="如：京A12345（必填）" value="{{vehicleEdits[index] && vehicleEdits[index].plate_number !== undefined ? vehicleEdits[index].plate_number : item.plateNumber}}" data-index="{{index}}" bindinput="onReportPlateInput"/>
+            </view>
+            <view class="damage-field-row-inline">
+              <text class="damage-label-inline fs-body">品牌</text>
+              <input class="damage-input-inline" placeholder="如：宝马" value="{{vehicleEdits[index] && vehicleEdits[index].brand !== undefined ? vehicleEdits[index].brand : item.brand}}" data-index="{{index}}" bindinput="onReportBrandInput"/>
+            </view>
+            <view class="damage-field-row-inline">
+              <text class="damage-label-inline fs-body">车型</text>
+              <input class="damage-input-inline" placeholder="如：3系、Model Y（勿填 SUV 等通用类型）" value="{{vehicleEdits[index] && vehicleEdits[index].model !== undefined ? vehicleEdits[index].model : item.model}}" data-index="{{index}}" bindinput="onReportModelInput"/>
+            </view>
+          </view>
+        </view>
+
+        <view class="damage-report-level" wx:if="{{currentDamageLevel || report.damage_level}}">
+          <text class="fs-body">损伤等级：</text>
+          <text class="text-primary fw-bold">{{currentDamageLevel === '无伤' ? '无伤' : (currentDamageLevel ? currentDamageLevel + '损伤' : ((!currentDamages || !currentDamages.length) && report.damage_level === '三级' ? '无伤' : (report.damage_level === '无伤' ? '无伤' : report.damage_level + '损伤')))}}</text>
+          <text class="text-muted fs-cap" wx:if="{{report.warranty}}">（{{report.warranty}}）</text>
+        </view>
+        <view class="damage-report-damages">
+          <view class="fs-body fw-bold">损伤部位</view>
+          <view class="damage-damage-item" wx:for="{{currentDamages}}" wx:key="index">
+            <text class="fs-body">{{item.part}}：{{item.type}}，{{item.severity}}</text>
+            <text class="text-muted fs-sm" wx:if="{{item.knowledge_rule}}" style="display:block;margin-top:4rpx;">国标：{{item.knowledge_rule}}</text>
+          </view>
+          <text class="text-muted fs-body" wx:if="{{!currentDamages || !currentDamages.length}}">未发现明显损伤</text>
+        </view>
+        <view class="damage-report-repair" wx:if="{{currentRepairSuggestions && currentRepairSuggestions.length}}">
+          <view class="fs-body fw-bold">维修建议</view>
+          <view class="damage-repair-item" wx:for="{{currentRepairSuggestions}}" wx:key="index">
+            <text class="fs-body">{{item.item}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 询价位置（用于邀请附近服务商，必填） -->
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">询价位置<text class="text-error">*</text></view>
+        <view class="damage-location-block">
+          <view class="damage-location-row" bindtap="onChooseBiddingLocation">
+            <image class="damage-location-icon" src="/images/icon/location.png" mode="aspectFit"/>
+            <view class="damage-location-content">
+              <text class="fs-body {{locationAddress ? 'text-primary' : 'text-muted'}}">{{locationAddress || '请选择位置（必填），附近服务商将收到您的询价'}}</text>
+              <text class="text-muted fs-sm damage-location-hint" wx:if="{{locationLat != null && locationLng != null}}">点击查看地图</text>
+            </view>
+            <text class="damage-location-arrow">›</text>
+          </view>
+          <view class="damage-location-rechoose" wx:if="{{locationLat != null && locationLng != null}}" catchtap="onRechooseBiddingLocation">
+            <text class="fs-sm text-weak">重新选择</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 发起竞价 -->
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">竞价范围</view>
+        <view class="damage-range-options">
+          <view
+            class="damage-range-item {{rangeKm === 5 ? 'selected' : ''}}"
+            data-value="{{5}}"
+            bindtap="onRangeTap"
+          >5km</view>
+          <view
+            class="damage-range-item {{rangeKm === 10 ? 'selected' : ''}}"
+            data-value="{{10}}"
+            bindtap="onRangeTap"
+          >10km</view>
+          <view
+            class="damage-range-item {{rangeKm === 0 ? 'selected' : ''}}"
+            data-value="{{0}}"
+            bindtap="onRangeTap"
+          >全市</view>
+        </view>
+      </view>
+
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">是否走保险</view>
+        <view class="damage-range-options">
+          <view
+            class="damage-range-item {{isInsurance === false ? 'selected' : ''}}"
+            data-value="{{false}}"
+            bindtap="onInsuranceTap"
+          >自费</view>
+          <view
+            class="damage-range-item {{isInsurance === true ? 'selected' : ''}}"
+            data-value="{{true}}"
+            bindtap="onInsuranceTap"
+          >走保险</view>
+        </view>
+
+        <view class="damage-insurance-block" wx:if="{{isInsurance}}">
+          <view class="damage-insurance-tip">
+            <text class="damage-insurance-tip-icon">!</text>
+            <text class="damage-insurance-tip-text">请先选择事故类型，再选择对应保险公司</text>
+          </view>
+          <view class="damage-insurance-hint">
+            <text class="fs-body">{{accidentTypes[accidentTypeIndex].hint}}</text>
+            <text class="damage-insurance-main-note" wx:if="{{accidentTypes[accidentTypeIndex].mainNote}}">{{accidentTypes[accidentTypeIndex].mainNote}}</text>
+          </view>
+          <view class="damage-field-row-inline">
+            <text class="damage-label-inline fs-body">事故类型</text>
+            <picker mode="selector" range="{{accidentTypes}}" range-key="label" value="{{accidentTypeIndex}}" bindchange="onAccidentChange">
+              <view class="damage-input-inline damage-picker-inline">{{accidentTypes[accidentTypeIndex].label}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needSelf}}">
+            <text class="damage-label-inline fs-body">自家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyIndex}}" bindchange="onInsuranceCompanyChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyIndex]}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needOther}}">
+            <text class="damage-label-inline fs-body">对家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyOtherIndex}}" bindchange="onInsuranceCompanyOtherChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyOtherIndex]}}</view>
+            </picker>
+          </view>
+        </view>
+      </view>
+
+      <view class="damage-bottom-pad"></view>
+    </scroll-view>
+
+    <view class="damage-footer">
+      <view class="damage-btn btn-primary" bindtap="onCreateBidding">
+        <text class="fs-body fw-bold">{{submitting ? '提交中...' : '发起竞价'}}</text>
+      </view>
+    </view>
+  </block>
+</view>

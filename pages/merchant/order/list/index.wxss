@@ -1,0 +1,51 @@
+/* 服务商订单列表 - M06 */
+.merchant-order-list {
+  padding: var(--space-md);
+}
+
+.merchant-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-tab {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}
+
+.merchant-tab.active {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.merchant-list-scroll {
+  height: calc(100vh - 180rpx);
+}
+
+.merchant-order-card {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.card-order-id {
+  font-weight: 500;
+  margin-bottom: var(--space-xs);
+}
+
+.card-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-xs);
+}
+
+.card-status {
+  color: var(--primary);
+}
+
+.merchant-empty {
+  padding: var(--space-2xl);
+  text-align: center;
+}

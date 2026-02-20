@@ -1,0 +1,58 @@
+<!-- 返厂评价页 - 17-返厂评价页 -->
+<custom-nav-bar title="返厂评价" showBack="{{true}}" />
+<view class="page-root return-page" style="{{pageRootStyle}}">
+  <block wx:if="{{loading}}">
+    <view class="return-loading card"><text class="text-muted fs-body">加载中...</text></view>
+  </block>
+  <block wx:elif="{{error}}">
+    <view class="return-error card">
+      <text class="text-muted fs-body">{{error}}</text>
+      <view class="return-back" bindtap="onToUser">返回</view>
+    </view>
+  </block>
+  <block wx:elif="{{submitted}}">
+    <view class="return-success card">
+      <text class="fs-h3 fw-bold text-success">返厂评价提交成功</text>
+      <text class="fs-body text-gold" style="margin-top: var(--space-md);">返点 {{rebateAmount}} 元已到账</text>
+      <view class="return-success-actions">
+        <button class="btn-primary" bindtap="onToOrder">查看订单</button>
+        <button class="btn-secondary" bindtap="onToUser">返回个人中心</button>
+      </view>
+    </view>
+  </block>
+  <block wx:elif="{{order}}">
+    <scroll-view class="return-scroll" scroll-y style="{{scrollStyle}}">
+      <view class="return-section card">
+        <view class="return-section-title fs-body fw-bold">订单信息</view>
+        <text class="fs-body">{{order.shop_name || '维修厂'}}</text>
+        <text class="text-weak fs-sm" style="margin-top: var(--space-sm);">订单号：{{order.order_id}}</text>
+      </view>
+      <view class="return-tip card">
+        <text class="fs-sm text-muted">首次评价后 6 个月内若车辆返厂维修，上传返厂照片可获得 2% 返点，无需等待 6 个月</text>
+      </view>
+      <view class="return-section card">
+        <view class="return-section-title fs-body fw-bold">返厂照片 <text class="text-danger">*必填</text></view>
+        <view class="return-upload-grid">
+          <view class="return-upload-item" wx:for="{{images}}" wx:key="index">
+            <image class="return-thumb" src="{{item}}" mode="aspectFill"/>
+            <view class="return-del" data-index="{{index}}" bindtap="onDelImage">×</view>
+          </view>
+          <view class="return-upload-btn" wx:if="{{images.length < 6}}" bindtap="onChooseImage">
+            <text class="return-add-text">+</text>
+            <text class="text-muted fs-cap">添加</text>
+          </view>
+        </view>
+      </view>
+      <view class="return-section card">
+        <view class="return-section-title fs-body fw-bold">评价内容（可选）</view>
+        <textarea class="return-textarea" placeholder="描述返厂原因和维修情况" value="{{content}}" bindinput="onContentInput" maxlength="500"/>
+      </view>
+      <view class="return-rebate-tip">
+        <text class="fs-body text-gold">可获得返点：¥{{rebateAmount}}（2%）</text>
+      </view>
+      <button class="btn-primary return-submit" bindtap="onSubmit" disabled="{{submitting}}">
+        {{submitting ? '提交中...' : '提交返厂评价'}}
+      </button>
+    </scroll-view>
+  </block>
+</view>

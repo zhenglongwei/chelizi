@@ -1,0 +1,399 @@
+/* 竞价详情与报价 - M05，报价明细：损失部位、维修方案、配件类型、单价数量 */
+@import '/styles/design-system.wxss';
+
+.merchant-bidding-detail {
+  padding: var(--page-padding-x);
+  padding-bottom: var(--space-2xl);
+}
+
+/* 卡片通用 */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+/* 定损报告卡片 */
+.bidding-detail-card .detail-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.bidding-detail-card .detail-card-title {
+  color: var(--text-primary);
+}
+
+.bidding-detail-card .detail-card-badge {
+  padding: 4rpx var(--space-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.detail-vehicle-row,
+.detail-insurance-row,
+.detail-damages,
+.detail-repair-suggestions {
+  margin-bottom: var(--space-md);
+}
+
+.detail-insurance-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.detail-insurance-row .text-muted {
+  flex-shrink: 0;
+}
+
+.detail-insurance-detail {
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
+}
+
+.detail-insurance-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+}
+
+.detail-insurance-item .text-muted {
+  flex-shrink: 0;
+  width: 140rpx;
+}
+
+.detail-vehicle-row text {
+  margin-right: var(--space-sm);
+}
+
+.detail-damage-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.detail-damage-tag {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.detail-suggestion-list {
+  margin-top: var(--space-xs);
+}
+
+.detail-suggestion-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border-light);
+  font-size: var(--fs-sm);
+}
+
+.detail-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+/* 报价明细卡片 */
+.bidding-quote-card .quote-card-header {
+  margin-bottom: var(--space-md);
+}
+
+.bidding-quote-card .quote-card-hint {
+  display: block;
+  margin-top: var(--space-xs);
+}
+
+.quote-ai-action {
+  margin-bottom: var(--space-lg);
+}
+
+.quote-ai-btn {
+  font-size: var(--fs-body);
+  color: var(--primary);
+  background: var(--accent-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-lg);
+}
+
+.quote-items-list {
+  margin-bottom: var(--space-lg);
+}
+
+/* 增值服务 */
+.quote-value-added {
+  margin-bottom: var(--space-lg);
+}
+.quote-value-added-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+.quote-value-added-hint {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+.quote-value-added-list {
+  margin-top: var(--space-sm);
+}
+.quote-value-added-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.quote-value-added-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.quote-value-added-del {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  flex-shrink: 0;
+}
+.quote-value-added-add {
+  padding: var(--space-md);
+  text-align: center;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.quoted-value-added {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+.quoted-value-added-title {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
+}
+.quoted-value-added-item {
+  padding: var(--space-xs) 0;
+}
+
+/* 报价项目块：第1行损失部位、第2行维修方案+配件类型(换时) */
+.quote-item-block {
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.quote-item-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.quote-item-line:last-of-type {
+  margin-bottom: 0;
+}
+
+.quote-item-line1 .quote-item-label,
+.quote-item-line2 .quote-item-label {
+  flex-shrink: 0;
+  width: 140rpx;
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}
+
+.quote-item-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.quote-item-line2 {
+  flex-wrap: wrap;
+}
+
+.quote-item-line2 .quote-item-picker {
+  flex: 1;
+  min-width: 140rpx;
+}
+
+.quote-item-picker-parts {
+  margin-left: var(--space-sm);
+}
+
+.quote-item-picker {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.quote-item-picker:empty::before,
+.quote-item-picker:empty::after {
+  content: none;
+}
+
+.quote-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border-light);
+}
+.quote-item-del {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  padding: var(--space-xs) var(--space-md);
+}
+.quote-item-del:active {
+  opacity: 0.7;
+}
+
+.quote-item-add {
+  padding: var(--space-md);
+  text-align: center;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* 总报价 */
+.quote-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md) 0;
+  border-top: 1rpx solid var(--border);
+}
+
+.quote-total-input {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--primary);
+  text-align: right;
+  width: 240rpx;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.quote-extra-row {
+  display: flex;
+  gap: var(--space-xl);
+  margin-bottom: var(--space-md);
+}
+
+.quote-extra-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.quote-extra-item .text-muted {
+  flex-shrink: 0;
+}
+
+.quote-extra-input {
+  width: 80rpx;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--fs-body);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.quote-remark-row {
+  margin-bottom: var(--space-lg);
+}
+
+.quote-remark-input {
+  width: 100%;
+  padding: var(--space-sm);
+  font-size: var(--fs-body);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+}
+
+.quote-submit-btn {
+  width: 100%;
+  padding: var(--space-md);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+}
+
+/* 已报价展示 */
+.bidding-quoted-card .quoted-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.quoted-status-tag.won {
+  color: var(--success);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  padding: 4rpx var(--space-sm);
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+}
+
+.quoted-status-tag.invalid {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  padding: 4rpx var(--space-sm);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-sm);
+}
+
+.bidding-quoted-card .quoted-amount {
+  margin-bottom: var(--space-lg);
+}
+
+.quoted-items {
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+
+.quoted-item-block {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.quoted-item-block:last-child {
+  border-bottom: none;
+}
+
+.quoted-item-line1 {
+  font-weight: 500;
+  margin-bottom: var(--space-xs);
+}
+
+.quoted-item-line2 {
+  margin-bottom: 0;
+}
+
+.fw-bold { font-weight: 600; }
+.fw-medium { font-weight: 500; }

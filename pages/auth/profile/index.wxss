@@ -1,0 +1,134 @@
+/**
+ * 完善资料 - 表格样式（参考微信个人信息页）
+ * 以《设计规范.md》、design-system 为准
+ */
+.profile-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+.profile-content {
+  padding: var(--space-2xl) var(--page-padding-x);
+}
+
+.profile-desc {
+  margin-bottom: var(--space-lg);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* 表格列表 */
+.profile-list {
+  padding: 0;
+  overflow: hidden;
+}
+
+.profile-list.card {
+  padding: 0;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 112rpx;
+  padding: 0 var(--space-xl);
+  border-bottom: 1rpx solid var(--border);
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  box-sizing: border-box;
+}
+.profile-row::after { border: none; }
+
+.profile-row:last-of-type {
+  border-bottom: none;
+}
+
+
+.profile-row-label {
+  flex-shrink: 0;
+  width: 140rpx;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+}
+
+/* min-width 配合 justify-content: flex-end 使头像严格右对齐；父级 overflow:hidden 防止横向溢出 */
+.profile-row-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 1000rpx;
+  height: 100%;
+}
+
+/* 头像按钮：完全去除 button 默认样式，仅作点击触发 */
+.profile-avatar-btn {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  line-height: 1;
+  display: block;
+  width: 80rpx;
+  height: 80rpx;
+  flex-shrink: 0;
+}
+.profile-avatar-btn::after {
+  border: none;
+}
+
+.profile-avatar-img {
+  display: block;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: var(--radius-md);
+  background: var(--avatar-placeholder-bg);
+  border: 1rpx solid var(--avatar-placeholder-border);
+}
+
+.profile-row-arrow {
+  flex-shrink: 0;
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: var(--space-md);
+  opacity: 0.5;
+}
+
+/* 昵称行（含输入框） */
+.profile-row-input {
+  border-bottom: none;
+}
+
+.profile-row-input-field {
+  flex: 1;
+  min-height: 80rpx;
+  min-width: 0;
+  padding: 0 0 0 var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.profile-placeholder {
+  color: var(--text-hint);
+}
+
+/* 提交按钮 */
+.profile-submit {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  margin-top: var(--space-2xl);
+  border-radius: var(--radius-md);
+  background: var(--primary) !important;
+  color: #FFFFFF !important;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-align: center;
+}
+
+.profile-submit[disabled] {
+  opacity: 0.5;
+}

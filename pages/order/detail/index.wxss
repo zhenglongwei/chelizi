@@ -1,0 +1,11 @@
+.order-detail-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); }
+.order-loading { padding: var(--space-2xl); text-align: center; }
+.order-detail { margin-top: var(--space-lg); }
+.order-detail-row { display: flex; justify-content: space-between; padding: var(--space-md) 0; border-bottom: 1rpx solid var(--border); }
+.order-detail-row:last-of-type { border-bottom: none; }
+.order-reward-preview { margin-top: var(--space-lg); }
+.order-reward-title { margin-bottom: var(--space-sm); }
+.order-reward-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs); }
+.order-reward-stages { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.order-detail-actions { margin-top: var(--space-xl); display: flex; flex-wrap: wrap; gap: var(--space-md); }
+.order-detail-actions .btn-secondary, .order-detail-actions button { flex: 1; min-width: 160rpx; }

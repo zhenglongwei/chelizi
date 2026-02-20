@@ -1,0 +1,26 @@
+---
+description: 接口与数据库开发规范（表结构、schema、文档同步）
+globs: web/database/**/*,web/api-server/**/*.js
+alwaysApply: false
+---
+
+# 接口与数据库开发
+
+## 数据库变更（强制）
+
+- 表/字段/索引变化 → 同步更新 `docs/database/数据库设计文档.md` 和 `web/database/schema.sql`
+- 迁移脚本放在 `web/database/` 下，命名含日期与用途
+
+## 必读文档
+
+- **数据库设计**：`docs/database/数据库设计文档.md`
+- **Schema**：`web/database/schema.sql`
+
+## 接口约定
+
+- 第一次开发不做兼容：不兼容旧字段/旧返回结构
+- 发现双格式或兼容分支 → 统一为唯一格式，改完同步更新文档
+
+## 文档同步
+
+- 涉及表、字段、数据模型 → 更新《数据库设计文档》《文档同步》清单

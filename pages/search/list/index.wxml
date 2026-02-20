@@ -1,0 +1,97 @@
+<!-- 维修厂搜索列表页 - 10-维修厂搜索列表页 -->
+<view class="page-root search-page" style="{{pageRootStyle}}">
+  <!-- 搜索栏 -->
+  <view class="search-header">
+    <view class="input-wrap search-bar" bindtap="focusSearch">
+      <image class="search-icon" src="/images/icon/search.png" mode="aspectFit"/>
+      <input
+        class="search-input"
+        placeholder="搜索维修厂、车型、维修项目"
+        placeholder-class="search-placeholder"
+        value="{{keyword}}"
+        bindinput="onKeywordInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+        focus="{{searchFocused}}"
+      />
+      <image wx:if="{{keyword}}" class="search-clear" src="/images/icon/close.png" mode="aspectFit" bindtap="clearKeyword"/>
+    </view>
+  </view>
+
+  <!-- 筛选：分类 + 排序 -->
+  <view class="search-filter">
+    <scroll-view class="filter-categories" scroll-x>
+      <view
+        class="filter-chip {{!category ? 'active' : ''}}"
+        bindtap="onCategoryTap"
+        data-category=""
+      >全部</view>
+      <view
+        wx:for="{{categories}}"
+        wx:key="category"
+        class="filter-chip {{category === item ? 'active' : ''}}"
+        bindtap="onCategoryTap"
+        data-category="{{item}}"
+      >{{item}}</view>
+    </scroll-view>
+    <view class="filter-sort">
+      <picker mode="selector" range="{{sortLabels}}" range-key="label" value="{{sortIndex}}" bindchange="onSortChange">
+        <view class="sort-trigger">
+          <text class="sort-label">{{sortLabels[sortIndex].label}}</text>
+          <image class="sort-arrow" src="/images/icon/arrow-down.png" mode="aspectFit"/>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <!-- 维修厂列表 -->
+  <scroll-view
+    class="search-scroll"
+    scroll-y
+    style="{{scrollStyle}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onPullRefresh"
+    bindscrolltolower="onReachBottom"
+  >
+    <view class="search-content">
+      <view class="search-loading text-muted fs-body" wx:if="{{loading && list.length === 0}}">加载中...</view>
+      <view class="search-empty text-muted fs-body" wx:elif="{{!loading && list.length === 0}}">
+        {{emptyTip}}
+      </view>
+      <view class="search-list" wx:else>
+        <view
+          class="search-card card"
+          wx:for="{{list}}"
+          wx:key="shop_id"
+          bindtap="goToDetail"
+          data-id="{{item.shop_id}}"
+        >
+          <image class="search-card-logo" src="{{item.logo}}" mode="aspectFill"/>
+          <view class="search-card-info-wrap">
+            <view class="search-card-info">
+              <text class="search-card-name text-primary fs-body fw-bold">{{item.name}}</text>
+              <view class="search-card-rating">
+                <text class="star-full text-star">{{item.starsFull}}</text>
+                <text class="star-empty text-weak">{{item.starsEmpty}}</text>
+                <text class="rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+              </view>
+              <view class="search-card-foot">
+                <view class="badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
+                  <text class="fs-cap">{{item.badgeText}}</text>
+                </view>
+                <view class="search-card-addr text-muted fs-cap">
+                  <image class="addr-icon" src="/images/icon/location.png" mode="aspectFit"/>
+                  <text class="addr-txt">{{item.locationText}}</text>
+                </view>
+              </view>
+            </view>
+            <image class="search-card-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+          </view>
+        </view>
+      </view>
+      <view class="search-more text-muted fs-cap" wx:if="{{!hasMore && list.length > 0}}">— 没有更多了 —</view>
+      <view class="search-loading-more text-muted fs-cap" wx:elif="{{loadingMore}}">加载更多...</view>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,149 @@
+<!-- 竞价详情与报价 - M05，报价明细：损失部位、维修方案+配件类型 -->
+<custom-nav-bar title="竞价详情" showBack="{{true}}" />
+<view class="page-root merchant-bidding-detail" style="{{pageRootStyle}}">
+<scroll-view class="detail-scroll" scroll-y style="{{scrollStyle}}">
+  <!-- 定损报告卡片 -->
+  <view class="bidding-detail-card card" wx:if="{{bidding}}">
+    <view class="detail-card-header">
+      <text class="detail-card-title fs-h3 fw-bold">定损报告</text>
+      <view class="detail-card-badge" wx:if="{{bidding.complexity_level}}">
+        <text class="fs-sm">{{bidding.complexity_level}}</text>
+      </view>
+    </view>
+    <view class="detail-vehicle-row">
+      <text class="text-muted fs-cap">车辆</text>
+      <text class="fs-body fw-medium">{{bidding.vehicle_info.brand || ''}} {{bidding.vehicle_info.model || ''}}</text>
+      <text class="text-weak fs-sm" wx:if="{{bidding.vehicle_info.plate_number}}">{{bidding.vehicle_info.plate_number}}</text>
+    </view>
+    <view class="detail-insurance-row">
+      <text class="text-muted fs-cap">支付方式</text>
+      <text class="fs-body fw-medium">{{bidding.insurance_info && bidding.insurance_info.is_insurance ? '保险支付' : '自费'}}</text>
+    </view>
+    <view class="detail-insurance-detail" wx:if="{{bidding.insurance_info && bidding.insurance_info.is_insurance}}">
+      <view class="detail-insurance-item" wx:if="{{bidding.insurance_info.accident_type_label}}">
+        <text class="text-muted fs-cap">事故类型</text>
+        <text class="fs-sm">{{bidding.insurance_info.accident_type_label}}</text>
+      </view>
+      <view class="detail-insurance-item" wx:if="{{bidding.insurance_info.insurance_company}}">
+        <text class="text-muted fs-cap">{{bidding.insurance_info.insurance_company_other ? '自家保险' : '保险公司'}}</text>
+        <text class="fs-sm">{{bidding.insurance_info.insurance_company}}</text>
+      </view>
+      <view class="detail-insurance-item" wx:if="{{bidding.insurance_info.insurance_company_other}}">
+        <text class="text-muted fs-cap">对家保险</text>
+        <text class="fs-sm">{{bidding.insurance_info.insurance_company_other}}</text>
+      </view>
+      <view class="detail-insurance-item" wx:if="{{bidding.insurance_info.main_responsible}}">
+        <text class="text-muted fs-cap">主责方</text>
+        <text class="fs-sm">{{bidding.insurance_info.main_responsible}}</text>
+      </view>
+    </view>
+    <view class="detail-damages" wx:if="{{bidding.analysis_result && bidding.analysis_result.damages && bidding.analysis_result.damages.length}}">
+      <text class="text-muted fs-cap">损伤部位</text>
+      <view class="detail-damage-tags">
+        <view class="detail-damage-tag" wx:for="{{bidding.analysis_result.damages}}" wx:key="index">
+          <text class="fs-sm">{{item.part}} {{item.type}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="detail-repair-suggestions" wx:if="{{bidding.analysis_result && bidding.analysis_result.repair_suggestions && bidding.analysis_result.repair_suggestions.length}}">
+      <text class="text-muted fs-cap">AI 维修建议</text>
+      <view class="detail-suggestion-list">
+        <view class="detail-suggestion-item" wx:for="{{bidding.analysis_result.repair_suggestions}}" wx:key="index">
+          <text class="fs-sm">{{item.item}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 报价明细 -->
+  <view class="bidding-quote-card card" wx:if="{{bidding && !bidding.my_quote}}">
+    <view class="quote-card-header">
+      <text class="quote-card-title fs-h3 fw-bold">报价明细</text>
+      <text class="quote-card-hint text-weak fs-sm">请列明损失部位、维修方案（换时含配件类型），便于后期评价对比</text>
+    </view>
+    <view class="quote-ai-action">
+      <button class="quote-ai-btn" bindtap="onUseAiSuggestions" wx:if="{{hasAiSuggestions}}">采用 AI 建议</button>
+    </view>
+    <view class="quote-items-list">
+      <view class="quote-item-block" wx:for="{{quoteItems}}" wx:key="id">
+        <view class="quote-item-line quote-item-line1">
+          <text class="quote-item-label">损失部位</text>
+          <input class="quote-item-input" placeholder="如：前保险杠、左前翼子板" value="{{item.damage_part}}" data-id="{{item.id}}" data-field="damage_part" bindinput="onItemFieldInput"/>
+        </view>
+        <view class="quote-item-line quote-item-line2">
+          <text class="quote-item-label">维修方案</text>
+          <picker mode="selector" range="{{repairTypeOptions}}" range-key="label" value="{{item.repairTypeIndex === undefined ? 0 : item.repairTypeIndex}}" data-id="{{item.id}}" bindchange="onRepairTypeChange">
+            <view class="quote-item-picker">{{item.repair_type || '请选择'}}</view>
+          </picker>
+          <picker wx:if="{{item.repair_type === '换'}}" mode="selector" range="{{partsTypeOptions}}" range-key="label" value="{{item.partsTypeIndex === undefined || item.partsTypeIndex < 0 ? 0 : item.partsTypeIndex}}" data-id="{{item.id}}" bindchange="onPartsTypeChange">
+            <view class="quote-item-picker quote-item-picker-parts">{{item.parts_type || '配件类型'}}</view>
+          </picker>
+        </view>
+        <view class="quote-item-actions">
+          <view class="quote-item-del" data-id="{{item.id}}" bindtap="onDelItem">删除</view>
+        </view>
+      </view>
+      <view class="quote-item-add" bindtap="onAddItem">
+        <text class="text-primary fs-body">+ 添加项目</text>
+      </view>
+    </view>
+    <view class="quote-value-added">
+      <text class="quote-value-added-title fs-body fw-bold">增值服务</text>
+      <text class="quote-value-added-hint text-weak fs-sm">如代步车、上门接送等，每项一行</text>
+      <view class="quote-value-added-list">
+        <view class="quote-value-added-row" wx:for="{{valueAddedServices}}" wx:key="id">
+          <input class="quote-value-added-input" placeholder="如：代步车、上门接送" value="{{item.name}}" data-id="{{item.id}}" bindinput="onValueAddedInput"/>
+          <view class="quote-value-added-del" data-id="{{item.id}}" bindtap="onDelValueAdded">删除</view>
+        </view>
+        <view class="quote-value-added-add" bindtap="onAddValueAdded">
+          <text class="text-primary fs-body">+ 添加增值服务</text>
+        </view>
+      </view>
+    </view>
+    <view class="quote-total-row">
+      <text class="fs-body fw-bold">总报价（元）*</text>
+      <input class="quote-total-input" type="digit" placeholder="请填写" value="{{amount}}" bindinput="onAmountInput"/>
+    </view>
+    <view class="quote-extra-row">
+      <view class="quote-extra-item">
+        <text class="text-muted fs-cap">预计工期</text>
+        <input class="quote-extra-input" type="number" placeholder="3" value="{{duration}}" bindinput="onDurationInput"/>
+        <text class="fs-sm">天</text>
+      </view>
+      <view class="quote-extra-item">
+        <text class="text-muted fs-cap">质保</text>
+        <input class="quote-extra-input" type="number" placeholder="12" value="{{warranty}}" bindinput="onWarrantyInput"/>
+        <text class="fs-sm">月</text>
+      </view>
+    </view>
+    <view class="quote-remark-row">
+      <input class="quote-remark-input" placeholder="备注（选填）" value="{{remark}}" bindinput="onRemarkInput"/>
+    </view>
+    <button class="btn-primary quote-submit-btn" disabled="{{submitting}}" bindtap="onSubmit">{{submitting ? '提交中...' : '提交报价'}}</button>
+  </view>
+
+  <!-- 已报价 -->
+  <view class="bidding-quoted-card card" wx:if="{{bidding && bidding.my_quote}}">
+    <view class="quoted-header">
+      <text class="text-success fs-body fw-bold">您已提交报价</text>
+      <text class="quoted-status-tag won" wx:if="{{bidding.status === 1 && bidding.my_quote.quote_status === 1}}">成交</text>
+      <text class="quoted-status-tag invalid" wx:if="{{bidding.status === 1 && bidding.my_quote.quote_status === 2}}">已失效</text>
+    </view>
+    <view class="quoted-amount">
+      <text class="fs-h2 fw-bold text-primary">¥{{bidding.my_quote.amount}}</text>
+    </view>
+    <view class="quoted-items" wx:if="{{bidding.my_quote.items && bidding.my_quote.items.length}}">
+      <view class="quoted-item-block" wx:for="{{bidding.my_quote.items}}" wx:key="index">
+        <view class="quoted-item-line1 fs-sm">{{item.damage_part || item.name || item.item}}</view>
+        <view class="quoted-item-line2 fs-sm text-muted">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}</view>
+      </view>
+    </view>
+    <view class="quoted-value-added" wx:if="{{bidding.my_quote.value_added_services && bidding.my_quote.value_added_services.length}}">
+      <text class="quoted-value-added-title fs-cap fw-bold">增值服务</text>
+      <view class="quoted-value-added-list">
+        <view class="quoted-value-added-item fs-sm" wx:for="{{bidding.my_quote.value_added_services}}" wx:key="index">{{item.name || item}}</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+</view>

@@ -1,0 +1,156 @@
+/* 自定义 TabBar - 定损为核心入口，带动态效果 */
+/* 背景仅包裹首页、我的两按钮；定损一半在背景内、一半超出 */
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #FFFFFF;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  z-index: 999;
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 16rpx;
+}
+
+.tab-icon-wrap {
+  position: relative;
+}
+
+.tab-icon {
+  width: 48rpx;
+  height: 48rpx;
+  margin-bottom: 4rpx;
+}
+
+.tab-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -24rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
+  padding: 0 8rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: var(--danger, #EF4444);
+  border-radius: 16rpx;
+  text-align: center;
+}
+
+.tab-text {
+  font-size: 22rpx;
+  color: #A0A0A0;
+}
+
+.tab-text.active {
+  color: #EAB308;
+}
+
+/* ========== 定损：核心入口 - 一半在背景内、一半超出 ========== */
+.tab-center {
+  flex: 1;
+  margin-top: -60rpx;
+}
+
+.center-wrap {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 4rpx;
+}
+
+/* 外圈呼吸动画 */
+.center-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 4rpx solid rgba(37, 99, 235, 0.4);
+  animation: tab-pulse 2s ease-in-out infinite;
+}
+
+.center-ring-1 {
+  width: 100rpx;
+  height: 100rpx;
+  animation-delay: 0s;
+}
+
+.center-ring-2 {
+  width: 100rpx;
+  height: 100rpx;
+  animation-delay: 1s;
+  opacity: 0.6;
+}
+
+@keyframes tab-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.2;
+  }
+}
+
+/* 主按钮 - #2563EB 凸出效果 */
+.center-btn {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #60A5FA 0%, #3B82F6 40%, #2563EB 70%, #1D4ED8 100%);
+  box-shadow:
+    0 -4rpx 12rpx rgba(255, 255, 255, 0.4),
+    0 12rpx 28rpx rgba(37, 99, 235, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  transform: translateZ(0);
+  animation: tab-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes tab-glow {
+  0%, 100% {
+    box-shadow:
+      0 -4rpx 12rpx rgba(255, 255, 255, 0.4),
+      0 12rpx 28rpx rgba(37, 99, 235, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 -4rpx 12rpx rgba(255, 255, 255, 0.5),
+      0 16rpx 36rpx rgba(37, 99, 235, 0.5);
+  }
+}
+
+/* 白色图标，在亮色按钮上对比度最佳 */
+.center-icon {
+  width: 48rpx;
+  height: 48rpx;
+  filter: brightness(0) invert(1);
+}
+
+.tab-center .tab-text {
+  font-weight: 500;
+}
+
+.tab-center .tab-text.active {
+  color: #2563EB;
+}

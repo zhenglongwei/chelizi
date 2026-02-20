@@ -1,0 +1,73 @@
+/* 返点余额明细页 - 14-返点余额明细页 */
+.balance-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.balance-empty,
+.balance-empty-tip {
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.balance-login-link {
+  color: var(--primary);
+  font-size: var(--fs-body);
+  margin-top: var(--space-md);
+  display: block;
+}
+
+.balance-summary {
+  margin-bottom: var(--space-xl);
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.balance-withdraw-btn {
+  margin-top: var(--space-lg);
+  width: 100%;
+}
+
+.balance-withdraw-btn.disabled {
+  opacity: 0.6;
+}
+
+.balance-list-title {
+  margin-bottom: var(--space-lg);
+}
+
+.balance-scroll {
+  height: 100%;
+}
+
+.balance-item {
+  margin-bottom: var(--space-lg);
+}
+
+.balance-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-xs);
+}
+
+.balance-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+
+.balance-load-more {
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.balance-bottom-pad {
+  height: var(--tab-bar-bottom-padding);
+}

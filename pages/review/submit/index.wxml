@@ -1,0 +1,191 @@
+<!-- 主评价页 - 05-评价页（3 模块 1 次提交） -->
+<custom-nav-bar title="评价" showBack="{{true}}" />
+<view class="page-root review-page" style="{{pageRootStyle}}">
+  <block wx:if="{{loading}}">
+    <view class="review-loading"><text class="text-muted fs-body">加载中...</text></view>
+  </block>
+  <block wx:elif="{{error}}">
+    <view class="review-error card">
+      <text class="text-muted fs-body">{{error}}</text>
+      <view class="review-back-btn" bindtap="onBack">返回</view>
+    </view>
+  </block>
+  <block wx:elif="{{submitted}}">
+    <view class="review-success card">
+      <text class="fs-h3 fw-bold text-success">评价提交成功</text>
+      <text class="fs-body text-muted" style="margin-top: var(--space-md);">奖励金 {{rewardAmount}} 元已到账</text>
+      <text class="fs-sm text-weak" style="margin-top: var(--space-sm);">1 个月/3 个月可追评获得剩余奖励金</text>
+      <view class="review-success-actions">
+        <button class="btn-primary" wx:if="{{reviewId}}" bindtap="onToFollowup">去追评</button>
+        <button class="btn-primary" bindtap="onToOrder">查看订单</button>
+        <button class="btn-secondary" bindtap="onToUser">返回个人中心</button>
+      </view>
+    </view>
+  </block>
+  <block wx:else>
+    <!-- 顶部合规提示（固定） -->
+    <view class="review-compliance card">
+      <text class="fs-sm text-muted">奖励仅与评价内容的完整性、真实性挂钩，与评价正负倾向完全无关，差评达标也可全额领取奖励。</text>
+    </view>
+
+    <scroll-view class="review-scroll" scroll-y style="{{scrollStyle}}">
+      <!-- 维修厂信息 -->
+      <view class="review-section card">
+        <view class="review-section-title fs-body fw-bold">维修厂</view>
+        <text class="fs-body">{{info.shop_name || '维修厂'}}</text>
+      </view>
+
+      <!-- 模块1：报价服务（选填） -->
+      <view class="review-section card">
+        <view class="review-section-title fs-body fw-bold">模块1：报价服务</view>
+        <text class="text-weak fs-sm">选填，完成可领合作商家权益</text>
+        <view class="review-objective">
+          <text class="fs-body">1. 结算金额与平台确认报价一致，无隐形消费</text>
+          <radio-group bindchange="onM1Q1" class="review-radio-group">
+            <label><radio value="true" checked="{{module1.q1_settlement_match === true}}"/>是</label>
+            <label><radio value="false" checked="{{module1.q1_settlement_match === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">2. 服务商已提前告知所有项目与费用，本人知情同意</text>
+          <radio-group bindchange="onM1Q2" class="review-radio-group">
+            <label><radio value="true" checked="{{module1.q2_informed === true}}"/>是</label>
+            <label><radio value="false" checked="{{module1.q2_informed === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <textarea class="review-textarea" placeholder="选填描述" value="{{module1.content}}" bindinput="onM1Content" maxlength="200"/>
+      </view>
+
+      <!-- 模块2：维修过程（三级/四级必填） -->
+      <view class="review-section card">
+        <view class="review-section-title fs-body fw-bold">模块2：维修过程</view>
+        <text class="text-weak fs-sm">{{orderTier >= 3 ? '三级/四级订单必填' : '一级/二级选填'}}</text>
+        <view class="review-upload-grid" style="margin-top: var(--space-md);">
+          <view class="review-upload-item" wx:for="{{module2.materials}}" wx:key="index">
+            <image class="review-thumb" src="{{item}}" mode="aspectFill"/>
+            <view class="review-del" data-index="{{index}}" bindtap="onM2DelMaterial"><text class="review-del-text">×</text></view>
+          </view>
+          <view class="review-upload-btn" bindtap="onM2ChooseMaterial">
+            <text class="review-add-text">+</text>
+            <text class="text-muted fs-cap">添加材料</text>
+          </view>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">1. 维修项目与报修故障对应，无未经同意的额外项目</text>
+          <radio-group bindchange="onM2Q1" class="review-radio-group">
+            <label><radio value="true" checked="{{module2.q1_project_match === true}}"/>是</label>
+            <label><radio value="false" checked="{{module2.q1_project_match === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">2. 配件实物与清单品牌、型号一致</text>
+          <radio-group bindchange="onM2Q2" class="review-radio-group">
+            <label><radio value="true" checked="{{module2.q2_parts_match === true}}"/>是</label>
+            <label><radio value="false" checked="{{module2.q2_parts_match === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">3. 服务商已同步维修进度</text>
+          <radio-group bindchange="onM2Q3" class="review-radio-group">
+            <label><radio value="true" checked="{{module2.q3_progress_synced === true}}"/>是</label>
+            <label><radio value="false" checked="{{module2.q3_progress_synced === false}}"/>否</label>
+          </radio-group>
+        </view>
+      </view>
+
+      <!-- 模块3：完工验收（必填） -->
+      <view class="review-section card">
+        <view class="review-section-title fs-body fw-bold">模块3：完工验收</view>
+        <text class="text-weak fs-sm">全订单必填</text>
+        <view class="review-upload-row">
+          <text class="fs-body">维修结算清单（必传）</text>
+          <view class="review-upload-single" wx:if="{{!module3.settlement_list_image && !module3.settlement_list_url}}" bindtap="onM3ChooseSettlement">
+            <text class="review-add-text">+</text>
+            <text class="text-muted fs-cap">上传</text>
+          </view>
+          <view class="review-upload-item" wx:else>
+            <image class="review-thumb" src="{{module3.settlement_list_image || module3.settlement_list_url}}" mode="aspectFill"/>
+            <view class="review-del" bindtap="onM3DelSettlement"><text class="review-del-text">×</text></view>
+          </view>
+        </view>
+        <view class="review-upload-row">
+          <text class="fs-body">完工实拍图（至少 2 张）</text>
+          <view class="review-upload-grid">
+            <view class="review-upload-item" wx:for="{{module3.completion_images}}" wx:key="index">
+              <image class="review-thumb" src="{{item}}" mode="aspectFill"/>
+              <view class="review-del" data-index="{{index}}" bindtap="onM3DelCompletion"><text class="review-del-text">×</text></view>
+            </view>
+            <view class="review-upload-btn" wx:if="{{!module3.completion_images || module3.completion_images.length < 8}}" bindtap="onM3ChooseCompletion">
+              <text class="review-add-text">+</text>
+              <text class="text-muted fs-cap">添加</text>
+            </view>
+          </view>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">1. 本次维修的服务商与平台选定的一致</text>
+          <radio-group bindchange="onM3Q1" class="review-radio-group">
+            <label><radio value="true" checked="{{module3.q1_shop_match === true}}"/>是</label>
+            <label><radio value="false" checked="{{module3.q1_shop_match === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">2. 结算金额与平台确认报价一致</text>
+          <radio-group bindchange="onM3Q2" class="review-radio-group">
+            <label><radio value="true" checked="{{module3.q2_settlement_match === true}}"/>是</label>
+            <label><radio value="false" checked="{{module3.q2_settlement_match === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">3. 维修完成后报修故障已解决</text>
+          <radio-group bindchange="onM3Q3" class="review-radio-group">
+            <label><radio value="true" checked="{{module3.q3_fault_resolved === true}}"/>是</label>
+            <label><radio value="false" checked="{{module3.q3_fault_resolved === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <view class="review-objective">
+          <text class="fs-body">4. 服务商已明确告知质保期限与售后保障</text>
+          <radio-group bindchange="onM3Q4" class="review-radio-group">
+            <label><radio value="true" checked="{{module3.q4_warranty_informed === true}}"/>是</label>
+            <label><radio value="false" checked="{{module3.q4_warranty_informed === false}}"/>否</label>
+          </radio-group>
+        </view>
+        <textarea class="review-textarea" placeholder="主观描述（按订单分级字数要求）" value="{{module3.content}}" bindinput="onM3Content" maxlength="500"/>
+        <view class="review-section-title fs-body" style="margin-top: var(--space-md);">选填星级（不影响奖励）</view>
+        <view class="review-sub-row" wx:for="{{ratingItems}}" wx:key="key">
+          <text class="fs-sm">{{item.label}}</text>
+          <view class="review-stars review-stars-sm">
+            <text class="review-star {{s <= item.value ? 'filled' : ''}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this" data-key="{{item.key}}" data-value="{{s}}" bindtap="onRatingTap">{{s <= item.value ? '★' : '☆'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 奖励金预估 -->
+      <view class="review-section card review-reward" wx:if="{{rewardPreview}}">
+        <view class="review-section-title fs-body fw-bold">奖励金预估</view>
+        <view class="review-reward-total">
+          <text class="text-muted fs-sm">可获奖励金</text>
+          <text class="fs-body text-gold fw-bold">¥{{rewardPreview.total_reward}}</text>
+        </view>
+        <view class="review-reward-stages" wx:if="{{rewardPreview.stages && rewardPreview.stages.length}}">
+          <text class="text-weak fs-sm" wx:for="{{rewardPreview.stages}}" wx:key="stage">{{item.stage === 'main' ? '主评价' : item.stage === '1m' ? '1个月追评' : '3个月追评'}} {{item.percent}}%</text>
+        </view>
+      </view>
+
+      <!-- 匿名 -->
+      <view class="review-section card">
+        <view class="review-anonymous">
+          <text class="fs-body">匿名评价</text>
+          <switch checked="{{isAnonymous}}" bindchange="onAnonymousChange" color="var(--primary)"/>
+        </view>
+      </view>
+
+      <view class="review-bottom-pad"></view>
+    </scroll-view>
+
+    <view class="review-footer">
+      <button class="btn-primary review-submit-btn {{canSubmit ? '' : 'disabled'}}" bindtap="onSubmit" disabled="{{submitting || !canSubmit}}">
+        {{submitting ? '提交中...' : '提交评价 (' + progressText + ')'}}
+      </button>
+    </view>
+  </block>
+</view>

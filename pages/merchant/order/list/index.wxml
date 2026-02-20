@@ -1,0 +1,29 @@
+<!-- 服务商订单列表 - M06 -->
+<custom-nav-bar title="我的订单" showBack="{{true}}" />
+<view class="page-root merchant-order-list" style="{{pageRootStyle}}">
+  <view class="merchant-tabs">
+    <view class="merchant-tab {{tabIndex === -1 ? 'active' : ''}}" data-index="-1" bindtap="onTabChange">全部</view>
+    <view class="merchant-tab {{tabIndex === 0 ? 'active' : ''}}" data-index="0" bindtap="onTabChange">待接单</view>
+    <view class="merchant-tab {{tabIndex === 1 ? 'active' : ''}}" data-index="1" bindtap="onTabChange">维修中</view>
+    <view class="merchant-tab {{tabIndex === 2 ? 'active' : ''}}" data-index="2" bindtap="onTabChange">待确认</view>
+    <view class="merchant-tab {{tabIndex === 3 ? 'active' : ''}}" data-index="3" bindtap="onTabChange">已完成</view>
+  </view>
+  <scroll-view class="merchant-list-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscrolltolower="onReachBottom">
+    <view class="merchant-list" wx:if="{{list.length > 0}}">
+      <view class="merchant-order-card card" wx:for="{{list}}" wx:key="order_id" data-id="{{item.order_id}}" bindtap="onItemTap">
+        <view class="card-order-id fs-body">{{item.order_id}}</view>
+        <view class="card-vehicle fs-sm">{{item.vehicle_info.brand || ''}} {{item.vehicle_info.model || ''}}</view>
+        <view class="card-meta text-secondary fs-sm">
+          <text>¥{{item.quoted_amount}}</text>
+          <text wx:if="{{item.complexity_level}}"> · {{item.complexity_level}}</text>
+          <text wx:if="{{item.commission_rate}}"> · 佣金{{item.commission_rate}}</text>
+          <text class="card-status">{{item.status_text}}</text>
+          <text class="card-time">{{item.created_short}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="merchant-empty" wx:elif="{{empty && !loading}}">
+      <text class="text-hint fs-body">暂无订单</text>
+    </view>
+  </scroll-view>
+</view>

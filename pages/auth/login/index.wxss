@@ -1,0 +1,101 @@
+/**
+ * 登录授权页 - 11-登录授权页
+ * 以《设计规范.md》、design-system 为准
+ */
+.login-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-2xl) var(--page-padding-x);
+}
+
+.login-content {
+  width: 100%;
+  max-width: 600rpx;
+}
+
+.login-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: var(--space-2xl);
+}
+
+.login-logo-img {
+  width: 160rpx;
+  height: 160rpx;
+  margin-bottom: var(--space-lg);
+}
+
+.login-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.login-desc {
+  display: block;
+}
+
+.login-benefits {
+  margin-bottom: var(--space-2xl);
+}
+
+.login-benefits-title {
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.login-benefits-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.login-agree {
+  margin-bottom: var(--space-xl);
+}
+
+.login-agree-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.login-check {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.login-link {
+  color: var(--primary);
+  font-size: var(--fs-cap);
+}
+
+.login-btn {
+  width: 100%;
+  height: 88rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
+  border: none;
+}
+
+.login-btn[disabled] {
+  opacity: 0.5;
+}
+
+.login-btn-icon {
+  width: 40rpx;
+  height: 40rpx;
+  filter: brightness(0) invert(1);
+}

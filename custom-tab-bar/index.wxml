@@ -1,0 +1,28 @@
+<view class="tab-bar">
+  <block wx:for="{{list}}" wx:key="text">
+    <view
+      class="tab-item {{item.isCenter ? 'tab-center' : ''}} {{selected === index ? 'active' : ''}}"
+      data-index="{{index}}"
+      bindtap="switchTab"
+    >
+      <block wx:if="{{item.isCenter}}">
+        <!-- 定损： floating 核心入口，带动态效果 -->
+        <view class="center-wrap">
+          <view class="center-ring center-ring-1"></view>
+          <view class="center-ring center-ring-2"></view>
+          <view class="center-btn">
+            <image class="center-icon" src="/images/icon/{{selected === index ? item.selectedIconPath : item.iconPath}}.png" mode="aspectFit"/>
+          </view>
+        </view>
+        <text class="tab-text {{selected === index ? 'active' : ''}}">{{item.text}}</text>
+      </block>
+      <block wx:else>
+        <view class="tab-icon-wrap">
+          <image class="tab-icon" src="/images/icon/{{selected === index ? item.selectedIconPath : item.iconPath}}.png" mode="aspectFit"/>
+          <view class="tab-badge" wx:if="{{index === 3 && unreadCount > 0}}">{{unreadCount > 99 ? '99+' : unreadCount}}</view>
+        </view>
+        <text class="tab-text {{selected === index ? 'active' : ''}}">{{item.text}}</text>
+      </block>
+    </view>
+  </block>
+</view>

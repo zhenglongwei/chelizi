@@ -1,0 +1,472 @@
+/**
+ * AI定损页 - 02-AI定损页
+ * 以《设计规范.md》、design-system 为准
+ */
+.damage-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding-bottom: 140rpx;
+}
+
+.damage-empty {
+  margin: var(--space-2xl) var(--page-padding-x);
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.damage-login-link {
+  color: var(--primary);
+  font-size: var(--fs-body);
+}
+
+.damage-scroll {
+  padding-top: var(--space-lg);
+}
+
+/* ========== 拍摄引导 ========== */
+.damage-guide {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.damage-guide-title {
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.damage-guide-tips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* ========== 照片上传 ========== */
+.damage-section {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.damage-section-title {
+  margin-bottom: var(--space-lg);
+  color: var(--text-primary);
+}
+
+.damage-location-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.damage-location-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+}
+
+.damage-location-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.damage-location-hint {
+  display: block;
+}
+
+.damage-location-rechoose {
+  padding: var(--space-sm) 0;
+  margin-left: calc(40rpx + var(--space-md));
+}
+
+.damage-location-icon {
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+
+.damage-location-arrow {
+  font-size: var(--fs-h2);
+  color: var(--text-hint);
+  flex-shrink: 0;
+}
+
+.damage-upload-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.damage-upload-item {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-placeholder);
+}
+
+.damage-thumb {
+  width: 100%;
+  height: 100%;
+}
+
+.damage-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.damage-del image {
+  width: 24rpx;
+  height: 24rpx;
+  filter: brightness(0) invert(1);
+}
+
+.damage-upload-btn {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+.damage-add-icon {
+  width: 48rpx;
+  height: 48rpx;
+  opacity: 0.6;
+}
+
+.damage-upload-hint {
+  display: block;
+  margin-top: var(--space-md);
+}
+
+/* ========== 车辆信息 ========== */
+.damage-field {
+  margin-bottom: var(--space-lg);
+}
+
+.damage-field:last-child {
+  margin-bottom: 0;
+}
+
+.damage-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+.damage-input {
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+/* 车辆信息 3 行布局：左标签右输入，横线样式 */
+.damage-field-row-inline {
+  display: flex;
+  align-items: center;
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border);
+  margin-bottom: 0;
+}
+
+.damage-field-row-inline:last-child {
+  border-bottom: none;
+}
+
+/* 走保险时提醒与说明 */
+.damage-insurance-block {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1rpx solid var(--border);
+}
+
+.damage-insurance-tip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: var(--radius-md);
+  border-left: 4rpx solid var(--warning);
+}
+
+.damage-insurance-tip-icon {
+  width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
+  text-align: center;
+  font-size: var(--fs-body);
+  font-weight: bold;
+  color: var(--warning);
+  background: #fff;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.damage-insurance-tip-text {
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.damage-insurance-hint {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(37, 99, 235, 0.06);
+  border-radius: var(--radius-md);
+}
+
+.damage-insurance-hint .fs-body {
+  color: var(--text-secondary);
+}
+
+.damage-insurance-main-note {
+  display: block;
+  margin-top: var(--space-xs);
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.damage-label-inline {
+  flex-shrink: 0;
+  width: 140rpx;
+  color: var(--text-secondary);
+}
+
+.damage-input-inline {
+  flex: 1;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.damage-input-inline::placeholder {
+  color: var(--text-weak);
+}
+
+.damage-picker-inline {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.damage-picker {
+  padding: var(--space-md) var(--space-lg);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ========== 竞价范围 ========== */
+.damage-range-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.damage-range-item {
+  padding: var(--space-md) var(--space-xl);
+  font-size: var(--fs-body);
+  background: var(--bg-page);
+  border: 2rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.damage-range-item.selected {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ========== 分析进度 ========== */
+.damage-progress {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.damage-progress-bar {
+  height: 12rpx;
+  background: var(--bg-placeholder);
+  border-radius: 6rpx;
+  overflow: hidden;
+  margin-bottom: var(--space-md);
+}
+
+.damage-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 6rpx;
+  transition: width 0.3s ease;
+}
+
+/* ========== 定损报告 ========== */
+.damage-report {
+  margin: 0 var(--page-padding-x) var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.damage-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+}
+
+.damage-report-title {
+  color: var(--text-primary);
+}
+
+.damage-report-close {
+  padding: var(--space-sm) var(--space-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.damage-report-close-text {
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.damage-report-level {
+  margin-bottom: var(--space-md);
+  color: var(--text-secondary);
+}
+
+.damage-report-damages,
+.damage-report-repair {
+  margin-bottom: var(--space-lg);
+}
+
+.damage-report-repair {
+  margin-bottom: 0;
+}
+
+/* ========== 多车选择 ========== */
+.damage-vehicle-select-hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.damage-vehicle-select-hint .text-muted {
+  font-size: var(--fs-sm);
+}
+
+.damage-plate-match {
+  margin-bottom: var(--space-md);
+}
+
+.damage-plate-match .damage-input-inline {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-page);
+}
+
+.damage-vehicle-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.damage-vehicle-tab {
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--fs-body);
+  background: var(--bg-page);
+  border: 2rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.damage-vehicle-tab.selected {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.damage-vehicle-tab .text-muted {
+  display: block;
+  margin-top: 2rpx;
+}
+
+.damage-vehicle-info {
+  margin-bottom: var(--space-lg);
+}
+
+.damage-field-row {
+  margin-bottom: var(--space-md);
+}
+
+.damage-field-row:last-child {
+  margin-bottom: 0;
+}
+
+.damage-damage-item,
+.damage-repair-item {
+  margin-top: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+/* ========== 底部 ========== */
+.damage-bottom-pad {
+  height: var(--space-2xl);
+}
+
+.damage-footer {
+  position: fixed;
+  bottom: 200;
+  left: 0;
+  right: 0;
+  padding: var(--space-md) var(--page-padding-x);
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-top: 1rpx solid var(--border);
+  z-index: 100;
+}
+
+.damage-btn {
+  width: 100%;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
+}

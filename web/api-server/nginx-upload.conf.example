@@ -1,0 +1,29 @@
+# Nginx 上传与静态文件配置示例
+# 用于 simplewin.cn 站点（/etc/nginx/sites-available/default 或对应站点配置）
+#
+# server.js 已配置上传目录为项目根下的 uploads（/var/www/simplewin/uploads）
+# Nginx 需将 /uploads 指向同一路径
+#
+# ========== 在 server 块内添加或修改 ==========
+#
+# server {
+#     listen 80;
+#     server_name simplewin.cn;
+#     client_max_body_size 10M;   # 允许最大 10MB 上传
+#
+#     location /uploads {
+#         alias /var/www/simplewin/uploads/;
+#     }
+#
+#     location /api {
+#         proxy_pass http://127.0.0.1:3000;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+# }
+#
+# ========== 修改后执行 ==========
+# sudo nginx -t && sudo nginx -s reload

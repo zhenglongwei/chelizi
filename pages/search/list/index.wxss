@@ -1,0 +1,267 @@
+/**
+ * 维修厂搜索列表页 - 10-维修厂搜索列表页
+ * 以《设计规范.md》、design-system 为准
+ */
+.search-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ========== 搜索栏 ========== */
+.search-header {
+  flex-shrink: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.search-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-md) var(--space-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.search-icon {
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: var(--space-md);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.search-placeholder {
+  color: var(--text-hint);
+}
+
+.search-clear {
+  width: 36rpx;
+  height: 36rpx;
+  margin-left: var(--space-sm);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+/* ========== 筛选区 ========== */
+.search-filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-md) var(--page-padding-x);
+  background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.filter-categories {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.filter-chip {
+  display: inline-block;
+  padding: var(--space-xs) var(--space-lg);
+  margin-right: var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  border: 1rpx solid var(--border);
+}
+
+.filter-chip.active {
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+.filter-sort {
+  flex-shrink: 0;
+}
+
+.sort-trigger {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-xs) var(--space-md);
+}
+
+.sort-label {
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  margin-right: var(--space-xs);
+}
+
+.sort-arrow {
+  width: 24rpx;
+  height: 24rpx;
+  opacity: 0.6;
+}
+
+/* ========== 列表 ========== */
+.search-scroll {
+  flex: 1;
+}
+
+.search-content {
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: 120rpx;
+}
+
+.search-loading,
+.search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) 0;
+}
+
+.search-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* ========== 维修厂卡片 ========== */
+.search-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  box-shadow: var(--shadow-card);
+}
+
+.search-card:active {
+  transform: scale(0.995);
+}
+
+.search-card-logo {
+  flex-shrink: 0;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+  background: var(--bg-placeholder);
+}
+
+.search-card-info-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+  margin-left: var(--space-xl);
+}
+
+.search-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.search-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-card-rating {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
+.star-full {
+  font-size: var(--fs-cap);
+  margin-right: var(--space-xs);
+}
+
+.star-empty {
+  font-size: var(--fs-cap);
+  margin-right: var(--space-md);
+}
+
+.rating-txt {
+  flex-shrink: 0;
+}
+
+.search-card-foot {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: var(--space-md);
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.badge {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.badge.badge-nearest {
+  background: rgba(234, 179, 8, 0.12);
+  color: var(--accent);
+  border: 1rpx solid rgba(234, 179, 8, 0.35);
+}
+
+.badge.badge-distance {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+  border: 1rpx solid var(--border);
+}
+
+.badge.badge-cert {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border: 1rpx solid rgba(37, 99, 235, 0.25);
+}
+
+.search-card-addr {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.addr-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.addr-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-card-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: var(--space-md);
+  align-self: center;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.search-more,
+.search-loading-more {
+  text-align: center;
+  padding: var(--space-xl) 0;
+}

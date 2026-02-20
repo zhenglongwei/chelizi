@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "AI定损",
+  "enablePullDownRefresh": false,
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}

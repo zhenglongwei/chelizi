@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "服务商登录",
+  "navigationStyle": "custom",
+  "usingComponents": { "custom-nav-bar": "/components/custom-nav-bar/index" }
+}

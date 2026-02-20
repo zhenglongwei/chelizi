@@ -1,0 +1,125 @@
+/**
+ * 我的订单 - 以《设计规范.md》、design-system 为准
+ */
+.order-list-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-xl) var(--page-padding-x);
+}
+
+.order-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+  padding: var(--space-sm);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.order-tab {
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  background: var(--bg-placeholder);
+  transition: all 0.2s ease;
+}
+
+.order-tab.active {
+  background: var(--primary);
+  color: var(--bg-card);
+  font-weight: 500;
+}
+
+.order-empty {
+  padding: var(--space-2xl);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.order-empty .text-muted {
+  color: var(--text-hint);
+}
+
+.order-login-link {
+  color: var(--primary);
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.order-loading {
+  padding: var(--space-2xl);
+  text-align: center;
+  color: var(--text-hint);
+}
+
+.order-scroll {
+  height: 100%;
+}
+
+.order-item {
+  margin-bottom: var(--space-lg);
+  transition: transform 0.2s ease;
+}
+
+.order-item:active {
+  transform: scale(0.995);
+}
+
+.order-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.order-item-header text:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-status-badge {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.order-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.order-item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.order-item-row .text-gold {
+  font-weight: 600;
+}
+
+.order-load-more {
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-hint);
+  font-size: var(--fs-cap);
+}
+
+.order-bottom-pad {
+  height: var(--tab-bar-bottom-padding);
+}

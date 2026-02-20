@@ -1,0 +1,37 @@
+<!-- 竞价邀请列表 - M04，参考电商订单卡片：主次分明、信息紧凑 -->
+<custom-nav-bar title="竞价邀请" showBack="{{true}}" />
+<view class="page-root merchant-bidding-list" style="{{pageRootStyle}}">
+  <view class="merchant-tabs">
+    <view class="merchant-tab {{tabIndex === 0 ? 'active' : ''}}" data-index="0" bindtap="onTabChange">待报价</view>
+    <view class="merchant-tab {{tabIndex === 1 ? 'active' : ''}}" data-index="1" bindtap="onTabChange">已报价</view>
+    <view class="merchant-tab {{tabIndex === 2 ? 'active' : ''}}" data-index="2" bindtap="onTabChange">已结束</view>
+  </view>
+  <scroll-view class="merchant-list-scroll" scroll-y bindscrolltolower="onReachBottom">
+    <view class="merchant-list" wx:if="{{list.length > 0}}">
+      <view class="merchant-bidding-card card" wx:for="{{list}}" wx:key="bidding_id" data-id="{{item.bidding_id}}" bindtap="onItemTap">
+        <view class="card-head">
+          <text class="card-title fs-body fw-bold">{{item.vehicle_display}}</text>
+          <view class="card-tags">
+            <view class="card-tag quoted" wx:if="{{item.quoted && tabIndex === 1}}">已报价</view>
+            <view class="card-tag won" wx:if="{{item.quote_status_text === '成交'}}">成交</view>
+            <view class="card-tag invalid" wx:if="{{item.quote_status_text === '已失效'}}">已失效</view>
+          </view>
+        </view>
+        <view class="card-detail fs-cap text-muted">
+          <text wx:if="{{item.complexity_level}}">复杂度 {{item.complexity_level}}</text>
+          <text wx:if="{{item.complexity_level && tabIndex === 0}}" class="card-sep">·</text>
+          <text wx:if="{{tabIndex === 0}}" class="card-countdown">{{item.countdown_text}}</text>
+          <text wx:if="{{(item.complexity_level || tabIndex === 0) && item.distance_km != null}}" class="card-sep">·</text>
+          <text wx:if="{{item.distance_km != null}}">距您 {{item.distance_km}}km</text>
+        </view>
+        <view class="card-foot fs-sm text-weak">{{item.created_short}}</view>
+      </view>
+    </view>
+    <view class="merchant-empty" wx:elif="{{empty && !loading}}">
+      <text class="text-hint fs-body">暂无竞价邀请</text>
+    </view>
+    <view class="merchant-loading" wx:if="{{loading && list.length === 0}}">
+      <text class="text-hint fs-cap">加载中...</text>
+    </view>
+  </scroll-view>
+</view>

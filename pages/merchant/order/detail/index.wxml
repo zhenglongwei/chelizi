@@ -1,0 +1,24 @@
+<!-- 服务商订单详情 - M07 -->
+<custom-nav-bar title="订单详情" showBack="{{true}}" />
+<view class="page-root merchant-order-detail" style="{{pageRootStyle}}">
+  <view class="detail-section card" wx:if="{{order}}">
+    <view class="section-title fs-body">订单状态</view>
+    <view class="status-text">{{order.status_text}}</view>
+    <view class="section-title fs-body">车辆信息</view>
+    <view class="vehicle-info text-secondary fs-sm">
+      {{order.vehicle_info.brand || ''}} {{order.vehicle_info.model || ''}} {{order.vehicle_info.plate_number || ''}}
+    </view>
+    <view class="section-title fs-body">报价</view>
+    <view class="quote-info fs-sm">¥{{order.quoted_amount}}<text wx:if="{{order.quote}}">，工期{{order.quote.duration}}天，质保{{order.quote.warranty}}月</text></view>
+    <view class="order-tier-info text-secondary fs-sm" wx:if="{{order.complexity_level || order.commission_rate}}">
+      <text wx:if="{{order.complexity_level}}">复杂度 {{order.complexity_level}}</text>
+      <text wx:if="{{order.commission_rate}}"> · 佣金 {{order.commission_rate}}</text>
+    </view>
+    <view class="section-title fs-body">车主</view>
+    <view class="owner-info fs-sm">{{order.owner_nickname || '车主'}} <text class="link" bindtap="onCallOwner" wx:if="{{order.owner_phone}}">拨打电话</text></view>
+  </view>
+  <view class="action-btns" wx:if="{{order}}">
+    <button class="btn-primary" wx:if="{{order.status === 0}}" disabled="{{accepting}}" bindtap="onAccept">{{accepting ? '处理中...' : '接单'}}</button>
+    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating}}" bindtap="onMarkComplete">{{updating ? '处理中...' : '维修完成'}}</button>
+  </view>
+</view>

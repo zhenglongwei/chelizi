@@ -1,0 +1,177 @@
+/* 服务商工作台 - M03，按《设计规范.md》 */
+.merchant-home {
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+/* 资质未完善提示条：醒目、可点击 */
+.merchant-qualification-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(234, 179, 8, 0.08) 100%);
+  border-left: 6rpx solid var(--warning);
+}
+
+.qualification-alert-icon {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: var(--radius-full);
+  background: var(--warning);
+  color: #fff;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.qualification-alert-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.qualification-alert-title {
+  color: var(--text-primary);
+}
+
+.qualification-alert-desc {
+  color: var(--text-secondary);
+}
+
+.qualification-alert-arrow {
+  font-size: var(--fs-cap);
+  color: var(--primary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* 资质驳回：红色强调 */
+.merchant-qualification-rejected {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.06) 100%);
+  border-left-color: var(--danger);
+}
+
+.merchant-qualification-rejected .qualification-alert-icon {
+  background: var(--danger);
+}
+
+.merchant-welcome {
+  margin-bottom: var(--space-xl);
+}
+
+.merchant-welcome text {
+  display: block;
+}
+
+.merchant-shop-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+/* 店铺名旁状态标签：胶囊形，使用设计系统变量 */
+.merchant-qual-badge {
+  padding: 4rpx var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.merchant-qual-badge-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.merchant-qual-badge-rejected {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.merchant-qual-badge-approved {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+}
+
+
+.merchant-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-2xl);
+}
+
+.merchant-stat-card {
+  flex: 1;
+  min-width: 140rpx;
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+/* 统一用主色，避免四色凌乱 */
+.merchant-stat-card .stat-num {
+  color: var(--primary);
+}
+
+.stat-num {
+  display: block;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+}
+
+.merchant-section-title {
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.merchant-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.merchant-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+}
+
+/* 快捷入口图标：背景用 accent 浅色，图标色用 #EAB308，符合设计规范 7.3 */
+.merchant-action-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+}
+
+.merchant-action-icon .action-img {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.merchant-action-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.merchant-action-arrow {
+  font-size: var(--fs-h2);
+  color: var(--text-hint);
+}

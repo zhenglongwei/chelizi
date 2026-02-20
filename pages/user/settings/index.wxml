@@ -1,0 +1,56 @@
+<!-- 设置 - 13-设置页 -->
+<custom-nav-bar title="设置" showBack="{{true}}" />
+<view class="page-root settings-page" style="{{pageRootStyle}}">
+  <!-- 账号 -->
+  <view class="settings-section">
+    <view class="settings-section-title">账号</view>
+    <view class="settings-section-card card">
+      <view class="settings-item" bindtap="onAccount">
+        <text>账号与安全</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+    </view>
+  </view>
+
+  <!-- 服务商 -->
+  <view class="settings-section">
+    <view class="settings-section-title">服务商</view>
+    <view class="settings-section-card card">
+      <navigator class="settings-item" url="/pages/merchant/register">
+        <text>服务商注册</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </navigator>
+      <navigator class="settings-item" url="/pages/merchant/login">
+        <text>服务商登录</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </navigator>
+    </view>
+  </view>
+
+  <!-- 关于与帮助 -->
+  <view class="settings-section">
+    <view class="settings-section-title">关于与帮助</view>
+    <view class="settings-section-card card">
+      <view class="settings-item" bindtap="onAbout">
+        <text>关于我们</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+      <button class="settings-item settings-contact-btn" open-type="contact">
+        <text>联系客服</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </button>
+      <view class="settings-item" bindtap="onAgreement">
+        <text>用户协议</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+      <view class="settings-item" bindtap="onPrivacy">
+        <text>隐私政策</text>
+        <image class="settings-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+    </view>
+  </view>
+
+  <view class="settings-logout" wx:if="{{hasToken}}">
+    <button class="btn-secondary settings-logout-btn" bindtap="onLogout">退出登录</button>
+  </view>
+</view>

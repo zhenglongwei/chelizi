@@ -1,0 +1,142 @@
+<!-- 维修厂信息 - M08，按《设计规范.md》 -->
+<custom-nav-bar title="维修厂信息" showBack="{{true}}" />
+<view class="page-root merchant-shop-profile" style="{{pageRootStyle}}">
+  <!-- 审核中：不可编辑，可撤回 -->
+  <view class="merchant-qualification-auditing card" wx:if="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
+    <text class="fs-body fw-bold">资质审核中</text>
+    <text class="text-muted fs-cap">审核期间不可修改，如需修改请先撤回</text>
+    <button class="btn-secondary merchant-withdraw-btn" bindtap="onWithdrawQualification">撤回后重新修改</button>
+  </view>
+  <view class="profile-form card {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'profile-form-disabled' : ''}}" wx:if="{{shop}}">
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">店铺名称 <text class="text-danger">*</text></text>
+      <input class="merchant-form-input" placeholder="请输入维修厂名称" value="{{name}}" bindinput="onNameInput" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}"/>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">店铺地址 <text class="text-danger">*</text></text>
+      <text class="text-muted fs-cap">需在地图上选点，获取精准经纬度以计算与用户距离</text>
+      <view class="merchant-location-picker {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onChooseLocation">
+        <text class="merchant-location-text {{address ? 'has-value' : ''}}">{{address || '点击选择店铺位置'}}</text>
+        <text class="merchant-location-hint fs-cap" wx:if="{{address}}">已选：{{locationName || '已定位'}}</text>
+      </view>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">联系电话 <text class="text-danger">*</text></text>
+      <input class="merchant-form-input" type="number" placeholder="手机号" value="{{phone}}" bindinput="onPhoneInput" maxlength="11" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}"/>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">营业时间</text>
+      <picker mode="selector" range="{{businessHoursOptions}}" value="{{businessHoursIndex}}" bindchange="onBusinessHoursChange" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
+        <view class="merchant-picker-value {{business_hours ? 'has-value' : ''}}">{{business_hours || '请选择营业时间'}}</view>
+      </picker>
+    </view>
+    <view class="merchant-form-item" wx:if="{{qualificationStatus === 0}}">
+      <text class="text-warning fs-cap">请补充资质信息并等待审核通过后，方可接单并在车主端展示</text>
+    </view>
+    <view class="merchant-form-item" wx:if="{{qualificationStatus === 2}}">
+      <text class="text-danger fs-cap">资质审核被驳回：{{qualificationAuditReason || '请修改后重新提交'}}</text>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">维修资质等级</text>
+      <!-- 已识别：直接展示 -->
+      <block wx:if="{{qualification_ai_recognized}}">
+        <text class="text-muted fs-cap">营业执照已识别</text>
+        <view class="merchant-picker-value has-value">{{qualificationLevelLabel || qualification_ai_recognized}}</view>
+      </block>
+      <!-- 未识别：要求上传资质证明 -->
+      <block wx:else>
+        <text class="text-muted fs-cap">营业执照未识别到资质，请上传资质证明进行 AI 识别；若识别失败可手动选择（将提交人工审核）</text>
+        <view class="qualification-cert-preview" wx:if="{{qualificationCertImage}}">
+          <image src="{{qualificationCertImage}}" mode="aspectFill"/>
+          <text class="fs-cap text-muted">资质证明（已提交审核）</text>
+        </view>
+        <view class="qualification-actions">
+          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:if="{{certifications.length}}" bindtap="onQualificationFromLicense">从营业执照重试</text>
+          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onQualificationCertUpload">上传资质证明识别</text>
+        </view>
+        <picker mode="selector" range="{{qualificationLevelOptions}}" range-key="label" value="{{qualificationLevelIndex}}" bindchange="onQualificationLevelChange" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
+          <view class="merchant-picker-value {{qualification_level ? 'has-value' : ''}}">{{qualificationLevelLabel || '识别失败时可手动选择'}}</view>
+        </picker>
+      </block>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">服务商/店铺照片</text>
+      <text class="text-muted fs-cap">上传店铺门头、车间等环境照片，便于车主了解</text>
+      <view class="merchant-image-upload">
+        <view class="merchant-image-item" wx:for="{{shop_images}}" wx:key="*this">
+          <image class="merchant-image-preview" src="{{item}}" mode="aspectFill"/>
+          <view class="merchant-image-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelShopImage" data-index="{{index}}">×</view>
+        </view>
+        <view class="merchant-image-add {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:if="{{shop_images.length < 6}}" bindtap="onAddShopImage">
+          <text class="merchant-image-add-icon">+</text>
+          <text class="merchant-image-add-text fs-cap">添加照片</text>
+        </view>
+      </view>
+    </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">技师持证情况</text>
+      <text class="text-muted fs-cap">参照国家职业资格等级，可录入头像、姓名、等级、从业年限</text>
+      <view class="technician-list">
+        <view class="technician-card" wx:for="{{technicians}}" wx:key="id">
+          <image class="technician-avatar" src="{{item.avatar_url || '/images/icon/person.png'}}" mode="aspectFill"/>
+          <view class="technician-info">
+            <text class="technician-name fs-body fw-bold">{{item.name || '未填写'}}</text>
+            <text class="technician-meta fs-cap text-muted">{{item.level || '-'}} · {{item.years != null ? item.years + '年' : '-'}}{{item.certificate_url ? ' · 已上传证书' : ''}}</text>
+          </view>
+          <view class="technician-actions">
+            <text class="technician-edit {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onEditTechnician" data-index="{{index}}">编辑</text>
+            <text class="technician-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelTechnician" data-index="{{index}}">删除</text>
+          </view>
+        </view>
+        <view class="technician-add {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onAddTechnician">
+          <text class="technician-add-icon">+</text>
+          <text class="technician-add-text fs-cap">添加技师</text>
+        </view>
+      </view>
+    </view>
+    <button class="btn-primary merchant-register-btn" disabled="{{saving || (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn)}}" bindtap="onSave">{{saving ? '保存中...' : (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? '审核中不可保存' : '保存'}}</button>
+  </view>
+</view>
+
+<!-- 技师编辑弹窗 -->
+<view class="technician-modal-mask" wx:if="{{technicianModalVisible}}" bindtap="onCloseTechnicianModal"/>
+<view class="technician-modal {{technicianModalVisible ? 'show' : ''}}">
+  <view class="technician-modal-title fs-body fw-bold">{{technicianEditIndex >= 0 ? '编辑技师' : '添加技师'}}</view>
+  <view class="technician-modal-form">
+    <view class="technician-modal-avatar" bindtap="onTechnicianAvatarTap">
+      <image wx:if="{{technicianForm.avatar_url}}" src="{{technicianForm.avatar_url}}" mode="aspectFill"/>
+      <text wx:else class="technician-avatar-placeholder">上传头像</text>
+    </view>
+    <view class="technician-modal-row">
+      <text class="technician-modal-label">姓名/称呼</text>
+      <input class="technician-modal-input" placeholder="如 王师傅" value="{{technicianForm.name}}" bindinput="onTechnicianNameInput"/>
+    </view>
+    <view class="technician-modal-row" wx:if="{{technicianForm.occupation_name || technicianForm.job_direction || technicianForm.certificate_no}}">
+      <text class="technician-modal-label">证书信息（AI 识别）</text>
+      <text class="text-muted fs-cap">{{technicianForm.occupation_name || ''}}{{technicianForm.job_direction ? ' · ' + technicianForm.job_direction : ''}}{{technicianForm.certificate_no ? ' · 编号 ' + technicianForm.certificate_no : ''}}</text>
+    </view>
+    <view class="technician-modal-row">
+      <text class="technician-modal-label">职业证书</text>
+      <text class="text-muted fs-cap">上传证书后可按证书等级选择；不传则默认为普通技工</text>
+      <view class="technician-modal-cert" bindtap="onTechnicianCertTap">
+        <image wx:if="{{technicianForm.certificate_url}}" src="{{technicianForm.certificate_url}}" mode="aspectFit"/>
+        <text wx:else class="technician-cert-placeholder">上传职业证书照片</text>
+      </view>
+    </view>
+    <view class="technician-modal-row">
+      <text class="technician-modal-label">等级</text>
+      <text class="text-muted fs-cap" wx:if="{{!technicianForm.certificate_url}}">无证书时固定为普通技工</text>
+      <picker mode="selector" range="{{technicianLevelOptions}}" range-key="label" value="{{technicianLevelIndex}}" bindchange="onTechnicianLevelChange" disabled="{{!technicianForm.certificate_url}}">
+        <view class="technician-modal-picker {{!technicianForm.certificate_url ? 'disabled' : ''}}">{{technicianLevelLabel || '请选择'}}</view>
+      </picker>
+    </view>
+    <view class="technician-modal-row">
+      <text class="technician-modal-label">从业年限</text>
+      <input class="technician-modal-input" type="number" placeholder="年" value="{{technicianForm.years}}" bindinput="onTechnicianYearsInput"/>
+    </view>
+  </view>
+  <view class="technician-modal-actions">
+    <button class="btn-secondary technician-modal-cancel" bindtap="onCloseTechnicianModal">取消</button>
+    <button class="btn-primary technician-modal-confirm" bindtap="onConfirmTechnician">确定</button>
+  </view>
+</view>

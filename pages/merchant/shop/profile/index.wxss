@@ -1,0 +1,393 @@
+/* 维修厂信息 - M08，按《设计规范.md》 */
+.merchant-qualification-auditing {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.merchant-withdraw-btn {
+  align-self: flex-start;
+  margin-top: var(--space-sm);
+}
+
+.profile-form-disabled .merchant-form-input,
+.profile-form-disabled .merchant-picker-value {
+  color: var(--text-hint);
+}
+
+.merchant-shop-profile .disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.qualification-action-btn.disabled {
+  color: var(--text-hint);
+  pointer-events: none;
+}
+
+.merchant-shop-profile {
+  padding: var(--space-xl) var(--page-padding-x);
+}
+
+.profile-form .merchant-form-item {
+  margin-bottom: var(--space-lg);
+}
+
+.profile-form .merchant-form-item:last-of-type {
+  margin-bottom: var(--space-xl);
+}
+
+.merchant-form-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+.merchant-form-input {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+.merchant-picker-value {
+  height: 80rpx;
+  line-height: 80rpx;
+  padding: 0 var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--text-hint);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.merchant-picker-value.has-value {
+  color: var(--text-primary);
+}
+
+.merchant-location-picker {
+  margin-top: var(--space-sm);
+  padding: var(--space-lg);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.merchant-location-text {
+  display: block;
+  font-size: var(--fs-body);
+  color: var(--text-hint);
+}
+
+.merchant-location-text.has-value {
+  color: var(--text-primary);
+}
+
+.merchant-location-hint {
+  display: block;
+  margin-top: var(--space-xs);
+  color: var(--text-hint);
+}
+
+/* 维修资质证明预览 */
+.qualification-cert-preview {
+  margin-bottom: var(--space-sm);
+}
+
+.qualification-cert-preview image {
+  display: block;
+  width: 200rpx;
+  height: 140rpx;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.qualification-cert-preview text {
+  display: block;
+  margin-top: var(--space-xs);
+}
+
+/* 维修资质识别 */
+.qualification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.qualification-action-btn {
+  font-size: var(--fs-cap);
+  color: var(--primary);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+/* 服务商照片上传 */
+.merchant-image-upload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.merchant-image-item {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.merchant-image-preview {
+  width: 100%;
+  height: 100%;
+}
+
+.merchant-image-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: var(--fs-h2);
+}
+
+.merchant-image-add {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+.merchant-image-add-icon {
+  font-size: var(--fs-h2);
+  color: var(--text-hint);
+}
+
+.merchant-image-add-text {
+  color: var(--text-hint);
+}
+
+/* 技师列表 */
+.technician-list {
+  margin-top: var(--space-sm);
+}
+
+.technician-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-sm);
+}
+
+.technician-avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.technician-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.technician-name {
+  display: block;
+  color: var(--text-primary);
+}
+
+.technician-meta {
+  display: block;
+  margin-top: var(--space-xs);
+}
+
+.technician-actions {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.technician-edit {
+  color: var(--primary);
+  font-size: var(--fs-cap);
+}
+
+.technician-del {
+  color: var(--danger);
+  font-size: var(--fs-cap);
+}
+
+.technician-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--space-lg);
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-sm);
+}
+
+.technician-add-icon {
+  font-size: var(--fs-body);
+  color: var(--text-hint);
+}
+
+.technician-add-text {
+  color: var(--text-hint);
+}
+
+/* 技师编辑弹窗 */
+.technician-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+}
+
+.technician-modal {
+  position: fixed;
+  left: var(--page-padding-x);
+  right: var(--page-padding-x);
+  bottom: 0;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-xl);
+  z-index: 101;
+  transform: translateY(100%);
+  transition: transform 0.2s;
+}
+
+.technician-modal.show {
+  transform: translateY(0);
+}
+
+.technician-modal-title {
+  margin-bottom: var(--space-xl);
+  text-align: center;
+}
+
+.technician-modal-form {
+  margin-bottom: var(--space-xl);
+}
+
+.technician-modal-avatar {
+  width: 160rpx;
+  height: 160rpx;
+  margin: 0 auto var(--space-lg);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 2rpx dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.technician-modal-avatar image {
+  width: 100%;
+  height: 100%;
+}
+
+.technician-avatar-placeholder {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+}
+
+.technician-modal-row {
+  margin-bottom: var(--space-md);
+}
+
+.technician-modal-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}
+
+.technician-modal-input {
+  width: 100%;
+  height: 72rpx;
+  padding: 0 var(--space-md);
+  font-size: var(--fs-body);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+.technician-modal-picker {
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 var(--space-md);
+  font-size: var(--fs-body);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
+.technician-modal-picker.disabled {
+  color: var(--text-hint);
+  background: var(--bg-placeholder);
+}
+
+.technician-modal-cert {
+  width: 200rpx;
+  height: 140rpx;
+  margin-top: var(--space-sm);
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.technician-modal-cert image {
+  width: 100%;
+  height: 100%;
+}
+
+.technician-cert-placeholder {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  text-align: center;
+  padding: var(--space-sm);
+}
+
+.technician-modal-actions {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.technician-modal-cancel,
+.technician-modal-confirm {
+  flex: 1;
+  height: 88rpx;
+}
+
+.merchant-register-btn {
+  width: 100%;
+  height: 88rpx;
+}
