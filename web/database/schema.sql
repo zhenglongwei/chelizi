@@ -172,6 +172,11 @@ CREATE TABLE IF NOT EXISTS orders (
   reward_preview DECIMAL(10, 2) DEFAULT NULL COMMENT '奖励金预估',
   review_stage_status VARCHAR(50) DEFAULT NULL COMMENT '评价阶段完成状态（主评价/1个月追评/3个月追评）',
   status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态: 0-待维修 1-维修中 2-待验收 3-已完成 4-已取消',
+  accepted_at DATETIME DEFAULT NULL COMMENT '服务商接单时间（接单时写入，用于撤单30分钟判断）',
+  completion_evidence JSON DEFAULT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
+  repair_plan JSON DEFAULT NULL COMMENT '当前维修方案 {items,value_added_services?,amount?,duration?,warranty?}，接单时从quote复制',
+  repair_plan_status TINYINT UNSIGNED DEFAULT 0 COMMENT '0=已确认 1=待车主确认',
+  repair_plan_adjusted_at DATETIME DEFAULT NULL COMMENT '最近一次维修方案调整时间',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   completed_at DATETIME DEFAULT NULL COMMENT '完成时间',
@@ -186,6 +191,30 @@ CREATE TABLE IF NOT EXISTS orders (
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
   FOREIGN KEY (quote_id) REFERENCES quotes(quote_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
+
+-- ========================================================
+-- 6a. 订单撤单申请表 (order_cancel_requests)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS order_cancel_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(32) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  user_id VARCHAR(32) NOT NULL COMMENT '发起人（车主）',
+  reason VARCHAR(500) NOT NULL COMMENT '撤单理由（超过30分钟必填）',
+  status TINYINT UNSIGNED DEFAULT 0 COMMENT '0=待服务商处理 1=服务商同意 2=服务商拒绝 3=已提交人工 4=人工同意 5=人工拒绝',
+  shop_response_at DATETIME DEFAULT NULL COMMENT '服务商响应时间',
+  escalated_at DATETIME DEFAULT NULL COMMENT '车主提交人工通道时间',
+  admin_resolution VARCHAR(20) DEFAULT NULL COMMENT '人工处理：approved/rejected',
+  admin_resolved_at DATETIME DEFAULT NULL COMMENT '人工处理时间',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_request_id (request_id),
+  INDEX idx_order_id (order_id),
+  INDEX idx_user_id (user_id),
+  INDEX idx_status (status),
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单撤单申请';
 
 -- ========================================================
 -- 7. 评价表 (reviews)

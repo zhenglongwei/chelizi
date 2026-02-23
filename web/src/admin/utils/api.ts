@@ -116,6 +116,14 @@ export async function callCloudFunction(functionName: string, data: any) {
           });
         }
         return { success: true };
+      case 'getCancelRequests': {
+        const res = await api.get('/v1/admin/order-cancel-requests');
+        const list = res?.data?.list ?? res?.list ?? [];
+        return { success: true, data: { list } };
+      }
+      case 'resolveCancelRequest':
+        await api.post(`/v1/admin/order-cancel-requests/${data.requestId}/resolve`, { approve: data.approve });
+        return { success: true, message: data.approve ? '已同意撤单' : '已拒绝' };
       default:
         console.warn(`未映射的云函数: ${functionName}`);
         return { success: false, message: `接口 ${functionName} 暂未实现` };

@@ -1,26 +1,44 @@
-/* 服务商订单详情 - M07 */
+/* 服务商订单详情 - M07，以《设计规范.md》、design-system 为准 */
 .merchant-order-detail {
-  padding: var(--space-md);
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: 200rpx; /* 底部固定操作区占位 */
 }
 
 .detail-section {
-  padding: var(--space-lg);
-  margin-bottom: var(--space-md);
+  padding: var(--space-xl);
+  margin-bottom: var(--space-lg);
 }
 
 .section-title {
+  font-size: var(--fs-body);
   margin-bottom: var(--space-xs);
-  margin-top: var(--space-md);
+  margin-top: var(--space-lg);
   font-weight: 500;
 }
 
+.section-head:first-child .section-title,
 .section-title:first-child {
   margin-top: 0;
 }
+.section-head-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.section-head-with-action .section-more {
+  flex-shrink: 0;
+  font-size: var(--fs-cap);
+  color: var(--primary);
+}
 
 .status-text {
-  font-size: var(--fs-body);
+  display: inline-block;
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--fs-cap);
+  font-weight: 500;
   color: var(--primary);
+  background: var(--primary-bg);
+  border-radius: var(--radius-md);
 }
 
 .link {
@@ -30,4 +48,188 @@
 
 .action-btns {
   margin-top: var(--space-lg);
+}
+.action-btns-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+.action-btns-fixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin-top: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-top);
+}
+
+.evidence-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.evidence-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.evidence-label {
+  color: var(--text-secondary);
+}
+
+.evidence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.evidence-thumb {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-placeholder);
+}
+
+.evidence-thumb image {
+  width: 100%;
+  height: 100%;
+}
+
+.evidence-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40rpx;
+  height: 40rpx;
+  background: var(--overlay-dark);
+  color: var(--bg-card);
+  font-size: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.evidence-add {
+  width: 120rpx;
+  height: 120rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  color: var(--text-hint);
+}
+
+.cancel-reason {
+  margin-top: var(--space-xs);
+}
+
+/* 工期计时器 */
+.duration-timer-wrap {
+  margin-bottom: var(--space-sm);
+}
+.duration-timer {
+  padding: var(--space-md);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-xs);
+}
+.duration-timer.expired .duration-timer-main {
+  opacity: 0.7;
+}
+.duration-timer-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+}
+.duration-days {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--primary);
+}
+.duration-deadline {
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}
+.duration-countdown {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border);
+}
+.duration-countdown.expired .countdown-value {
+  color: var(--danger);
+}
+.countdown-label {
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  margin-right: var(--space-xs);
+}
+.countdown-value {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* 损伤情况、维修建议、增值服务 */
+.damage-summary,
+.damage-list,
+.repair-items,
+.value-added-list {
+  margin-top: var(--space-xs);
+}
+.damage-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border);
+}
+.repair-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border);
+}
+.damage-item:last-child,
+.repair-item:last-child {
+  border-bottom: none;
+}
+.damage-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex: 1;
+  min-width: 0;
+}
+.damage-item-row text:first-child {
+  flex-shrink: 0;
+}
+.damage-item-row text:last-child {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+.damage-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0 var(--space-xs) var(--space-md);
+}
+.value-added-item {
+  padding: var(--space-xs) 0;
+  color: var(--text-secondary);
+}
+.quote-info {
+  line-height: 1.5;
 }

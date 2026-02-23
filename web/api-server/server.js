@@ -7,7 +7,6 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const crypto = require('crypto');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
@@ -45,6 +44,14 @@ const pool = mysql.createPool(dbConfig);
 const rewardCalculator = require('./reward-calculator');
 const antifraud = require('./antifraud');
 const biddingService = require('./services/bidding-service');
+const reviewService = require('./review-service');
+const shopSortService = require('./shop-sort-service');
+const appointmentService = require('./services/appointment-service');
+const damageService = require('./services/damage-service');
+const orderService = require('./services/order-service');
+const authService = require('./services/auth-service');
+const shopService = require('./services/shop-service');
+const adminService = require('./services/admin-service');
 
 // 测试数据库连接并验证 schema
 async function testDBConnection() {
@@ -165,108 +172,15 @@ app.get('/api/health', healthHandler);
 // 微信登录
 app.post('/api/v1/auth/login', async (req, res) => {
   try {
-    const { code } = req.body;
-
-    if (!code) {
-      return res.status(400).json(errorResponse('授权码不能为空'));
-    }
-
-    // 开发/模拟：code 为 test_simulate 时使用 USER001 测试账号（仅非生产环境）
-    if (process.env.NODE_ENV !== 'production' && code === 'test_simulate') {
-      const [users] = await pool.execute('SELECT * FROM users WHERE user_id = ?', ['USER001']);
-      if (users.length === 0) {
-        return res.status(404).json(errorResponse('测试用户 USER001 不存在，请先执行 schema seed'));
-      }
-      const user = users[0];
-      const token = jwt.sign(
-        { userId: user.user_id, openid: user.openid },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json(successResponse({
-        token,
-        user: {
-          user_id: user.user_id,
-          nickname: user.nickname,
-          avatar_url: user.avatar_url,
-          phone: user.phone,
-          level: user.level,
-          points: user.points,
-          balance: user.balance,
-          total_rebate: user.total_rebate
-        }
-      }, '登录成功'));
-    }
-
-    // 调用微信接口获取openid
-    const wxResponse = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
-      params: {
-        appid: WX_APPID,
-        secret: WX_SECRET,
-        js_code: code,
-        grant_type: 'authorization_code'
-      }
-    });
-
-    if (wxResponse.data.errcode) {
-      return res.status(401).json(errorResponse('微信授权失败: ' + wxResponse.data.errmsg, 401));
-    }
-
-    const { openid, session_key, unionid } = wxResponse.data;
-
-    // 查询或创建用户
-    let [users] = await pool.execute(
-      'SELECT * FROM users WHERE openid = ?',
-      [openid]
-    );
-
-    let user;
-    if (users.length === 0) {
-      // 创建新用户
-      const userId = 'U' + Date.now();
-      await pool.execute(
-        `INSERT INTO users (user_id, openid, unionid, level, points, balance, total_rebate, 
-         total_reviews, created_at, updated_at) 
-         VALUES (?, ?, ?, 1, 0, 0, 0, 0, NOW(), NOW())`,
-        [userId, openid, unionid || null]
-      );
-      
-      [users] = await pool.execute('SELECT * FROM users WHERE openid = ?', [openid]);
-      user = users[0];
-    } else {
-      user = users[0];
-      // 更新session_key
-      await pool.execute('UPDATE users SET updated_at = NOW() WHERE openid = ?', [openid]);
-    }
-
-    // 防刷：黑名单校验
-    const ip = req.ip || req.headers['x-forwarded-for'] || '';
-    const bl = await antifraud.checkBlacklist(pool, user.user_id, user.phone, ip);
-    if (bl.blocked) {
-      return res.status(403).json(errorResponse(bl.reason || '账号存在异常，暂无法使用', 403));
-    }
-
-    // 生成JWT令牌
-    const token = jwt.sign(
-      { userId: user.user_id, openid: user.openid },
+    const result = await authService.userLogin(pool, req, {
+      WX_APPID,
+      WX_SECRET,
       JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json(successResponse({
-      token,
-      user: {
-        user_id: user.user_id,
-        nickname: user.nickname,
-        avatar_url: user.avatar_url,
-        phone: user.phone,
-        level: user.level,
-        points: user.points,
-        balance: user.balance,
-        total_rebate: user.total_rebate
-      }
-    }, '登录成功'));
-
+    });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '登录成功'));
   } catch (error) {
     console.error('登录错误:', error);
     res.status(500).json(errorResponse('登录失败: ' + error.message, 500));
@@ -275,93 +189,14 @@ app.post('/api/v1/auth/login', async (req, res) => {
 
 // ===================== 服务商认证 =====================
 
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
-  return salt + ':' + hash;
-}
-
-function verifyPassword(password, stored) {
-  const [salt, hash] = stored.split(':');
-  const verify = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
-  return hash === verify;
-}
-
 // 服务商注册
 app.post('/api/v1/merchant/register', async (req, res) => {
   try {
-    const { name, license_id, legal_representative, contact, address, latitude, longitude, phone, password, license_url, qualification_level, qualification_ai_recognized, qualification_ai_result } = req.body;
-
-    if (!name || !license_id || !legal_representative || !contact || !address || !phone || !password) {
-      return res.status(400).json(errorResponse('请填写企业名称、营业执照号码、法定代表人、联系人、店铺地址、手机号、密码'));
+    const result = await authService.merchantRegister(pool, req, { JWT_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    if (latitude == null || longitude == null || isNaN(Number(latitude)) || isNaN(Number(longitude))) {
-      return res.status(400).json(errorResponse('请在地图上选择店铺位置以获取精准坐标'));
-    }
-    const phoneStr = String(phone).trim();
-    if (!/^1\d{10}$/.test(phoneStr)) {
-      return res.status(400).json(errorResponse('手机号格式不正确'));
-    }
-    if (String(password).length < 6) {
-      return res.status(400).json(errorResponse('密码至少 6 位'));
-    }
-
-    const [existing] = await pool.execute(
-      'SELECT merchant_id FROM merchant_users WHERE phone = ?',
-      [phoneStr]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json(errorResponse('该手机号已注册'));
-    }
-
-    const shopId = 'S' + Date.now();
-    const certsArr = [];
-    if (license_url) {
-      certsArr.push({
-        type: 'license',
-        name: '营业执照',
-        image: license_url,
-        license_number: String(license_id || '').trim(),
-        legal_representative: String(legal_representative || '').trim()
-      });
-    }
-    const certs = certsArr.length ? JSON.stringify(certsArr) : null;
-    // 注册阶段不收集维修资质等级，仅存储 OCR 结果供补充信息页使用
-    const qualLevel = null;
-    const qualAiRecognized = ['一类', '二类', '三类'].includes(String(qualification_ai_recognized || '').trim()) ? String(qualification_ai_recognized).trim() : null;
-    const qualAiResult = ['recognized', 'recognition_failed', 'no_qualification_found'].includes(String(qualification_ai_result || '')) ? String(qualification_ai_result) : null;
-    const qualStatus = 0;
-    const auditReason = null;
-
-    const addr = String(address || '').trim() || '待完善';
-    const lat = Number(latitude);
-    const lng = Number(longitude);
-    await pool.execute(
-      `INSERT INTO shops (shop_id, name, address, province, city, district, latitude, longitude, phone, certifications, qualification_level, qualification_ai_recognized, qualification_ai_result, qualification_status, qualification_audit_reason, status)
-       VALUES (?, ?, ?, '待完善', '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [shopId, String(name).trim(), addr, lat, lng, phoneStr, certs, qualLevel, qualAiRecognized, qualAiResult, qualStatus, auditReason]
-    );
-
-    const merchantId = 'M' + Date.now();
-    const passwordHash = hashPassword(String(password));
-    await pool.execute(
-      `INSERT INTO merchant_users (merchant_id, shop_id, phone, password_hash, status)
-       VALUES (?, ?, ?, ?, 1)`,
-      [merchantId, shopId, phoneStr, passwordHash]
-    );
-
-    const token = jwt.sign(
-      { merchantId, shopId },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json(successResponse({
-      merchant_id: merchantId,
-      token,
-      user: { merchant_id: merchantId, shop_id: shopId, phone: phoneStr },
-      message: '注册成功，请补充资质信息'
-    }, '注册成功'));
+    res.json(successResponse(result.data, '注册成功'));
   } catch (error) {
     console.error('服务商注册错误:', error);
     res.status(500).json(errorResponse('注册失败', 500));
@@ -422,44 +257,11 @@ app.post('/api/v1/merchant/qualification-cert/analyze', authenticateMerchant, as
 // 服务商登录
 app.post('/api/v1/merchant/login', async (req, res) => {
   try {
-    const { phone, password } = req.body;
-
-    if (!phone || !password) {
-      return res.status(400).json(errorResponse('请填写手机号和密码'));
+    const result = await authService.merchantLogin(pool, req, { JWT_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    const phoneStr = String(phone).trim();
-
-    const [rows] = await pool.execute(
-      `SELECT mu.merchant_id, mu.shop_id, mu.phone, mu.password_hash, mu.status, s.name as shop_name
-       FROM merchant_users mu
-       LEFT JOIN shops s ON mu.shop_id = s.shop_id
-       WHERE mu.phone = ?`,
-      [phoneStr]
-    );
-    if (rows.length === 0) {
-      return res.status(401).json(errorResponse('手机号或密码错误'));
-    }
-    const m = rows[0];
-    if (!m.password_hash || !verifyPassword(String(password), m.password_hash)) {
-      return res.status(401).json(errorResponse('手机号或密码错误'));
-    }
-    if (m.status === 0) return res.status(403).json(errorResponse('账号审核中，请耐心等待'));
-
-    const token = jwt.sign(
-      { merchantId: m.merchant_id, shopId: m.shop_id },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json(successResponse({
-      token,
-      user: {
-        merchant_id: m.merchant_id,
-        shop_id: m.shop_id,
-        phone: m.phone,
-        shop_name: m.shop_name || ''
-      }
-    }, '登录成功'));
+    res.json(successResponse(result.data, '登录成功'));
   } catch (error) {
     console.error('服务商登录错误:', error);
     res.status(500).json(errorResponse('登录失败', 500));
@@ -581,13 +383,14 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
       [id, shopId]
     );
 
+    const complexityService = require('./services/complexity-service');
+    const repairItems = complexityService.normalizeRepairItems(
+      quoted.length > 0 ? (typeof quoted[0].items === 'string' ? JSON.parse(quoted[0].items || '[]') : quoted[0].items) : [],
+      analysis
+    );
+    const { level: complexityLevel } = await complexityService.resolveComplexityFromItems(pool, repairItems);
     const est = analysis.total_estimate;
     const estMid = Array.isArray(est) && est.length >= 2 ? (parseFloat(est[0]) + parseFloat(est[1])) / 2 : 5000;
-    let complexityLevel = 'L2';
-    if (estMid < 1000) complexityLevel = 'L1';
-    else if (estMid < 5000) complexityLevel = 'L2';
-    else if (estMid < 20000) complexityLevel = 'L3';
-    else complexityLevel = 'L4';
     const orderTier = estMid < 1000 ? 1 : estMid < 5000 ? 2 : estMid < 20000 ? 3 : 4;
 
     res.json(successResponse({
@@ -687,7 +490,7 @@ app.get('/api/v1/merchant/orders', authenticateMerchant, async (req, res) => {
 
     const [list] = await pool.execute(
       `SELECT o.order_id, o.bidding_id, o.quoted_amount, o.status, o.created_at,
-        o.order_tier, o.complexity_level, o.commission_rate,
+        o.order_tier, o.complexity_level, o.commission_rate, o.repair_plan_status,
         b.vehicle_info, dr.analysis_result
        FROM orders o
        LEFT JOIN biddings b ON o.bidding_id = b.bidding_id
@@ -726,7 +529,8 @@ app.get('/api/v1/merchant/orders', authenticateMerchant, async (req, res) => {
         created_at: row.created_at,
         order_tier: orderTier,
         complexity_level: row.complexity_level || 'L2',
-        commission_rate: cr
+        commission_rate: cr,
+        repair_plan_status: row.repair_plan_status != null ? parseInt(row.repair_plan_status, 10) : 0
       };
     });
 
@@ -766,9 +570,51 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
     } catch (_) {}
 
     const [quote] = await pool.execute(
-      'SELECT amount, items, duration, warranty, remark FROM quotes WHERE quote_id = ?',
+      'SELECT amount, items, duration, warranty, remark, value_added_services FROM quotes WHERE quote_id = ?',
       [o.quote_id]
     );
+
+    const quoteObj = quote.length > 0 ? {
+      amount: quote[0].amount,
+      items: typeof quote[0].items === 'string' ? JSON.parse(quote[0].items || '[]') : (quote[0].items || []),
+      duration: quote[0].duration,
+      warranty: quote[0].warranty,
+      remark: quote[0].remark,
+      value_added_services: (() => {
+        try {
+          const v = quote[0].value_added_services;
+          if (!v) return [];
+          return typeof v === 'string' ? JSON.parse(v || '[]') : (v || []);
+        } catch (_) { return []; }
+      })()
+    } : null;
+
+    const { durationDeadline, durationDeadlineText } = (() => {
+      const dur = quoteObj && quoteObj.duration;
+      const created = o.created_at;
+      if (!dur || !created || dur <= 0) return { durationDeadline: null, durationDeadlineText: null };
+      const d = new Date(created);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      next.setHours(0, 0, 0, 0);
+      const deadline = new Date(next);
+      deadline.setDate(deadline.getDate() + (dur - 1));
+      return {
+        durationDeadline: deadline.toISOString(),
+        durationDeadlineText: `${deadline.getMonth() + 1}月${deadline.getDate()}日`
+      };
+    })();
+
+    const pendingCancel = await orderService.getPendingCancelRequest(pool, id, shopId);
+
+    let repairPlan = null;
+    let repairPlanStatus = 0;
+    if (o.repair_plan) {
+      try {
+        repairPlan = typeof o.repair_plan === 'string' ? JSON.parse(o.repair_plan) : o.repair_plan;
+      } catch (_) {}
+    }
+    if (o.repair_plan_status != null) repairPlanStatus = parseInt(o.repair_plan_status, 10) || 0;
 
     res.json(successResponse({
       order_id: o.order_id,
@@ -783,14 +629,14 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       images,
       owner_nickname: o.nickname,
       owner_phone: o.owner_phone,
-      quote: quote.length > 0 ? {
-        amount: quote[0].amount,
-        items: typeof quote[0].items === 'string' ? JSON.parse(quote[0].items || '[]') : (quote[0].items || []),
-        duration: quote[0].duration,
-        warranty: quote[0].warranty,
-        remark: quote[0].remark
-      } : null,
-      created_at: o.created_at
+      quote: quoteObj,
+      repair_plan: repairPlan,
+      repair_plan_status: repairPlanStatus,
+      duration_deadline: durationDeadline,
+      duration_deadline_text: durationDeadlineText,
+      created_at: o.created_at,
+      accepted_at: o.accepted_at,
+      pending_cancel_request: pendingCancel
     }));
   } catch (error) {
     console.error('服务商订单详情错误:', error);
@@ -801,54 +647,60 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
 // 接单（需资质审核通过）
 app.post('/api/v1/merchant/orders/:id/accept', authenticateMerchant, requireQualification, async (req, res) => {
   try {
-    const { id } = req.params;
-    const shopId = req.shopId;
-
-    const [orders] = await pool.execute(
-      'SELECT order_id, status FROM orders WHERE order_id = ? AND shop_id = ?',
-      [id, shopId]
-    );
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在'));
-    if (orders[0].status !== 0) return res.status(400).json(errorResponse('该订单已接单或已结束'));
-
-    await pool.execute(
-      'UPDATE orders SET status = 1, updated_at = NOW() WHERE order_id = ?',
-      [id]
-    );
-    res.json(successResponse({ order_id: id }, '接单成功'));
+    const result = await orderService.acceptOrder(pool, req.params.id, req.shopId);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '接单成功'));
   } catch (error) {
     console.error('接单错误:', error);
     res.status(500).json(errorResponse('接单失败', 500));
   }
 });
 
-// 更新订单状态（维修中→待确认）
+// 更新订单状态（维修中→待确认，1→2 时 completion_evidence 必传）
 app.put('/api/v1/merchant/orders/:id/status', authenticateMerchant, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const shopId = req.shopId;
-
-    const [orders] = await pool.execute(
-      'SELECT order_id, status as current_status FROM orders WHERE order_id = ? AND shop_id = ?',
-      [id, shopId]
-    );
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在'));
-
-    const current = parseInt(orders[0].current_status, 10);
-    const target = parseInt(status, 10);
-
-    if (current === 1 && target === 2) {
-      await pool.execute(
-        'UPDATE orders SET status = 2, updated_at = NOW() WHERE order_id = ?',
-        [id]
-      );
-      return res.json(successResponse({ order_id: id }, '已标记为待用户确认'));
+    const { status, completion_evidence } = req.body || {};
+    const result = await orderService.updateOrderStatus(pool, req.params.id, req.shopId, status, completion_evidence);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    return res.status(400).json(errorResponse('当前状态不可更新'));
+    res.json(successResponse(result.data, '已标记为待用户确认'));
   } catch (error) {
     console.error('更新订单状态错误:', error);
     res.status(500).json(errorResponse('更新失败', 500));
+  }
+});
+
+// 服务商修改维修方案（仅 status=1 时可调用）
+app.put('/api/v1/merchant/orders/:id/repair-plan', authenticateMerchant, async (req, res) => {
+  try {
+    const result = await orderService.updateRepairPlan(pool, req.params.id, req.shopId, req.body || {});
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '维修方案已更新，请等待车主确认'));
+  } catch (error) {
+    console.error('修改维修方案错误:', error);
+    res.status(500).json(errorResponse('更新失败', 500));
+  }
+});
+
+// 服务商响应撤单申请（同意/拒绝）
+app.post('/api/v1/merchant/orders/:id/cancel-request/:requestId/respond', authenticateMerchant, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const approve = req.body && req.body.approve === true;
+    const result = await orderService.respondCancelRequest(pool, requestId, req.shopId, approve);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    const msg = approve ? '已同意撤单' : '已拒绝，可通知车主';
+    res.json(successResponse(result.data, msg));
+  } catch (error) {
+    console.error('响应撤单申请错误:', error);
+    res.status(500).json(errorResponse('操作失败', 500));
   }
 });
 
@@ -1409,6 +1261,7 @@ app.get('/api/v1/user/orders', authenticateToken, async (req, res) => {
 
     const [list] = await pool.execute(
       `SELECT o.order_id, o.bidding_id, o.shop_id, o.quoted_amount, o.status, o.created_at,
+        o.repair_plan_status,
         s.name as shop_name, s.logo as shop_logo
        FROM orders o
        LEFT JOIN shops s ON o.shop_id = s.shop_id
@@ -1423,8 +1276,13 @@ app.get('/api/v1/user/orders', authenticateToken, async (req, res) => {
       params
     );
 
+    const listWithStatus = (list || []).map((row) => ({
+      ...row,
+      repair_plan_status: row.repair_plan_status != null ? parseInt(row.repair_plan_status, 10) : 0
+    }));
+
     res.json(successResponse({
-      list,
+      list: listWithStatus,
       total: countRes[0].total,
       page,
       limit
@@ -1434,19 +1292,61 @@ app.get('/api/v1/user/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// 用户订单详情
+// 用户订单详情（含车辆信息、损伤情况、报价、维修方案，不含服务商专属字段如佣金）
 app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.execute(
-      `SELECT o.*, s.name as shop_name, s.logo as shop_logo, s.phone as shop_phone, s.address
+      `SELECT o.*, s.name as shop_name, s.logo as shop_logo, s.phone as shop_phone, s.address,
+        b.vehicle_info, b.report_id, dr.analysis_result,
+        q.duration as quote_duration
        FROM orders o
        LEFT JOIN shops s ON o.shop_id = s.shop_id
+       LEFT JOIN biddings b ON o.bidding_id = b.bidding_id
+       LEFT JOIN damage_reports dr ON b.report_id = dr.report_id
+       LEFT JOIN quotes q ON o.quote_id = q.quote_id
        WHERE o.order_id = ? AND o.user_id = ?`,
       [id, req.userId]
     );
     if (rows.length === 0) return res.status(404).json(errorResponse('订单不存在', 404));
     const order = rows[0];
+
+    let vehicleInfo = {};
+    let analysisResult = {};
+    try {
+      vehicleInfo = typeof order.vehicle_info === 'string' ? JSON.parse(order.vehicle_info || '{}') : (order.vehicle_info || {});
+      analysisResult = typeof order.analysis_result === 'string' ? JSON.parse(order.analysis_result || '{}') : (order.analysis_result || {});
+    } catch (_) {}
+
+    let quote = null;
+    if (order.quote_id) {
+      const [qRows] = await pool.execute(
+        'SELECT amount, items, duration, warranty, value_added_services FROM quotes WHERE quote_id = ?',
+        [order.quote_id]
+      );
+      if (qRows.length > 0) {
+        const q = qRows[0];
+        quote = {
+          amount: q.amount,
+          items: typeof q.items === 'string' ? (q.items ? JSON.parse(q.items) : []) : (q.items || []),
+          duration: q.duration,
+          warranty: q.warranty,
+          value_added_services: typeof q.value_added_services === 'string' ? (q.value_added_services ? JSON.parse(q.value_added_services) : []) : (q.value_added_services || [])
+        };
+      }
+    }
+
+    let repairPlan = null;
+    if (order.repair_plan) {
+      try {
+        repairPlan = typeof order.repair_plan === 'string' ? JSON.parse(order.repair_plan) : order.repair_plan;
+      } catch (_) {}
+    }
+
+    order.vehicle_info = vehicleInfo;
+    order.analysis_result = analysisResult;
+    order.quote = quote;
+    order.repair_plan = repairPlan;
     if (order.status === 3) {
       const [firstReview] = await pool.execute(
         'SELECT review_id, created_at FROM reviews WHERE order_id = ? AND type = 1',
@@ -1470,13 +1370,41 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
         order.first_review_id = firstReview[0].review_id;
       }
     }
+    if (order.status !== 3 && order.status !== 4) {
+      const needRequest = order.status >= 1 && order.accepted_at;
+      let within30 = false;
+      if (needRequest && order.accepted_at) {
+        const at = new Date(order.accepted_at);
+        within30 = Date.now() - at.getTime() <= 30 * 60 * 1000;
+      }
+      order.can_cancel = true;
+      order.cancel_needs_reason = needRequest && !within30;
+      const cancelReq = await orderService.getLatestCancelRequestForUser(pool, id, req.userId);
+      if (cancelReq && cancelReq.status === 2) {
+        order.cancel_rejected = true;
+        order.cancel_request_id = cancelReq.request_id;
+      }
+    }
+    const dur = order.quote_duration;
+    const created = order.created_at;
+    if (dur && created && dur > 0) {
+      const d = new Date(created);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      next.setHours(0, 0, 0, 0);
+      const deadline = new Date(next);
+      deadline.setDate(deadline.getDate() + (dur - 1));
+      order.duration_deadline = deadline.toISOString();
+      order.duration_deadline_text = `${deadline.getMonth() + 1}月${deadline.getDate()}日`;
+      order.quote_duration = dur;
+    }
     res.json(successResponse(order));
   } catch (error) {
     res.status(500).json(errorResponse('获取订单详情失败', 500));
   }
 });
 
-// 奖励金预估（评价体系：按《评价奖励金体系-设计方案》三维校准核算）
+// 奖励金预估（按《全指标底层逻辑梳理》第四章核算）
 app.get('/api/v1/user/orders/:id/reward-preview', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1576,6 +1504,8 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
 
     let beforeImages = [];
     let repairItems = [];
+    let quotePlan = null;
+    let repairPlan = null;
 
     if (order.bidding_id) {
       const [biddings] = await pool.execute(
@@ -1595,19 +1525,47 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       }
 
       const [quotes] = await pool.execute(
-        'SELECT items FROM quotes WHERE bidding_id = ? AND shop_id = ?',
-        [order.bidding_id, order.shop_id]
+        order.quote_id
+          ? 'SELECT items, value_added_services, amount, duration, warranty FROM quotes WHERE quote_id = ?'
+          : 'SELECT items, value_added_services, amount, duration, warranty FROM quotes WHERE bidding_id = ? AND shop_id = ?',
+        order.quote_id ? [order.quote_id] : [order.bidding_id, order.shop_id]
       );
-      if (quotes.length > 0 && quotes[0].items) {
-        try {
-          repairItems = typeof quotes[0].items === 'string' ? JSON.parse(quotes[0].items) : quotes[0].items;
-        } catch (_) {}
+      if (quotes.length > 0) {
+        const q = quotes[0];
+        if (q.items) {
+          try {
+            repairItems = typeof q.items === 'string' ? JSON.parse(q.items) : q.items;
+          } catch (_) {}
+        }
+        quotePlan = {
+          items: typeof q.items === 'string' ? (q.items ? JSON.parse(q.items) : []) : (q.items || []),
+          value_added_services: typeof q.value_added_services === 'string' ? (q.value_added_services ? JSON.parse(q.value_added_services) : []) : (q.value_added_services || []),
+          amount: q.amount,
+          duration: q.duration,
+          warranty: q.warranty
+        };
       }
     }
 
-    // 奖励金按《评价奖励金体系-设计方案》核算，此处仅作展示用占位
+    if (order.repair_plan) {
+      try {
+        repairPlan = typeof order.repair_plan === 'string' ? JSON.parse(order.repair_plan) : order.repair_plan;
+      } catch (_) {}
+    }
+
+    // 奖励金按《全指标底层逻辑梳理》第四章核算，此处仅作展示用占位
     const amount = parseFloat(order.actual_amount || order.quoted_amount) || 0;
     const rebateAmount = order.reward_preview != null ? parseFloat(order.reward_preview) : (amount * 0.08);
+
+    let completionEvidence = null;
+    if (order.completion_evidence) {
+      try {
+        completionEvidence = typeof order.completion_evidence === 'string' ? JSON.parse(order.completion_evidence) : order.completion_evidence;
+      } catch (_) {}
+    }
+    const merchantSettlement = completionEvidence?.settlement_photos || [];
+    const merchantCompletion = completionEvidence?.repair_photos || [];
+    const merchantMaterials = completionEvidence?.material_photos || [];
 
     res.json(successResponse({
       order_id: order.order_id,
@@ -1616,255 +1574,113 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       quoted_amount: order.quoted_amount,
       before_images: beforeImages,
       repair_items: repairItems,
-      rebate_rate: rebateRate,
-      rebate_amount: rebateAmount.toFixed(2)
+      rebate_rate: '8%',
+      rebate_amount: rebateAmount.toFixed(2),
+      merchant_settlement_list: merchantSettlement,
+      merchant_completion_images: merchantCompletion,
+      merchant_material_images: merchantMaterials,
+      quote_plan: quotePlan,
+      repair_plan: repairPlan
     }));
   } catch (error) {
     res.status(500).json(errorResponse('获取评价信息失败', 500));
   }
 });
 
-// 取消订单（订单已完成前可撤销；撤销后竞价重开，可重新选择其他报价）
+// 取消订单（直接撤销或创建撤单申请，按《订单撤单与维修完成流程.md》）
 app.post('/api/v1/user/orders/:id/cancel', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    const [orders] = await pool.execute(
-      'SELECT order_id, bidding_id, status FROM orders WHERE order_id = ? AND user_id = ?',
-      [id, req.userId]
-    );
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在', 404));
-    const order = orders[0];
-    if (order.status === 3) return res.status(400).json(errorResponse('订单已完成，无法撤销'));
-    if (order.status === 4) return res.status(400).json(errorResponse('订单已取消'));
-
-    await pool.execute('UPDATE orders SET status = 4, updated_at = NOW() WHERE order_id = ?', [id]);
-    if (order.bidding_id) {
-      await pool.execute(
-        'UPDATE biddings SET status = 0, selected_shop_id = NULL, updated_at = NOW() WHERE bidding_id = ?',
-        [order.bidding_id]
-      );
+    const reason = (req.body && req.body.reason) || '';
+    const result = await orderService.cancelOrder(pool, req.params.id, req.userId, reason);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    res.json(successResponse({ order_id: id }, '已撤销，可重新选择其他报价'));
+    const msg = result.data.direct ? '已撤销，可重新选择其他报价' : '撤单申请已提交，请等待服务商处理';
+    res.json(successResponse(result.data, msg));
   } catch (error) {
     res.status(500).json(errorResponse('取消订单失败', 500));
+  }
+});
+
+// 车主提交人工通道（撤单申请被服务商拒绝后）
+app.post('/api/v1/user/orders/:id/cancel-request/:requestId/escalate', authenticateToken, async (req, res) => {
+  try {
+    const { id, requestId } = req.params;
+    const [orders] = await pool.execute('SELECT order_id FROM orders WHERE order_id = ? AND user_id = ?', [id, req.userId]);
+    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在'));
+    const result = await orderService.escalateCancelRequest(pool, requestId, req.userId);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '已提交人工通道，请等待处理'));
+  } catch (error) {
+    res.status(500).json(errorResponse('提交失败', 500));
   }
 });
 
 // 确认完成（维修厂完成后，用户确认维修完成，状态 2->3）
 app.post('/api/v1/user/orders/:id/confirm', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    const [orders] = await pool.execute(
-      'SELECT order_id, status, quoted_amount, actual_amount, commission_rate FROM orders WHERE order_id = ? AND user_id = ?',
-      [id, req.userId]
-    );
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在', 404));
-    const order = orders[0];
-    if (order.status !== 2) return res.status(400).json(errorResponse('当前状态不可确认完成'));
-    const amount = parseFloat(order.actual_amount || order.quoted_amount) || 0;
-    const rate = (parseFloat(order.commission_rate) || 0) / 100;
-    const commission = Math.round(amount * rate * 100) / 100;
-    await pool.execute(
-      'UPDATE orders SET status = 3, completed_at = NOW(), updated_at = NOW(), commission = ? WHERE order_id = ?',
-      [commission, id]
-    );
-    res.json(successResponse({ order_id: id }, '已确认完成'));
+    const result = await orderService.confirmOrder(pool, req.params.id, req.userId);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '已确认完成'));
   } catch (error) {
     res.status(500).json(errorResponse('确认完成失败', 500));
   }
 });
 
+// 车主确认维修方案（同意/不同意）
+app.post('/api/v1/user/orders/:id/repair-plan/approve', authenticateToken, async (req, res) => {
+  try {
+    const approved = req.body && req.body.approved === true;
+    const result = await orderService.approveRepairPlan(pool, req.params.id, req.userId, approved);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    const msg = approved ? '已同意维修方案' : (result.msg || '已记录，如有疑问请联系客服');
+    res.json(successResponse(result.data, msg));
+  } catch (error) {
+    res.status(500).json(errorResponse('操作失败', 500));
+  }
+});
+
 // ===================== 2. 定损相关接口 =====================
 
-// 从 settings 表读取配置（运营后台可修改）
-async function getSetting(key, defaultValue = '') {
+// 获取定损每日剩余次数
+app.get('/api/v1/damage/daily-quota', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT `value` FROM settings WHERE `key` = ?', [key]);
-    return rows.length > 0 ? String(rows[0].value || '').trim() : defaultValue;
-  } catch {
-    return defaultValue;
+    const quota = await damageService.getDamageDailyQuota(pool, req.userId);
+    res.json(successResponse(quota));
+  } catch (error) {
+    console.error('获取定损配额失败:', error);
+    res.status(500).json(errorResponse('获取配额失败', 500));
   }
-}
-
-// 检查用户今日 AI 调用次数是否超限
-async function checkAiDailyLimit(userId) {
-  const limitStr = await getSetting('ai_daily_limit', '5');
-  const maxCount = Math.max(0, parseInt(limitStr, 10) || 5);
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const [rows] = await pool.execute(
-    'SELECT COUNT(*) as cnt FROM ai_call_log WHERE user_id = ? AND call_date = ?',
-    [userId, today]
-  );
-  const currentCount = rows[0]?.cnt || 0;
-  return {
-    allowed: currentCount < maxCount,
-    currentCount,
-    maxCount,
-    message: currentCount >= maxCount
-      ? `今日 AI 定损调用已达上限（${maxCount}次），请明日再试`
-      : `今日剩余 ${maxCount - currentCount} 次`
-  };
-}
-
-// 记录 AI 调用（每次分析请求记一次，便于统计与控制成本）
-async function recordAiCall(userId, reportId) {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    await pool.execute(
-      'INSERT INTO ai_call_log (user_id, report_id, call_date) VALUES (?, ?, ?)',
-      [userId, reportId, today]
-    );
-  } catch (err) {
-    console.error('[damage/analyze] 记录 AI 调用失败:', err.message);
-  }
-}
-
-// 模拟定损结果（API 未配置或调用失败时使用）
-function getMockAnalysisResult(reportId, vehicleInfo) {
-  return {
-    report_id: reportId,
-    vehicle_info: [
-      {
-        vehicleId: '车辆1',
-        plate_number: vehicleInfo?.plate_number || '',
-        brand: vehicleInfo?.brand || '',
-        model: vehicleInfo?.model || '',
-        color: vehicleInfo?.color || '',
-        damagedParts: ['前保险杠'],
-        damageTypes: ['凹陷'],
-        overallSeverity: '中等',
-        damageSummary: '前保险杠钣金修复、喷漆',
-        damage_level: '二级',
-        total_estimate: [1400, 2100]
-      }
-    ],
-    damages: [
-      { part: '前保险杠', type: '凹陷', severity: '中等', area: '15x20cm', material: '钢质', vehicleId: '车辆1' }
-    ],
-    repair_suggestions: [
-      { item: '车辆1-钣金修复', price_range: [800, 1200] },
-      { item: '车辆1-喷漆', price_range: [600, 900] }
-    ],
-    total_estimate: [1400, 2100],
-    confidence_score: 0.88
-  };
-}
+});
 
 // AI定损分析
-// 流程：1) 校验请求携带的 user_id 2) 检查每日调用次数 3) 调用 AI 4) 生成 report_id 后一次性写入 damage_reports（user_id + 原始分析结果）
 app.post('/api/v1/damage/analyze', authenticateToken, async (req, res) => {
   try {
-    const { user_id, images, vehicle_info } = req.body;
-    const vehicleInfo = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
-
-    if (!images || images.length === 0) {
-      return res.status(400).json(errorResponse('请上传事故照片'));
-    }
-
-    // 校验请求携带的 user_id 与 token 一致（前端上传时需携带 user_id）
-    const bodyUserId = user_id && String(user_id).trim();
-    if (!bodyUserId || bodyUserId !== req.userId) {
-      return res.status(400).json(errorResponse('user_id 无效或与登录用户不一致'));
-    }
-
-    // 1. 检查每日 AI 调用次数（参数由运营后台 settings.ai_daily_limit 控制）
-    const limitCheck = await checkAiDailyLimit(req.userId);
-    if (!limitCheck.allowed) {
-      return res.status(429).json(errorResponse(limitCheck.message, 429));
-    }
-
-    // 2. 生成 report_id（服务器端生成，与用户信息一并保存）
-    const reportId = 'RPT' + Date.now();
-
-    // 3. 调用阿里云千问 API 或使用模拟结果（此时尚未写入数据库）
-    const { enhanceAnalysisWithKnowledge } = require('./knowledge-base');
-    const { analyzeWithQwen } = require('./qwen-analyzer');
-    const apiKey = process.env.ALIYUN_AI_KEY || process.env.DASHSCOPE_API_KEY || '';
-
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
-    const absoluteImageUrls = (images || []).map((url) => {
-      const u = String(url || '').trim();
-      if (u.startsWith('http')) return u;
-      return baseUrl.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
-    });
-
-    let analysisResult;
-    if (apiKey && absoluteImageUrls.length > 0) {
-      try {
-        console.log('[damage/analyze] 调用千问 API 分析', absoluteImageUrls.length, '张照片');
-        analysisResult = await analyzeWithQwen(absoluteImageUrls, vehicleInfo, reportId, apiKey);
-        console.log('[damage/analyze] 千问分析完成');
-      } catch (err) {
-        console.error('[damage/analyze] 千问 API 失败，使用模拟结果:', err.message);
-        analysisResult = getMockAnalysisResult(reportId, vehicleInfo);
-      }
-    } else {
-      analysisResult = getMockAnalysisResult(reportId, vehicleInfo);
+    const result = await damageService.analyzeDamage(pool, req, baseUrl);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-
-    const enhanced = enhanceAnalysisWithKnowledge(analysisResult);
-
-    // 4. 一次性写入：用户信息 + 分析结果，减少重复、避免用户未关闭/离开时丢失数据
-    enhanced.report_id = reportId;
-    await pool.execute(
-      `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, analysis_result, status, created_at) 
-       VALUES (?, ?, ?, ?, ?, 1, NOW())`,
-      [reportId, req.userId, JSON.stringify(vehicleInfo), JSON.stringify(images), JSON.stringify(enhanced)]
-    );
-
-    // 5. 记录本次调用（用于每日次数统计）
-    await recordAiCall(req.userId, reportId);
-
-    res.json(successResponse(enhanced, '分析完成'));
+    res.json(successResponse(result.data, '分析完成'));
   } catch (error) {
     console.error('AI定损分析错误:', error);
     res.status(500).json(errorResponse('分析失败', 500));
   }
 });
 
-// 获取定损报告列表（个人中心-历史记录）
+// 获取定损报告列表
 app.get('/api/v1/damage/reports', authenticateToken, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 10));
-    const offset = (page - 1) * limit;
-
-    const [reports] = await pool.execute(
-      `SELECT report_id, vehicle_info, images, analysis_result, status, created_at 
-       FROM damage_reports 
-       WHERE user_id = ? 
-       ORDER BY created_at DESC 
-       LIMIT ? OFFSET ?`,
-      [req.userId, limit, offset]
-    );
-
-    const [countRes] = await pool.execute(
-      'SELECT COUNT(*) as total FROM damage_reports WHERE user_id = ?',
-      [req.userId]
-    );
-
-    const list = reports.map((r) => {
-      const ar = JSON.parse(r.analysis_result || '{}');
-      const vi = JSON.parse(r.vehicle_info || '{}');
-      let damageLevel = ar.damage_level || '';
-      const damages = ar.damages || [];
-      const totalEst = ar.total_estimate || [0, 0];
-      // 无伤时显示「无伤」，避免三级损伤与无伤混淆
-      if (damageLevel === '三级' && (!damages.length || (totalEst[0] === 0 && totalEst[1] === 0))) {
-        damageLevel = '无伤';
-      }
-      return {
-        report_id: r.report_id,
-        vehicle_info: vi,
-        images: JSON.parse(r.images || '[]'),
-        damage_level: damageLevel,
-        total_estimate: totalEst,
-        status: r.status,
-        created_at: r.created_at
-      };
-    });
-
-    res.json(successResponse({ list, total: countRes[0].total, page, limit }));
+    const result = await damageService.listReports(pool, req.userId, page, limit);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取定损报告列表失败:', error);
     res.status(500).json(errorResponse('获取报告列表失败', 500));
@@ -1874,26 +1690,11 @@ app.get('/api/v1/damage/reports', authenticateToken, async (req, res) => {
 // 获取定损报告
 app.get('/api/v1/damage/report/:id', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    const [reports] = await pool.execute(
-      'SELECT * FROM damage_reports WHERE report_id = ? AND user_id = ?',
-      [id, req.userId]
-    );
-
-    if (reports.length === 0) {
-      return res.status(404).json(errorResponse('报告不存在', 404));
+    const result = await damageService.getReport(pool, req.params.id, req.userId);
+    if (!result.success) {
+      return res.status(result.statusCode || 404).json(errorResponse(result.error));
     }
-
-    const report = reports[0];
-    res.json(successResponse({
-      report_id: report.report_id,
-      vehicle_info: JSON.parse(report.vehicle_info || '{}'),
-      images: JSON.parse(report.images || '[]'),
-      analysis_result: JSON.parse(report.analysis_result || '{}'),
-      status: report.status,
-      created_at: report.created_at
-    }));
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取报告失败', 500));
   }
@@ -1905,37 +1706,13 @@ app.get('/api/v1/damage/report/:id', authenticateToken, async (req, res) => {
 app.post('/api/v1/bidding/create', authenticateToken, async (req, res) => {
   const reqId = req.reqId || '';
   try {
-    const { report_id, range, insurance_info, vehicle_info, latitude, longitude } = req.body;
-
-    if (!report_id) {
-      return res.status(400).json(errorResponse('定损报告ID不能为空'));
+    const result = await biddingService.createBidding(pool, req.userId, req.body);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-
-    // 更新用户位置（用于服务商竞价邀请的距离筛选，无位置则附近服务商看不到）
-    const lat = latitude != null && !isNaN(Number(latitude)) ? Number(latitude) : null;
-    const lng = longitude != null && !isNaN(Number(longitude)) ? Number(longitude) : null;
-    if (lat != null && lng != null) {
-      await pool.execute(
-        'UPDATE users SET latitude = ?, longitude = ?, updated_at = NOW() WHERE user_id = ?',
-        [lat, lng, req.userId]
-      );
-    }
-
-    const biddingId = 'BID' + Date.now();
-    const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24小时后过期
-
-    await pool.execute(
-      `INSERT INTO biddings (bidding_id, user_id, report_id, vehicle_info, 
-       insurance_info, range_km, status, expire_at, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, NOW())`,
-      [biddingId, req.userId, report_id, 
-       JSON.stringify(vehicle_info), 
-       JSON.stringify(insurance_info), 
-       range || 5, expireAt]
-    );
-
-    console.log(`[bidding/create] ${reqId} biddingId=${biddingId} userId=${req.userId} reportId=${report_id} rangeKm=${range || 5} hasLocation=${!!(lat && lng)}`);
-    res.json(successResponse({ bidding_id: biddingId }, '竞价创建成功'));
+    const msg = result.message || (result.data?.duplicate ? '该定损单已发起竞价，正在跳转' : '竞价创建成功');
+    console.log(`[bidding/create] ${reqId} biddingId=${result.data.bidding_id} userId=${req.userId} duplicate=${!!result.data?.duplicate}`);
+    res.json(successResponse(result.data, msg));
   } catch (error) {
     console.error(`[bidding/create] ${reqId} 创建竞价错误:`, error);
     res.status(500).json(errorResponse('创建竞价失败', 500));
@@ -1981,32 +1758,88 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// 获取报价列表
+// 计算两点距离（km，Haversine）
+function haversineKm(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// 获取报价列表（距离在应用层计算，避免 MariaDB 对复杂 SQL 的解析问题）
+// 经纬度优先用请求参数，若无则从 users 表回退（创建竞价时已写入用户选定地址）
 app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { sort_type = 'default' } = req.query;
 
-    let orderBy = 'q.created_at ASC';
-    if (sort_type === 'price_asc') {
-      orderBy = 'q.amount ASC';
-    } else if (sort_type === 'rating') {
-      orderBy = 's.rating DESC';
+    let lat = parseFloat(req.query.latitude);
+    let lng = parseFloat(req.query.longitude);
+    let hasLocation = !isNaN(lat) && !isNaN(lng);
+    // (0,0) 多为前端无缓存时的占位，视为无效，回退到数据库
+    if (hasLocation && lat === 0 && lng === 0) hasLocation = false;
+
+    if (!hasLocation) {
+      const [biddingUser] = await pool.execute(
+        'SELECT u.latitude, u.longitude FROM biddings b JOIN users u ON b.user_id = u.user_id WHERE b.bidding_id = ? AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL',
+        [id]
+      );
+      if (biddingUser.length > 0) {
+        lat = parseFloat(biddingUser[0].latitude);
+        lng = parseFloat(biddingUser[0].longitude);
+        hasLocation = !isNaN(lat) && !isNaN(lng);
+      }
     }
 
     const [quotes] = await pool.execute(
-      `SELECT q.*, s.name as shop_name, s.logo, s.rating, s.deviation_rate, s.total_orders,
-        (6371 * acos(cos(radians(?)) * cos(radians(s.latitude)) * 
-        cos(radians(s.longitude) - radians(?)) + sin(radians(?)) * sin(radians(s.latitude)))) AS distance
-       FROM quotes q 
-       JOIN shops s ON q.shop_id = s.shop_id 
-       WHERE q.bidding_id = ? 
-       ORDER BY ${orderBy}`,
-      [req.query.latitude || 0, req.query.longitude || 0, req.query.latitude || 0, id]
+      `SELECT q.*, s.name as shop_name, s.logo, s.rating, s.shop_score, s.deviation_rate, s.total_orders, s.latitude as shop_lat, s.longitude as shop_lng
+       FROM quotes q
+       JOIN shops s ON q.shop_id = s.shop_id
+       WHERE q.bidding_id = ?`,
+      [id]
     );
 
+    // 应用层计算距离
+    const quotesWithDistance = quotes.map((q) => {
+      const dist = hasLocation ? haversineKm(lat, lng, parseFloat(q.shop_lat), parseFloat(q.shop_lng)) : null;
+      return { ...q, distance: dist };
+    });
+
+    let list = quotesWithDistance;
+    if (sort_type === 'default') {
+      const [biddingRows] = await pool.execute(
+        'SELECT b.vehicle_info, dr.analysis_result FROM biddings b LEFT JOIN damage_reports dr ON b.report_id = dr.report_id WHERE b.bidding_id = ?',
+        [id]
+      );
+      let benchmarkAmount = 0;
+      if (biddingRows.length > 0 && biddingRows[0].analysis_result) {
+        try {
+          const ar = typeof biddingRows[0].analysis_result === 'string' ? JSON.parse(biddingRows[0].analysis_result) : biddingRows[0].analysis_result;
+          const est = ar?.total_estimate;
+          if (Array.isArray(est) && est.length >= 2) {
+            benchmarkAmount = (parseFloat(est[0]) + parseFloat(est[1])) / 2;
+          } else if (est != null) benchmarkAmount = parseFloat(est) || 0;
+        } catch (_) {}
+      }
+      await shopSortService.ensureShopScores(pool, quotesWithDistance);
+      list = biddingService.sortQuotesByScore(quotesWithDistance, benchmarkAmount);
+    } else if (sort_type === 'price_asc') {
+      list = [...quotesWithDistance].sort((a, b) => (parseFloat(a.amount) || 0) - (parseFloat(b.amount) || 0));
+    } else if (sort_type === 'rating') {
+      list = [...quotesWithDistance].sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+    } else if (sort_type === 'distance' && hasLocation) {
+      list = [...quotesWithDistance].sort((a, b) => (parseFloat(a.distance) || 999) - (parseFloat(b.distance) || 999));
+    } else if (sort_type === 'warranty') {
+      list = [...quotesWithDistance].sort((a, b) => (parseInt(b.warranty) || 0) - (parseInt(a.warranty) || 0));
+    } else {
+      list = [...quotesWithDistance].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    }
+
     res.json(successResponse({
-      list: quotes.map(q => ({
+      list: list.map(q => ({
         quote_id: q.quote_id,
         shop_id: q.shop_id,
         shop_name: q.shop_name,
@@ -2020,12 +1853,13 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
         duration: q.duration,
         warranty: q.warranty,
         remark: q.remark,
-        distance: q.distance ? Math.round(q.distance * 10) / 10 : null,
+        distance: q.distance != null ? Math.round(q.distance * 10) / 10 : null,
         created_at: q.created_at
       })),
-      total: quotes.length
+      total: list.length
     }));
   } catch (error) {
+    console.error('获取报价列表错误:', error);
     res.status(500).json(errorResponse('获取报价列表失败', 500));
   }
 });
@@ -2034,193 +1868,27 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
 app.post('/api/v1/bidding/:id/select', authenticateToken, async (req, res) => {
   const reqId = req.reqId || '';
   try {
-    const { id } = req.params;
-    const { shop_id } = req.body;
-
-    if (!shop_id) {
-      return res.status(400).json(errorResponse('维修厂ID不能为空'));
+    const result = await biddingService.selectQuote(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-
-    // 同一竞价只能选择一次，已选则不允许再选（已取消的订单除外，由 cancel 接口处理竞价重开）
-    const [existingOrder] = await pool.execute(
-      'SELECT order_id FROM orders WHERE bidding_id = ? AND status != 4 LIMIT 1',
-      [id]
-    );
-    if (existingOrder.length > 0) {
-      return res.status(400).json(errorResponse('该竞价已选择维修厂，请勿重复操作'));
-    }
-
-    const [biddingCheck] = await pool.execute(
-      'SELECT status FROM biddings WHERE bidding_id = ?',
-      [id]
-    );
-    if (biddingCheck.length > 0 && biddingCheck[0].status !== 0) {
-      return res.status(400).json(errorResponse('该竞价已结束'));
-    }
-
-    // 获取选中的报价
-    const [quotes] = await pool.execute(
-      'SELECT * FROM quotes WHERE bidding_id = ? AND shop_id = ?',
-      [id, shop_id]
-    );
-
-    if (quotes.length === 0) {
-      return res.status(404).json(errorResponse('报价不存在', 404));
-    }
-
-    const quote = quotes[0];
-
-    // 资质审核：仅可选择资质已通过的维修厂
-    const [shopRows] = await pool.execute('SELECT qualification_status FROM shops WHERE shop_id = ?', [shop_id]);
-    if (shopRows.length === 0 || (shopRows[0].qualification_status !== 1 && shopRows[0].qualification_status !== '1')) {
-      return res.status(403).json(errorResponse('该维修厂暂未通过资质审核，无法选择', 403));
-    }
-
-    // 防刷：黑名单校验
-    const ip = req.ip || req.headers['x-forwarded-for'] || '';
-    const [userRow] = await pool.execute('SELECT phone FROM users WHERE user_id = ?', [req.userId]);
-    const bl = await antifraud.checkBlacklist(pool, req.userId, userRow[0]?.phone, ip);
-    if (bl.blocked) {
-      return res.status(403).json(errorResponse(bl.reason || '账号存在异常，暂无法下单', 403));
-    }
-
-    // 防刷-事前风控：同用户 N 天内同商户 ≤M 次、新用户 N 天内 ≤M 次（从配置读取）
-    const afConfig = await antifraud.getAntifraudConfig(pool);
-    const [userCreatedRow] = await pool.execute('SELECT created_at FROM users WHERE user_id = ?', [req.userId]);
-    const userCreatedAt = userCreatedRow.length > 0 ? new Date(userCreatedRow[0].created_at) : null;
-    const now = new Date();
-    const sameShopDaysAgo = new Date(now.getTime() - afConfig.orderSameShopDays * 24 * 60 * 60 * 1000);
-    const newUserDaysAgo = new Date(now.getTime() - afConfig.newUserDays * 24 * 60 * 60 * 1000);
-
-    const [sameShopCount] = await pool.execute(
-      `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND shop_id = ? AND created_at >= ? AND status != 4`,
-      [req.userId, shop_id, sameShopDaysAgo]
-    );
-    if ((sameShopCount[0]?.c || 0) >= afConfig.orderSameShopMax) {
-      return res.status(400).json(errorResponse(`您在该商户 ${afConfig.orderSameShopDays} 天内已有 ${afConfig.orderSameShopMax} 笔订单，为保障交易真实性暂无法继续下单`));
-    }
-
-    const isNewUser = userCreatedAt && userCreatedAt > newUserDaysAgo;
-    if (isNewUser) {
-      const [recentOrders] = await pool.execute(
-        `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND created_at >= ? AND status != 4`,
-        [req.userId, newUserDaysAgo]
-      );
-      if ((recentOrders[0]?.c || 0) >= afConfig.newUserOrderMax) {
-        return res.status(400).json(errorResponse(`新用户 ${afConfig.newUserDays} 天内最多下单 ${afConfig.newUserOrderMax} 笔，为保障交易真实性请稍后再试`));
-      }
-    }
-
-    // 创建订单
-    const orderId = 'ORD' + Date.now();
-    await pool.execute(
-      `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, 
-       quoted_amount, status, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [orderId, id, req.userId, shop_id, quote.quote_id, quote.amount]
-    );
-
-    // 计算订单分级、复杂度、车价分级、奖励金预估、佣金比例并回写
-    try {
-      const [biddings] = await pool.execute('SELECT vehicle_info FROM biddings WHERE bidding_id = ?', [id]);
-      let vehicleInfo = {};
-      if (biddings.length > 0 && biddings[0].vehicle_info) {
-        try {
-          vehicleInfo = typeof biddings[0].vehicle_info === 'string' ? JSON.parse(biddings[0].vehicle_info) : biddings[0].vehicle_info;
-        } catch (_) {}
-      }
-      let quoteItems = [];
-      if (quote.items) {
-        try {
-          quoteItems = typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items;
-        } catch (_) {}
-      }
-      const [shops] = await pool.execute('SELECT compliance_rate, complaint_rate FROM shops WHERE shop_id = ?', [shop_id]);
-      const shop = shops.length > 0 ? shops[0] : {};
-      const orderRow = { quoted_amount: quote.amount, actual_amount: null, order_tier: null, complexity_level: null, vehicle_price_tier: null };
-      const result = await rewardCalculator.calculateReward(pool, orderRow, vehicleInfo, quoteItems, shop);
-      await pool.execute(
-        `UPDATE orders SET order_tier = ?, complexity_level = ?, vehicle_price_tier = ?,
-         reward_preview = ?, commission_rate = ? WHERE order_id = ?`,
-        [result.order_tier, result.complexity_level, result.vehicle_price_tier, result.reward_pre, result.commission_rate * 100, orderId]
-      );
-    } catch (err) {
-      console.error('[选厂下单] 奖励金/佣金计算失败:', err.message);
-    }
-
-    await pool.execute(
-      'UPDATE quotes SET quote_status = 1 WHERE bidding_id = ? AND shop_id = ?',
-      [id, shop_id]
-    );
-    await pool.execute(
-      'UPDATE quotes SET quote_status = 2 WHERE bidding_id = ? AND shop_id != ?',
-      [id, shop_id]
-    );
-
-    // 更新竞价状态
-    await pool.execute(
-      'UPDATE biddings SET status = 1, selected_shop_id = ?, updated_at = NOW() WHERE bidding_id = ?',
-      [shop_id, id]
-    );
-
-    // 生成服务商消息（待接单通知，供小程序/公众号推送）
-    try {
-      const [merchantRows] = await pool.execute(
-        'SELECT merchant_id FROM merchant_users WHERE shop_id = ? LIMIT 1',
-        [shop_id]
-      );
-      if (merchantRows.length > 0) {
-        const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
-        await pool.execute(
-          `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
-           VALUES (?, ?, 'order', ?, ?, ?, 0)`,
-          [msgId, merchantRows[0].merchant_id, '新订单待接单', `您有一笔新订单待接单，报价金额 ¥${quote.amount}。`, orderId]
-        );
-      }
-    } catch (msgErr) {
-      if (!String((msgErr && msgErr.message) || '').includes('merchant_messages')) {
-        console.warn('创建服务商消息失败:', msgErr && msgErr.message);
-      }
-    }
-
-    console.log(`[bidding/select] ${reqId} biddingId=${id} shopId=${shop_id} orderId=${orderId} userId=${req.userId}`);
-    res.json(successResponse({ order_id: orderId }, '选择成功，订单已生成'));
+    console.log(`[bidding/select] ${reqId} biddingId=${req.params.id} shopId=${req.body.shop_id} orderId=${result.data.order_id} userId=${req.userId}`);
+    res.json(successResponse(result.data, '选择成功，订单已生成'));
   } catch (error) {
     console.error(`[bidding/select] ${reqId} 选择维修厂失败:`, error);
     res.status(500).json(errorResponse('选择维修厂失败', 500));
   }
 });
 
-// 结束竞价（用户主动结束进行中的竞价）
+// 结束竞价
 app.post('/api/v1/bidding/:id/end', authenticateToken, async (req, res) => {
   const reqId = req.reqId || '';
   try {
-    const { id } = req.params;
-
-    const [biddings] = await pool.execute(
-      'SELECT bidding_id, status FROM biddings WHERE bidding_id = ? AND user_id = ?',
-      [id, req.userId]
-    );
-    if (biddings.length === 0) {
-      return res.status(404).json(errorResponse('竞价不存在', 404));
+    const result = await biddingService.endBidding(pool, req.params.id, req.userId);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    if (biddings[0].status !== 0) {
-      return res.status(400).json(errorResponse('该竞价已结束'));
-    }
-
-    const [quoteCount] = await pool.execute('SELECT COUNT(*) as c FROM quotes WHERE bidding_id = ?', [id]);
-    const quotesAffected = quoteCount[0]?.c || 0;
-
-    await pool.execute(
-      'UPDATE biddings SET status = 1, updated_at = NOW() WHERE bidding_id = ?',
-      [id]
-    );
-    await pool.execute(
-      'UPDATE quotes SET quote_status = 2 WHERE bidding_id = ?',
-      [id]
-    );
-
-    console.log(`[bidding/end] ${reqId} biddingId=${id} userId=${req.userId} quotesInvalidated=${quotesAffected}`);
+    console.log(`[bidding/end] ${reqId} biddingId=${req.params.id} userId=${req.userId} quotesInvalidated=${result.data.quotesInvalidated}`);
     res.json(successResponse(null, '竞价已结束'));
   } catch (error) {
     console.error(`[bidding/end] ${reqId} 结束竞价失败:`, error);
@@ -2300,87 +1968,8 @@ if (process.env.NODE_ENV !== 'production') {
 // 获取附近维修厂
 app.get('/api/v1/shops/nearby', async (req, res) => {
   try {
-    const { latitude, longitude, page = 1, limit = 20, category, max_km } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
-    const pageNum = Math.max(parseInt(page) || 1, 1);
-    const offset = (pageNum - 1) * limitNum;
-
-    let whereClause = 'WHERE status = 1 AND (qualification_status = 1 OR qualification_status IS NULL)';
-    const params = [];
-
-    if (category) {
-      whereClause += ' AND JSON_CONTAINS(categories, ?)';
-      params.push(`"${category}"`);
-    }
-
-    // 如果有位置信息，按距离排序，距离限制从 settings.nearby_max_km 读取（运营后台可修改）
-    if (latitude && longitude) {
-      const lat = parseFloat(latitude);
-      const lng = parseFloat(longitude);
-      const maxKmFromSettings = parseFloat(await getSetting('nearby_max_km', '50')) || 50;
-      const effectiveMaxKm = max_km != null ? Math.min(Math.max(parseFloat(max_km) || 50, 1), 500) : maxKmFromSettings;
-      console.log('[shops/nearby] 收到位置', { lat, lng, max_km: effectiveMaxKm, from_settings: maxKmFromSettings });
-
-      let sql = `SELECT *, 
-          (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * 
-          cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance
-         FROM shops ${whereClause}`;
-      const sqlParams = [lat, lng, lat, ...params];
-
-      sql += ' HAVING distance <= ?';
-      sqlParams.push(effectiveMaxKm);
-      sql += ' ORDER BY distance LIMIT ? OFFSET ?';
-      sqlParams.push(limitNum, offset);
-
-      const [shops] = await pool.execute(sql, sqlParams);
-
-      const distances = shops.slice(0, 3).map(s => `${s.name}: ${s.distance != null ? Math.round(s.distance * 10) / 10 + 'km' : '?'}`);
-      console.log('[shops/nearby] 返回', { count: shops.length, 前3条: distances.join(' | ') });
-
-      res.json(successResponse({
-        list: shops.map(s => ({
-          shop_id: s.shop_id,
-          name: s.name,
-          logo: s.logo,
-          address: s.address,
-          district: s.district,
-          rating: s.rating,
-          rating_count: s.rating_count,
-          total_orders: s.total_orders,
-          deviation_rate: s.deviation_rate,
-          is_certified: !!s.is_certified,
-          categories: JSON.parse(s.categories || '[]'),
-          distance: Math.round(s.distance * 10) / 10
-        })),
-        total: shops.length
-      }));
-    } else {
-      const [shops] = await pool.execute(
-        `SELECT * FROM shops ${whereClause} LIMIT ? OFFSET ?`,
-        [...params, limitNum, offset]
-      );
-
-      res.json(successResponse({
-        list: shops.map(s => ({
-          shop_id: s.shop_id,
-          name: s.name,
-          logo: s.logo,
-          address: s.address,
-          district: s.district,
-          rating: s.rating,
-          rating_count: s.rating_count,
-          total_orders: s.total_orders,
-          deviation_rate: s.deviation_rate,
-          is_certified: !!s.is_certified,
-          categories: JSON.parse(s.categories || '[]'),
-          compliance_rate: s.compliance_rate,
-          complaint_rate: s.complaint_rate,
-          qualification_level: s.qualification_level,
-          technician_certs: typeof s.technician_certs === 'string' ? (s.technician_certs ? JSON.parse(s.technician_certs) : null) : s.technician_certs
-        })),
-        total: shops.length
-      }));
-    }
+    const result = await shopService.getNearby(pool, req.query);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取维修厂错误:', error);
     res.status(500).json(errorResponse('获取维修厂列表失败: ' + (error.message || String(error)), 500));
@@ -2390,94 +1979,8 @@ app.get('/api/v1/shops/nearby', async (req, res) => {
 // 搜索维修厂（keyword、category、sort、分页）
 app.get('/api/v1/shops/search', async (req, res) => {
   try {
-    const { keyword, category, sort = 'default', page = 1, limit = 20, latitude, longitude } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
-    const pageNum = Math.max(parseInt(page) || 1, 1);
-    const offset = (pageNum - 1) * limitNum;
-
-    let whereClause = 'WHERE status = 1 AND (qualification_status = 1 OR qualification_status IS NULL)';
-    const params = [];
-
-    if (keyword && keyword.trim()) {
-      whereClause += ' AND (name LIKE ? OR address LIKE ?)';
-      const q = '%' + keyword.trim() + '%';
-      params.push(q, q);
-    }
-    if (category) {
-      whereClause += ' AND JSON_CONTAINS(categories, ?)';
-      params.push(`"${category}"`);
-    }
-
-    let orderBy = 'total_orders DESC';
-    if (sort === 'rating') {
-      orderBy = 'rating DESC, total_orders DESC';
-    } else if (sort === 'distance' && latitude && longitude) {
-      orderBy = 'distance';
-    } else if (sort === 'orders') {
-      orderBy = 'total_orders DESC';
-    } else if (sort === 'compliance_rate') {
-      orderBy = 'COALESCE(compliance_rate, 0) DESC, total_orders DESC';
-    } else if (sort === 'complaint_rate') {
-      orderBy = 'COALESCE(complaint_rate, 100) ASC, total_orders DESC';
-    }
-
-    if (latitude && longitude) {
-      const [shops] = await pool.execute(
-        `SELECT *, 
-          (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * 
-          cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance
-         FROM shops ${whereClause}
-         ORDER BY ${orderBy}
-         LIMIT ? OFFSET ?`,
-        [latitude, longitude, latitude, ...params, limitNum, offset]
-      );
-      res.json(successResponse({
-        list: shops.map(s => ({
-          shop_id: s.shop_id,
-          name: s.name,
-          logo: s.logo,
-          address: s.address,
-          district: s.district,
-          rating: s.rating,
-          rating_count: s.rating_count,
-          total_orders: s.total_orders,
-          deviation_rate: s.deviation_rate,
-          is_certified: !!s.is_certified,
-          categories: JSON.parse(s.categories || '[]'),
-          distance: s.distance != null ? Math.round(s.distance * 10) / 10 : null,
-          compliance_rate: s.compliance_rate,
-          complaint_rate: s.complaint_rate,
-          qualification_level: s.qualification_level,
-          technician_certs: typeof s.technician_certs === 'string' ? (s.technician_certs ? JSON.parse(s.technician_certs) : null) : s.technician_certs
-        })),
-        total: shops.length
-      }));
-    } else {
-      const [shops] = await pool.execute(
-        `SELECT * FROM shops ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
-        [...params, limitNum, offset]
-      );
-      res.json(successResponse({
-        list: shops.map(s => ({
-          shop_id: s.shop_id,
-          name: s.name,
-          logo: s.logo,
-          address: s.address,
-          district: s.district,
-          rating: s.rating,
-          rating_count: s.rating_count,
-          total_orders: s.total_orders,
-          deviation_rate: s.deviation_rate,
-          is_certified: !!s.is_certified,
-          categories: JSON.parse(s.categories || '[]'),
-          compliance_rate: s.compliance_rate,
-          complaint_rate: s.complaint_rate,
-          qualification_level: s.qualification_level,
-          technician_certs: typeof s.technician_certs === 'string' ? (s.technician_certs ? JSON.parse(s.technician_certs) : null) : s.technician_certs
-        })),
-        total: shops.length
-      }));
-    }
+    const result = await shopService.search(pool, req.query);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('搜索维修厂错误:', error);
     res.status(500).json(errorResponse('搜索维修厂失败: ' + (error.message || String(error)), 500));
@@ -2487,62 +1990,11 @@ app.get('/api/v1/shops/search', async (req, res) => {
 // 获取维修厂详情（仅展示资质审核通过的维修厂）
 app.get('/api/v1/shops/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const [shops] = await pool.execute(
-      'SELECT * FROM shops WHERE shop_id = ? AND status = 1 AND (qualification_status = 1 OR qualification_status IS NULL)',
-      [id]
-    );
-
-    if (shops.length === 0) {
-      return res.status(404).json(errorResponse('维修厂不存在', 404));
+    const result = await shopService.getDetail(pool, req.params.id);
+    if (!result.success) {
+      return res.status(result.statusCode || 404).json(errorResponse(result.error));
     }
-
-    const shop = shops[0];
-    
-    // 获取评价统计
-    const [reviewStats] = await pool.execute(
-      `SELECT 
-        COUNT(*) as total_reviews,
-        AVG(rating) as avg_rating,
-        AVG(ratings_quality) as avg_quality,
-        AVG(ratings_price) as avg_price,
-        AVG(ratings_service) as avg_service
-       FROM reviews WHERE shop_id = ?`,
-      [id]
-    );
-
-    // 防刷-第二阶段：店铺加权得分（用于详情页展示，排序与好评率脱钩）
-    const weightedScore = await antifraud.computeShopWeightedScore(pool, id);
-
-    res.json(successResponse({
-      shop_id: shop.shop_id,
-      name: shop.name,
-      logo: shop.logo,
-      address: shop.address,
-      province: shop.province,
-      city: shop.city,
-      district: shop.district,
-      latitude: shop.latitude,
-      longitude: shop.longitude,
-      phone: shop.phone,
-      business_hours: shop.business_hours,
-      categories: JSON.parse(shop.categories || '[]'),
-      certifications: JSON.parse(shop.certifications || '[]'),
-      services: JSON.parse(shop.services || '[]'),
-      rating: shop.rating,
-      rating_count: shop.rating_count,
-      deviation_rate: shop.deviation_rate,
-      total_orders: shop.total_orders,
-      is_certified: shop.is_certified,
-      compliance_rate: shop.compliance_rate,
-      complaint_rate: shop.complaint_rate,
-      qualification_level: shop.qualification_level,
-      technician_certs: typeof shop.technician_certs === 'string' ? (shop.technician_certs ? JSON.parse(shop.technician_certs) : null) : shop.technician_certs,
-      review_stats: reviewStats[0],
-      weighted_score: weightedScore.score,
-      weighted_score_count: weightedScore.count
-    }));
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取维修厂详情失败', 500));
   }
@@ -2551,55 +2003,8 @@ app.get('/api/v1/shops/:id', async (req, res) => {
 // 获取维修厂评价（排序：内容完整度优先、发布时间最新，与好评率脱钩）
 app.get('/api/v1/shops/:id/reviews', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { sort = 'completeness' } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-
-    const orderBy = sort === 'latest'
-      ? 'r.created_at DESC'
-      : '(CASE WHEN r.settlement_list_image IS NOT NULL AND r.settlement_list_image != "" THEN 1 ELSE 0 END) DESC, r.created_at DESC';
-    const [reviews] = await pool.execute(
-      `SELECT r.*, u.nickname, u.avatar_url 
-       FROM reviews r 
-       JOIN users u ON r.user_id = u.user_id 
-       WHERE r.shop_id = ? AND r.type = 1
-       ORDER BY ${orderBy}
-       LIMIT ? OFFSET ?`,
-      [id, limit, offset]
-    );
-
-    const [countResult] = await pool.execute(
-      'SELECT COUNT(*) as total FROM reviews WHERE shop_id = ? AND type = 1',
-      [id]
-    );
-
-    res.json(successResponse({
-      list: reviews.map(r => ({
-        review_id: r.review_id,
-        user: {
-          nickname: r.is_anonymous ? '匿名用户' : r.nickname,
-          avatar_url: r.is_anonymous ? '' : r.avatar_url
-        },
-        rating: r.rating,
-        ratings: {
-          quality: r.ratings_quality,
-          price: r.ratings_price,
-          service: r.ratings_service,
-          speed: r.ratings_speed,
-          parts: r.ratings_parts
-        },
-        content: r.content,
-        after_images: JSON.parse(r.after_images || '[]'),
-        ai_analysis: JSON.parse(r.ai_analysis || '{}'),
-        like_count: r.like_count,
-        created_at: r.created_at
-      })),
-      total: countResult[0].total,
-      page,
-      limit
-    }));
+    const result = await shopService.getReviews(pool, req.params.id, req.query);
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取评价失败', 500));
   }
@@ -2608,28 +2013,11 @@ app.get('/api/v1/shops/:id/reviews', async (req, res) => {
 // 提交预约
 app.post('/api/v1/appointments', authenticateToken, async (req, res) => {
   try {
-    const { shop_id, appointment_date, time_slot, service_category, services, remark } = req.body;
-
-    if (!shop_id || !appointment_date || !time_slot) {
-      return res.status(400).json(errorResponse('预约信息不完整'));
+    const result = await appointmentService.createAppointment(pool, req.userId, req.body);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-
-    const [shops] = await pool.execute('SELECT shop_id FROM shops WHERE shop_id = ? AND status = 1', [shop_id]);
-    if (shops.length === 0) {
-      return res.status(404).json(errorResponse('维修厂不存在', 404));
-    }
-
-    const validCategories = ['maintenance', 'wash', 'repair', 'other'];
-    const cat = validCategories.includes(service_category) ? service_category : 'other';
-
-    const appointmentId = 'APT' + Date.now();
-    await pool.execute(
-      `INSERT INTO appointments (appointment_id, user_id, shop_id, appointment_date, time_slot, service_category, services, remark, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [appointmentId, req.userId, shop_id, appointment_date, time_slot, cat, JSON.stringify(services || []), remark || null]
-    );
-
-    res.json(successResponse({ appointment_id: appointmentId }, '预约提交成功'));
+    res.json(successResponse(result.data, '预约提交成功'));
   } catch (error) {
     console.error('提交预约错误:', error);
     res.status(500).json(errorResponse('预约提交失败: ' + (error.message || String(error)), 500));
@@ -2641,219 +2029,11 @@ app.post('/api/v1/appointments', authenticateToken, async (req, res) => {
 // 提交评价（评价体系：3 模块 1 次提交，支持新格式与旧格式兼容）
 app.post('/api/v1/reviews', authenticateToken, async (req, res) => {
   try {
-    const { order_id, module1, module2, module3, rating, ratings, content, after_images, is_anonymous } = req.body;
-
-    if (!order_id) return res.status(400).json(errorResponse('订单ID不能为空'));
-
-    const [orders] = await pool.execute(
-      'SELECT * FROM orders WHERE order_id = ? AND user_id = ?',
-      [order_id, req.userId]
-    );
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在', 404));
-    const order = orders[0];
-
-    const [existing] = await pool.execute('SELECT review_id FROM reviews WHERE order_id = ?', [order_id]);
-    if (existing.length > 0) return res.status(400).json(errorResponse('该订单已评价'));
-
-    // 防刷：黑名单校验
-    const ip = req.ip || req.headers['x-forwarded-for'] || '';
-    const [userForBl] = await pool.execute('SELECT phone FROM users WHERE user_id = ?', [req.userId]);
-    const bl = await antifraud.checkBlacklist(pool, req.userId, userForBl[0]?.phone, ip);
-    if (bl.blocked) {
-      return res.status(403).json(errorResponse(bl.reason || '账号存在异常，暂无法评价', 403));
+    const result = await reviewService.submitReview(pool, req, { port: PORT });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-
-    let vehicleInfo = {};
-    let quoteItems = [];
-    if (order.bidding_id) {
-      const [biddings] = await pool.execute('SELECT vehicle_info FROM biddings WHERE bidding_id = ?', [order.bidding_id]);
-      if (biddings.length > 0 && biddings[0].vehicle_info) {
-        try {
-          vehicleInfo = typeof biddings[0].vehicle_info === 'string' ? JSON.parse(biddings[0].vehicle_info) : biddings[0].vehicle_info;
-        } catch (_) {}
-      }
-    }
-    if (order.quote_id) {
-      const [quotes] = await pool.execute('SELECT items FROM quotes WHERE quote_id = ?', [order.quote_id]);
-      if (quotes.length > 0 && quotes[0].items) {
-        try {
-          quoteItems = typeof quotes[0].items === 'string' ? JSON.parse(quotes[0].items) : (quotes[0].items || []);
-        } catch (_) {}
-      }
-    }
-    const [shops] = await pool.execute('SELECT compliance_rate, complaint_rate, name FROM shops WHERE shop_id = ?', [order.shop_id]);
-    const shop = shops.length > 0 ? shops[0] : {};
-    const rewardResult = await rewardCalculator.calculateReward(pool, order, vehicleInfo, quoteItems, shop);
-    const totalReward = rewardResult.reward_pre;
-    const orderTier = rewardResult.order_tier;
-    const complexityLevel = rewardResult.complexity_level || order.complexity_level || 'L2';
-
-    // 新格式：module3 必填（完工验收）
-    const isNewFormat = module3 && (module3.settlement_list_image || module3.completion_images);
-    const m3 = module3 || {};
-    const settlementImage = m3.settlement_list_image || null;
-    const completionImages = m3.completion_images || after_images || [];
-    const completionArr = Array.isArray(completionImages) ? completionImages : [];
-
-    // 防刷-事中：L1-L2 必须双凭证（结算单 + 至少 2 张施工实拍图）
-    if (complexityLevel === 'L1' || complexityLevel === 'L2') {
-      if (!settlementImage || settlementImage.trim() === '') {
-        return res.status(400).json(errorResponse('L1/L2 订单需上传维修结算清单（交易凭证），否则无法领取奖励金'));
-      }
-      if (completionArr.length < 2) {
-        return res.status(400).json(errorResponse('L1/L2 订单需上传至少 2 张施工实拍图，否则无法领取奖励金'));
-      }
-    }
-
-    // 防刷-第三阶段：AI 审核（千问）或内容反作弊兜底
-    const contentForCheck = (m3.content || content || '').trim();
-    const apiKey = process.env.ALIYUN_AI_KEY || process.env.DASHSCOPE_API_KEY || '';
-    let usedAiAudit = false;
-    if (apiKey) {
-      try {
-        const baseUrl = process.env.BASE_URL || ((req.protocol || 'http') + '://' + (req.get('host') || `localhost:${PORT}`));
-        const toAbsolute = (u) => {
-          const s = String(u || '').trim();
-          if (s.startsWith('http')) return s;
-          return (baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl) + (s.startsWith('/') ? s : '/' + s);
-        };
-        const repairProjects = (quoteItems || []).map((i) => i.name || '').filter(Boolean);
-        const quotedAmount = parseFloat(order.quoted_amount || order.actual_amount) || 0;
-        const ratingNum = m3.ratings ? (m3.ratings.service ?? m3.ratings.price_transparency ?? m3.ratings.quality ?? 5) : (rating || 5);
-        const aiInput = {
-          order: {
-            orderId: order_id,
-            shopName: shop.name || '',
-            quotedAmount: quotedAmount,
-            repairProjects: repairProjects.length ? repairProjects : ['维修'],
-            complexityLevel,
-            faultDescription: ''
-          },
-          review: {
-            content: contentForCheck,
-            rating: ratingNum,
-            isNegative: parseFloat(ratingNum) <= 2
-          },
-          images: []
-        };
-        if (settlementImage && settlementImage.trim()) {
-          aiInput.images.push({ type: 'settlement', url: toAbsolute(settlementImage) });
-        }
-        (completionArr || []).slice(0, 5).forEach((url) => {
-          if (url && String(url).trim()) aiInput.images.push({ type: 'completion', url: toAbsolute(url) });
-        });
-        const { analyzeReviewWithQwen } = require('./qwen-analyzer');
-        const aiResult = await analyzeReviewWithQwen({ ...aiInput, apiKey });
-        usedAiAudit = true;
-        if (!aiResult.pass) {
-          return res.status(400).json(errorResponse(aiResult.rejectReason || '评价未通过 AI 审核'));
-        }
-      } catch (err) {
-        console.error('[reviews] 千问 AI 审核异常，回退规则校验:', err.message);
-      }
-    }
-    if (!usedAiAudit && contentForCheck) {
-      const contentCheck = await antifraud.checkContentAntiCheat(pool, contentForCheck);
-      if (!contentCheck.pass) {
-        return res.status(400).json(errorResponse(contentCheck.reason || '评价内容不符合要求'));
-      }
-    }
-
-    const immediatePercent = orderTier <= 2 ? 1 : 0.5;
-    let rewardAmount = totalReward * immediatePercent;
-
-    // 防刷-事中：L1 每月奖励金封顶（从配置读取）
-    const afConfig = await antifraud.getAntifraudConfig(pool);
-    if (complexityLevel === 'L1' && rewardAmount > 0) {
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const [l1Sum] = await pool.execute(
-        `SELECT COALESCE(SUM(t.amount), 0) as total FROM transactions t
-         JOIN reviews r ON t.related_id = r.review_id
-         JOIN orders o ON r.order_id = o.order_id
-         WHERE t.user_id = ? AND t.type = 'rebate' AND t.created_at >= ?
-         AND o.complexity_level = 'L1'`,
-        [req.userId, monthStart]
-      );
-      const currentMonthL1 = parseFloat(l1Sum[0]?.total || 0);
-      const cap = afConfig.l1MonthlyCap;
-      if (currentMonthL1 >= cap) {
-        rewardAmount = 0;
-      } else if (currentMonthL1 + rewardAmount > cap) {
-        rewardAmount = Math.round((cap - currentMonthL1) * 100) / 100;
-      }
-    }
-
-    // 个税：≤800 无税，>800 平台承担，用户领取税后全额
-    const taxDeducted = rewardAmount > 800 ? Math.round((rewardAmount - 800) * 0.2 * 100) / 100 : 0;
-    const userReceives = rewardAmount - taxDeducted;
-    const objectiveAnswers = m3.q1_shop_match != null ? {
-      q1_shop_match: m3.q1_shop_match,
-      q2_settlement_match: m3.q2_settlement_match,
-      q3_fault_resolved: m3.q3_fault_resolved,
-      q4_warranty_informed: m3.q4_warranty_informed
-    } : null;
-
-    // 旧格式兼容：无 module3 时仍需 rating
-    if (!isNewFormat && !rating) return res.status(400).json(errorResponse('请完成评价必填项'));
-
-    let beforeImages = [];
-    if (order.bidding_id) {
-      const [biddings] = await pool.execute('SELECT report_id FROM biddings WHERE bidding_id = ?', [order.bidding_id]);
-      if (biddings.length > 0) {
-        const [reports] = await pool.execute('SELECT images FROM damage_reports WHERE report_id = ?', [biddings[0].report_id]);
-        if (reports.length > 0 && reports[0].images) {
-          try { beforeImages = typeof reports[0].images === 'string' ? JSON.parse(reports[0].images) : reports[0].images; } catch (_) {}
-        }
-      }
-    }
-
-    const ratingVal = m3.ratings ? (m3.ratings.price_transparency || m3.ratings.service) : rating;
-    const ratingsObj = m3.ratings || ratings;
-    const contentVal = m3.content || content || '';
-
-    // 确保订单有 complexity_level（供 L1 封顶等后续查询使用）
-    if (!order.complexity_level) {
-      await pool.execute('UPDATE orders SET complexity_level = ?, order_tier = ? WHERE order_id = ?', [complexityLevel, orderTier, order_id]);
-    }
-
-    const reviewId = 'REV' + Date.now();
-    await pool.execute(
-      `INSERT INTO reviews (review_id, order_id, shop_id, user_id, type, review_stage, rating,
-       ratings_quality, ratings_price, ratings_service, ratings_speed, ratings_parts,
-       settlement_list_image, completion_images, objective_answers,
-       content, before_images, after_images, is_anonymous, rebate_amount, reward_amount, tax_deducted, rebate_rate, status, created_at)
-       VALUES (?, ?, ?, ?, 1, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NOW())`,
-      [reviewId, order_id, order.shop_id, req.userId,
-       ratingVal, ratingsObj?.quality, ratingsObj?.price, ratingsObj?.service, ratingsObj?.speed, ratingsObj?.parts,
-       settlementImage, JSON.stringify(Array.isArray(completionImages) ? completionImages : []), JSON.stringify(objectiveAnswers || {}),
-       contentVal, JSON.stringify(beforeImages), JSON.stringify(Array.isArray(completionImages) ? completionImages : after_images || []),
-       is_anonymous || false, userReceives, rewardAmount, taxDeducted]
-    );
-
-    if (userReceives > 0) {
-      await pool.execute(
-        'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
-        [userReceives, userReceives, req.userId]
-      );
-      await pool.execute(
-        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
-         VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
-        ['TXN' + Date.now(), req.userId, userReceives, reviewId, orderTier, taxDeducted]
-      );
-    }
-
-    try {
-      await pool.execute(
-        `INSERT INTO review_audit_logs (review_id, audit_type, result, created_at) VALUES (?, 'ai', 'pass', NOW())`,
-        [reviewId]
-      );
-    } catch (_) {}
-
-    res.json(successResponse({
-      review_id: reviewId,
-      reward: { amount: userReceives.toFixed(2), tax_deducted: taxDeducted, stages: orderTier <= 2 ? '100%' : '50%' }
-    }, '评价提交成功'));
+    res.json(successResponse(result.data, '评价提交成功'));
   } catch (error) {
     console.error('提交评价错误:', error);
     res.status(500).json(errorResponse('提交评价失败', 500));
@@ -2882,7 +2062,7 @@ app.get('/api/v1/reviews/:id', authenticateToken, async (req, res) => {
       else if (amount < 20000) orderTier = 3;
       else orderTier = 4;
     }
-    const tierConfig = { 1: { fixed: 10, ratio: 0.01, cap: 30 }, 2: { fixed: 20, ratio: 0.02, cap: 150 }, 3: { fixed: 50, ratio: 0.03, cap: 800 }, 4: { fixed: 100, ratio: 0.04, cap: 2000 } };
+    const tierConfig = { 1: { fixed: 10, ratio: 0.01, cap: 50 }, 2: { fixed: 20, ratio: 0.02, cap: 200 }, 3: { fixed: 50, ratio: 0.03, cap: 800 }, 4: { fixed: 100, ratio: 0.04, cap: 2000 } };
     const cfg = tierConfig[orderTier] || tierConfig[1];
     const totalReward = Math.min(cfg.fixed + amount * cfg.ratio, cfg.cap);
     const followup1m = orderTier === 3 ? (totalReward * 0.5).toFixed(2) : orderTier === 4 ? (totalReward * 0.3).toFixed(2) : '0';
@@ -3208,16 +2388,11 @@ const authenticateAdmin = async (req, res, next) => {
 // 管理端登录
 app.post('/api/v1/admin/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (username === 'admin' && password === 'admin123') {
-      const token = jwt.sign(
-        { userId: 'admin', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json(successResponse({ token, user: { username, role: 'admin' } }, '登录成功'));
+    const result = await adminService.login(pool, req, { JWT_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 401).json(errorResponse(result.error));
     }
-    return res.status(401).json(errorResponse('用户名或密码错误'));
+    res.json(successResponse(result.data, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('登录失败', 500));
   }
@@ -3226,60 +2401,8 @@ app.post('/api/v1/admin/login', async (req, res) => {
 // 服务商列表（原 getMerchants）
 app.get('/api/v1/admin/merchants', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 10, auditStatus, qualificationAuditStatus, keyword } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-
-    let where = 'WHERE 1=1';
-    const params = [];
-
-    if (auditStatus === 'pending') {
-      where += ' AND (mu.status = 0 OR mu.status IS NULL)';
-    } else if (auditStatus === 'approved') {
-      where += ' AND mu.status = 1';
-    }
-    if (qualificationAuditStatus === 'pending') {
-      where += ' AND (s.qualification_status = 0 OR s.qualification_status IS NULL) AND (s.qualification_level IS NOT NULL OR s.technician_certs IS NOT NULL)';
-    } else if (qualificationAuditStatus === 'approved') {
-      where += ' AND s.qualification_status = 1';
-    } else if (qualificationAuditStatus === 'rejected') {
-      where += ' AND s.qualification_status = 2';
-    }
-    if (keyword) {
-      where += ' AND (s.name LIKE ? OR mu.phone LIKE ?)';
-      params.push(`%${keyword}%`, `%${keyword}%`);
-    }
-
-    const [list] = await pool.execute(
-      `SELECT mu.merchant_id as merchantId, mu.shop_id as shopId, mu.phone, mu.status as auditStatus, s.name as merchantName, s.address,
-              s.compliance_rate as complianceRate, s.complaint_rate as complaintRate, s.qualification_level as qualificationLevel,
-              s.technician_certs as technicianCerts, s.certifications as certifications, s.qualification_status as qualificationStatus,
-              s.qualification_audit_reason as qualificationAuditReason, s.qualification_ai_result as qualificationAiResult
-       FROM merchant_users mu
-       LEFT JOIN shops s ON mu.shop_id = s.shop_id
-       ${where}
-       ORDER BY mu.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-
-    const [countRes] = await pool.execute(
-      `SELECT COUNT(*) as total FROM merchant_users mu LEFT JOIN shops s ON mu.shop_id = s.shop_id ${where}`,
-      params
-    );
-
-    const listWithCerts = (list || []).map((row) => {
-      let technicianCerts = row.technicianCerts;
-      if (typeof technicianCerts === 'string') {
-        try {
-          technicianCerts = technicianCerts ? JSON.parse(technicianCerts) : null;
-        } catch (_) {
-          technicianCerts = null;
-        }
-      }
-      return { ...row, technicianCerts };
-    });
-
-    res.json(successResponse({ list: listWithCerts, total: countRes[0].total }));
+    const result = await adminService.getMerchants(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取服务商列表失败:', error);
     res.status(500).json(errorResponse('获取服务商列表失败', 500));
@@ -3289,54 +2412,11 @@ app.get('/api/v1/admin/merchants', authenticateAdmin, async (req, res) => {
 // 资质审核（方案A：注册免审，资质需审核通过方可接单展示）
 app.post('/api/v1/admin/merchants/:id/qualification-audit', authenticateAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { auditStatus, rejectReason } = req.body;
-
-    const [merchants] = await pool.execute(
-      'SELECT shop_id FROM merchant_users WHERE merchant_id = ?',
-      [id]
-    );
-    if (merchants.length === 0) {
-      return res.status(404).json(errorResponse('服务商不存在', 404));
+    const result = await adminService.qualificationAudit(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 404).json(errorResponse(result.error));
     }
-    const shopId = merchants[0].shop_id;
-
-    if (auditStatus === 'approved') {
-      await pool.execute(
-        'UPDATE shops SET qualification_status = 1, qualification_audit_reason = NULL, updated_at = NOW() WHERE shop_id = ?',
-        [shopId]
-      );
-      // 发送资质审核通过消息给服务商
-      try {
-        const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
-        await pool.execute(
-          `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
-           VALUES (?, ?, 'qualification_audit', ?, ?, ?, 0)`,
-          [msgId, id, '资质审核已通过', '恭喜，您的维修资质已审核通过，现可正常接单并在车主端展示。', shopId]
-        );
-      } catch (msgErr) {
-        if (!String(msgErr.message || '').includes('merchant_messages')) console.warn('创建服务商消息失败:', msgErr.message);
-      }
-      res.json(successResponse(null, '资质审核通过'));
-    } else {
-      const reason = String(rejectReason || '').trim() || '资质信息不符合要求，请修改后重新提交';
-      await pool.execute(
-        'UPDATE shops SET qualification_status = 2, qualification_audit_reason = ?, updated_at = NOW() WHERE shop_id = ?',
-        [reason, shopId]
-      );
-      // 发送资质驳回消息给服务商
-      try {
-        const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
-        await pool.execute(
-          `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
-           VALUES (?, ?, 'qualification_audit', ?, ?, ?, 0)`,
-          [msgId, id, '资质审核被驳回', `您的资质审核未通过。原因：${reason}。请修改后重新提交。`, shopId]
-        );
-      } catch (msgErr) {
-        if (!String(msgErr.message || '').includes('merchant_messages')) console.warn('创建服务商消息失败:', msgErr.message);
-      }
-      res.json(successResponse(null, '已驳回，服务商可修改后重新提交'));
-    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('资质审核失败:', error);
     res.status(500).json(errorResponse('审核失败', 500));
@@ -3346,13 +2426,8 @@ app.post('/api/v1/admin/merchants/:id/qualification-audit', authenticateAdmin, a
 // 服务商审核（保留兼容，现注册免审，此接口主要用于历史数据）
 app.post('/api/v1/admin/merchants/:id/audit', authenticateAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { auditStatus } = req.body;
-    await pool.execute(
-      'UPDATE merchant_users SET status = ? WHERE merchant_id = ?',
-      [auditStatus === 'approved' ? 1 : 0, id]
-    );
-    res.json(successResponse(null, '审核成功'));
+    const result = await adminService.merchantAudit(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('审核失败', 500));
   }
@@ -3361,57 +2436,8 @@ app.post('/api/v1/admin/merchants/:id/audit', authenticateAdmin, async (req, res
 // 订单列表（原 getAllOrders）
 app.get('/api/v1/admin/orders', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, orderNo, status, ownerId, merchantId, startDate, endDate } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-
-    let where = 'WHERE 1=1';
-    const params = [];
-
-    if (orderNo) {
-      where += ' AND o.order_id = ?';
-      params.push(orderNo);
-    }
-    if (status !== undefined && status !== '') {
-      where += ' AND o.status = ?';
-      params.push(status);
-    }
-    if (ownerId) {
-      where += ' AND o.user_id = ?';
-      params.push(ownerId);
-    }
-    if (merchantId) {
-      where += ' AND o.shop_id = ?';
-      params.push(merchantId);
-    }
-    if (startDate) {
-      where += ' AND DATE(o.created_at) >= ?';
-      params.push(startDate);
-    }
-    if (endDate) {
-      where += ' AND DATE(o.created_at) <= ?';
-      params.push(endDate);
-    }
-
-    const [list] = await pool.execute(
-      `SELECT o.order_id as orderNo, o.status, o.quoted_amount as orderAmount, o.created_at as createTime,
-              u.nickname as ownerName, s.name as merchantName,
-              o.order_tier as orderTier, o.complexity_level as complexityLevel, o.reward_preview as rewardPreview,
-              o.commission_rate as commissionRate, o.commission as commission
-       FROM orders o
-       LEFT JOIN users u ON o.user_id = u.user_id
-       LEFT JOIN shops s ON o.shop_id = s.shop_id
-       ${where}
-       ORDER BY o.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-
-    const [countRes] = await pool.execute(
-      `SELECT COUNT(*) as total FROM orders o ${where}`,
-      params
-    );
-
-    res.json(successResponse({ list, total: countRes[0].total }));
+    const result = await adminService.getOrders(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取订单列表失败:', error);
     res.status(500).json(errorResponse('获取订单列表失败', 500));
@@ -3421,96 +2447,11 @@ app.get('/api/v1/admin/orders', authenticateAdmin, async (req, res) => {
 // 订单详情（原 getOrderDetail）
 app.get('/api/v1/admin/orders/:orderNo', authenticateAdmin, async (req, res) => {
   try {
-    const { orderNo } = req.params;
-    const [orders] = await pool.execute(
-      `SELECT o.*, u.nickname as ownerName, u.phone as ownerPhone, s.name as shopName
-       FROM orders o
-       LEFT JOIN users u ON o.user_id = u.user_id
-       LEFT JOIN shops s ON o.shop_id = s.shop_id
-       WHERE o.order_id = ?`,
-      [orderNo]
-    );
-
-    // 查询奖励金/返现明细（transactions type=rebate）
-    const [rebateRows] = await pool.execute(
-      `SELECT t.transaction_id, t.amount, t.reward_tier as rewardTier, t.review_stage as reviewStage, t.tax_deducted as taxDeducted, t.created_at
-       FROM transactions t
-       WHERE t.type = 'rebate' AND t.related_id = ?
-       ORDER BY t.created_at`,
-      [orderNo]
-    );
-    if (orders.length === 0) {
-      return res.status(404).json(errorResponse('订单不存在', 404));
+    const result = await adminService.getOrderDetail(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 404).json(errorResponse(result.error));
     }
-    const order = orders[0];
-    const [quotes] = await pool.execute(
-      `SELECT q.*, s.name as merchantName FROM quotes q
-       LEFT JOIN shops s ON q.shop_id = s.shop_id
-       WHERE q.bidding_id = (SELECT bidding_id FROM orders WHERE order_id = ?)`,
-      [orderNo]
-    );
-
-    let vehicleInfo = {};
-    if (order.bidding_id) {
-      const [biddings] = await pool.execute(
-        'SELECT vehicle_info FROM biddings WHERE bidding_id = ?',
-        [order.bidding_id]
-      );
-      if (biddings.length > 0 && biddings[0].vehicle_info) {
-        try {
-          vehicleInfo = typeof biddings[0].vehicle_info === 'string'
-            ? JSON.parse(biddings[0].vehicle_info) : biddings[0].vehicle_info;
-        } catch (_) {}
-      }
-    }
-
-    const orderDetail = {
-      order: {
-        orderNo: order.order_id,
-        status: order.status,
-        quotedAmount: order.quoted_amount,
-        actualAmount: order.actual_amount,
-        orderTier: order.order_tier,
-        complexityLevel: order.complexity_level,
-        rewardPreview: order.reward_preview,
-        commissionRate: order.commission_rate,
-        commission: order.commission,
-        reviewStageStatus: order.review_stage_status,
-        createdAt: order.created_at,
-        createTime: order.created_at,
-        vehicleInfo: {
-          brand: vehicleInfo.brand,
-          model: vehicleInfo.model,
-          plate_number: vehicleInfo.plate_number,
-          plateNumber: vehicleInfo.plate_number
-        }
-      },
-      ownerInfo: { nickname: order.ownerName, nickName: order.ownerName, phone: order.ownerPhone },
-      quotes: quotes.map(q => ({
-        quote_id: q.quote_id,
-        merchantName: q.merchantName,
-        quoteType: 'non-oem',
-        amount: q.amount,
-        submitTime: q.created_at,
-        nonOemQuote: { totalAmount: q.amount, partsCost: q.amount, laborCost: 0, materialCost: 0 },
-      })),
-      repairOrder: null,
-      selectedMerchantInfo: { name: order.shopName },
-      refunds: rebateRows.map(r => ({
-        transaction_id: r.transaction_id,
-        amount: r.amount,
-        refundAmount: r.amount,
-        reward_tier: r.rewardTier,
-        review_stage: r.reviewStage,
-        tax_deducted: r.taxDeducted,
-        createTime: r.created_at,
-        type: 'order',
-      })),
-      complaints: [],
-      review: null,
-      settlementProofs: [],
-    };
-    res.json(successResponse(orderDetail));
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取订单详情失败:', error);
     res.status(500).json(errorResponse('获取订单详情失败', 500));
@@ -3520,99 +2461,44 @@ app.get('/api/v1/admin/orders/:orderNo', authenticateAdmin, async (req, res) => 
 // 审核报价（原 auditQuote）
 app.post('/api/v1/admin/orders/:orderNo/audit-quote', authenticateAdmin, async (req, res) => {
   try {
-    res.json(successResponse(null, '审核成功'));
+    const result = await adminService.auditQuote(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('审核失败', 500));
+  }
+});
+
+// 撤单申请列表（status=3 已提交人工）
+app.get('/api/v1/admin/order-cancel-requests', authenticateAdmin, async (req, res) => {
+  try {
+    const list = await orderService.listCancelRequestsForAdmin(pool, 3);
+    res.json(successResponse({ list }));
+  } catch (error) {
+    console.error('获取撤单申请列表失败:', error);
+    res.status(500).json(errorResponse('获取失败', 500));
+  }
+});
+
+// 人工处理撤单申请（同意/拒绝）
+app.post('/api/v1/admin/order-cancel-requests/:id/resolve', authenticateAdmin, async (req, res) => {
+  try {
+    const approve = req.body && req.body.approve === true;
+    const result = await orderService.resolveCancelRequestByAdmin(pool, req.params.id, approve);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, approve ? '已同意撤单' : '已拒绝'));
+  } catch (error) {
+    console.error('人工处理撤单失败:', error);
+    res.status(500).json(errorResponse('处理失败', 500));
   }
 });
 
 // 统计数据（原 getStatistics）
 app.get('/api/v1/admin/statistics', authenticateAdmin, async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const [userCount] = await pool.execute('SELECT COUNT(*) as c FROM users WHERE status = 1');
-    const [shopCount] = await pool.execute('SELECT COUNT(*) as c FROM shops WHERE status = 1');
-    const [orderCount] = await pool.execute('SELECT COUNT(*) as c FROM orders');
-    const [orderAmount] = await pool.execute('SELECT COALESCE(SUM(quoted_amount), 0) as total FROM orders WHERE status = 3');
-    const [completedCount] = await pool.execute('SELECT COUNT(*) as c FROM orders WHERE status = 3');
-    // 今日订单（按创建时间）
-    const [todayOrders] = await pool.execute(
-      "SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) = CURDATE()"
-    );
-    // 今日成交额（今日完成的订单金额，completed_at 为空时用 updated_at）
-    const [todayAmount] = await pool.execute(
-      "SELECT COALESCE(SUM(quoted_amount), 0) as total FROM orders WHERE status = 3 AND DATE(COALESCE(completed_at, updated_at)) = CURDATE()"
-    );
-
-    let monthlyWhere = '';
-    const monthlyParams = [];
-    if (startDate) {
-      monthlyWhere += ' AND DATE(created_at) >= ?';
-      monthlyParams.push(startDate);
-    }
-    if (endDate) {
-      monthlyWhere += ' AND DATE(created_at) <= ?';
-      monthlyParams.push(endDate);
-    }
-
-    const [monthlyRows] = await pool.execute(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count
-       FROM orders WHERE 1=1 ${monthlyWhere}
-       GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-       ORDER BY month`,
-      monthlyParams
-    );
-
-    const monthlyOrders = {};
-    monthlyRows.forEach(r => { monthlyOrders[r.month] = r.count; });
-
-    const total = orderCount[0].c;
-    const completed = completedCount[0].c;
-    const completionRate = total > 0 ? ((completed / total) * 100).toFixed(2) : 0;
-
-    // 奖励金支出总额（transactions type=rebate）
-    const [rewardTotalRow] = await pool.execute(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'rebate' AND amount > 0"
-    );
-    const rewardTotal = parseFloat(rewardTotalRow[0]?.total || 0);
-
-    // 奖励金按订单分级分布
-    const [rewardByTier] = await pool.execute(
-      `SELECT COALESCE(reward_tier, 0) as tier, SUM(amount) as total
-       FROM transactions WHERE type = 'rebate' AND amount > 0
-       GROUP BY reward_tier`
-    );
-    const rewardDistributionByTier = {};
-    const tierNames = { 0: '未分级', 1: '一级', 2: '二级', 3: '三级', 4: '四级' };
-    rewardByTier.forEach(r => {
-      rewardDistributionByTier[tierNames[r.tier] || `第${r.tier}级`] = parseFloat(r.total || 0);
-    });
-
-    // 奖励金按评价阶段分布
-    const [rewardByStage] = await pool.execute(
-      `SELECT COALESCE(review_stage, 'main') as stage, SUM(amount) as total
-       FROM transactions WHERE type = 'rebate' AND amount > 0
-       GROUP BY review_stage`
-    );
-    const rewardDistributionByStage = {};
-    const stageNames = { main: '主评价', '1m': '1个月追评', '3m': '3个月追评' };
-    rewardByStage.forEach(r => {
-      rewardDistributionByStage[stageNames[r.stage] || r.stage || '其他'] = parseFloat(r.total || 0);
-    });
-
-    res.json(successResponse({
-      totalUsers: userCount[0].c,
-      totalMerchants: shopCount[0].c,
-      totalOrders: total,
-      totalOrderAmount: parseFloat(orderAmount[0].total),
-      todayOrders: todayOrders[0].c,
-      todayAmount: parseFloat(todayAmount[0]?.total || 0),
-      completionRate: parseFloat(completionRate),
-      monthlyOrders,
-      rewardTotal,
-      rewardDistributionByTier,
-      rewardDistributionByStage,
-    }));
+    const result = await adminService.getStatistics(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取统计数据失败:', error);
     res.status(500).json(errorResponse('获取统计数据失败', 500));
@@ -3622,35 +2508,8 @@ app.get('/api/v1/admin/statistics', authenticateAdmin, async (req, res) => {
 // 结算数据（原 getSettlements）
 app.get('/api/v1/admin/settlements', authenticateAdmin, async (req, res) => {
   try {
-    const [orders] = await pool.execute(
-      `SELECT o.order_id as orderNo, s.name as merchantName, o.quoted_amount as orderAmount,
-              o.commission as commission, o.completed_at as settlementTime
-       FROM orders o
-       LEFT JOIN shops s ON o.shop_id = s.shop_id
-       WHERE o.status = 3 AND o.completed_at IS NOT NULL
-       ORDER BY o.completed_at DESC LIMIT 100`
-    );
-    const [refunds] = await pool.execute(
-      `SELECT t.transaction_id, o.order_id as orderNo, u.nickname as ownerName,
-              t.amount as refundAmount, t.created_at as arrivalTime,
-              t.reward_tier as rewardTier, t.review_stage as reviewStage, t.tax_deducted as taxDeducted
-       FROM transactions t
-       LEFT JOIN orders o ON t.related_id = o.order_id
-       LEFT JOIN users u ON t.user_id = u.user_id
-       WHERE t.type = 'rebate' AND t.amount > 0
-       ORDER BY t.created_at DESC LIMIT 50`
-    );
-    res.json(successResponse({
-      settlements: orders,
-      refunds: refunds.map(r => ({
-        ...r,
-        refundType: 'order',
-        reward_tier: r.rewardTier,
-        review_stage: r.reviewStage,
-        tax_deducted: r.taxDeducted,
-      })),
-      deposits: [],
-    }));
+    const result = await adminService.getSettlements(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取结算数据失败:', error);
     res.status(500).json(errorResponse('获取结算数据失败', 500));
@@ -3659,20 +2518,29 @@ app.get('/api/v1/admin/settlements', authenticateAdmin, async (req, res) => {
 
 // 投诉列表（原 getComplaints）- 无对应表时返回空
 app.get('/api/v1/admin/complaints', authenticateAdmin, async (req, res) => {
-  res.json(successResponse([]));
+  try {
+    const result = await adminService.getComplaints(pool, req);
+    res.json(successResponse(result.data));
+  } catch (error) {
+    res.status(500).json(errorResponse('获取投诉列表失败', 500));
+  }
 });
 
 // 更新投诉（原 updateData complaints）
 app.put('/api/v1/admin/complaints/:id', authenticateAdmin, async (req, res) => {
-  res.json(successResponse(null, '处理成功'));
+  try {
+    const result = await adminService.putComplaint(pool, req);
+    res.json(successResponse(null, result.message));
+  } catch (error) {
+    res.status(500).json(errorResponse('处理失败', 500));
+  }
 });
 
 // 系统配置查询（原 queryData system_config）
 app.get('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT `key`, `value` FROM settings');
-    const configList = rows.map(r => ({ key: r.key, value: r.value }));
-    res.json(successResponse(configList));
+    const result = await adminService.getConfig(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取配置失败', 500));
   }
@@ -3681,13 +2549,11 @@ app.get('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
 // 系统配置更新（原 updateData/addData system_config）
 app.put('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
   try {
-    const { key, value } = req.body;
-    if (!key) return res.status(400).json(errorResponse('key 不能为空'));
-    await pool.execute(
-      'INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
-      [key, String(value), String(value)]
-    );
-    res.json(successResponse(null, '保存成功'));
+    const result = await adminService.putConfig(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('保存配置失败', 500));
   }
@@ -3696,16 +2562,8 @@ app.put('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
 // 规则配置批量保存（RuleConfig 专用）
 app.post('/api/v1/admin/config/batch', authenticateAdmin, async (req, res) => {
   try {
-    const items = req.body.items || [];
-    for (const item of items) {
-      if (item.key) {
-        await pool.execute(
-          'INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
-          [item.key, String(item.value), String(item.value)]
-        );
-      }
-    }
-    res.json(successResponse(null, '保存成功'));
+    const result = await adminService.batchConfig(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('保存配置失败', 500));
   }
@@ -3714,10 +2572,8 @@ app.post('/api/v1/admin/config/batch', authenticateAdmin, async (req, res) => {
 // ===================== A10 奖励金规则配置 =====================
 app.get('/api/v1/admin/reward-rules/complexity-levels', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT id, `level`, project_type as projectType, fixed_reward as fixedReward, float_ratio as floatRatio, cap_amount as capAmount FROM repair_complexity_levels ORDER BY `level`'
-    );
-    res.json(successResponse(rows));
+    const result = await adminService.getComplexityLevels(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取复杂度等级失败:', error);
     res.status(500).json(errorResponse('获取复杂度等级失败', 500));
@@ -3726,13 +2582,11 @@ app.get('/api/v1/admin/reward-rules/complexity-levels', authenticateAdmin, async
 
 app.post('/api/v1/admin/reward-rules/complexity-levels', authenticateAdmin, async (req, res) => {
   try {
-    const { level, projectType, fixedReward, floatRatio, capAmount } = req.body;
-    if (!level || !projectType) return res.status(400).json(errorResponse('level、projectType 必填'));
-    await pool.execute(
-      'INSERT INTO repair_complexity_levels (`level`, project_type, fixed_reward, float_ratio, cap_amount) VALUES (?, ?, ?, ?, ?)',
-      [level, projectType, fixedReward || 0, floatRatio || 0, capAmount || 0]
-    );
-    res.json(successResponse(null, '添加成功'));
+    const result = await adminService.postComplexityLevel(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('添加复杂度等级失败:', error);
     res.status(500).json(errorResponse('添加失败', 500));
@@ -3741,13 +2595,8 @@ app.post('/api/v1/admin/reward-rules/complexity-levels', authenticateAdmin, asyn
 
 app.put('/api/v1/admin/reward-rules/complexity-levels/:id', authenticateAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { level, projectType, fixedReward, floatRatio, capAmount } = req.body;
-    await pool.execute(
-      'UPDATE repair_complexity_levels SET `level`=COALESCE(?,`level`), project_type=COALESCE(?,project_type), fixed_reward=COALESCE(?,fixed_reward), float_ratio=COALESCE(?,float_ratio), cap_amount=COALESCE(?,cap_amount) WHERE id=?',
-      [level, projectType, fixedReward, floatRatio, capAmount, id]
-    );
-    res.json(successResponse(null, '更新成功'));
+    const result = await adminService.putComplexityLevel(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('更新复杂度等级失败:', error);
     res.status(500).json(errorResponse('更新失败', 500));
@@ -3756,8 +2605,8 @@ app.put('/api/v1/admin/reward-rules/complexity-levels/:id', authenticateAdmin, a
 
 app.delete('/api/v1/admin/reward-rules/complexity-levels/:id', authenticateAdmin, async (req, res) => {
   try {
-    await pool.execute('DELETE FROM repair_complexity_levels WHERE id = ?', [req.params.id]);
-    res.json(successResponse(null, '删除成功'));
+    const result = await adminService.deleteComplexityLevel(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('删除复杂度等级失败:', error);
     res.status(500).json(errorResponse('删除失败', 500));
@@ -3766,10 +2615,8 @@ app.delete('/api/v1/admin/reward-rules/complexity-levels/:id', authenticateAdmin
 
 app.get('/api/v1/admin/reward-rules/rules', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT id, rule_key as ruleKey, rule_value as ruleValue, description FROM reward_rules');
-    const rules = {};
-    rows.forEach(r => { rules[r.ruleKey] = { ...r, value: r.ruleValue ? (typeof r.ruleValue === 'string' ? JSON.parse(r.ruleValue || '{}') : r.ruleValue) : {} }; });
-    res.json(successResponse(rows));
+    const result = await adminService.getRewardRules(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取奖励金规则失败:', error);
     res.status(500).json(errorResponse('获取奖励金规则失败', 500));
@@ -3778,14 +2625,11 @@ app.get('/api/v1/admin/reward-rules/rules', authenticateAdmin, async (req, res) 
 
 app.post('/api/v1/admin/reward-rules/rules', authenticateAdmin, async (req, res) => {
   try {
-    const { ruleKey, ruleValue, description } = req.body;
-    if (!ruleKey) return res.status(400).json(errorResponse('ruleKey 必填'));
-    const val = typeof ruleValue === 'object' ? JSON.stringify(ruleValue) : String(ruleValue || '{}');
-    await pool.execute(
-      'INSERT INTO reward_rules (rule_key, rule_value, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE rule_value=VALUES(rule_value), description=VALUES(description)',
-      [ruleKey, val, description || '']
-    );
-    res.json(successResponse(null, '保存成功'));
+    const result = await adminService.postRewardRule(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('保存奖励金规则失败:', error);
     res.status(500).json(errorResponse('保存失败', 500));
@@ -3795,48 +2639,8 @@ app.post('/api/v1/admin/reward-rules/rules', authenticateAdmin, async (req, res)
 // ===================== A11 评价审核与人工复核 =====================
 app.get('/api/v1/admin/review-audit/list', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, status, pool } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    let where = 'WHERE 1=1';
-    const params = [];
-    // 必审池：L3-L4、奖励金>800
-    if (pool === 'mandatory') {
-      where += ` AND (
-        o.complexity_level IN ('L3','L4')
-        OR COALESCE(r.reward_amount, r.rebate_amount, 0) > 800
-      )`;
-    }
-    // 抽检池：L1-L2（按 review_id 取模实现约 5% 抽检）
-    if (pool === 'sample') {
-      const sampleRate = 5;
-      where += ` AND o.complexity_level IN ('L1','L2') AND (CRC32(r.review_id) % 100) < ?`;
-      params.push(sampleRate);
-    }
-    const [list] = await pool.execute(
-      `SELECT r.review_id as reviewId, r.order_id as orderId, r.type, r.review_stage as reviewStage, r.rating, r.content, r.created_at as createTime,
-              r.reward_amount as rewardAmount, o.complexity_level as complexityLevel,
-              rl.result as auditResult, rl.missing_items as missingItems, rl.audit_type as auditType
-       FROM reviews r
-       LEFT JOIN orders o ON r.order_id = o.order_id
-       LEFT JOIN (
-         SELECT r1.review_id, r1.result, r1.missing_items, r1.audit_type
-         FROM review_audit_logs r1
-         INNER JOIN (SELECT review_id, MAX(id) as max_id FROM review_audit_logs GROUP BY review_id) r2 ON r1.review_id = r2.review_id AND r1.id = r2.max_id
-       ) rl ON r.review_id = rl.review_id
-       ${where}
-       ORDER BY r.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-    const [countRes] = await pool.execute(
-      `SELECT COUNT(*) as total FROM reviews r LEFT JOIN orders o ON r.order_id = o.order_id ${where}`,
-      params
-    );
-    let resultList = list;
-    if (status === 'rejected') {
-      resultList = list.filter(r => r.auditResult === 'reject');
-    }
-    res.json(successResponse({ list: resultList, total: status === 'rejected' ? resultList.length : (countRes[0]?.total || 0) }));
+    const result = await adminService.getReviewAuditList(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取评价审核列表失败:', error);
     res.status(500).json(errorResponse('获取评价审核列表失败', 500));
@@ -3845,14 +2649,11 @@ app.get('/api/v1/admin/review-audit/list', authenticateAdmin, async (req, res) =
 
 app.post('/api/v1/admin/review-audit/:reviewId/manual', authenticateAdmin, async (req, res) => {
   try {
-    const { reviewId } = req.params;
-    const { result, missingItems } = req.body;
-    if (!result || !['pass', 'reject'].includes(result)) return res.status(400).json(errorResponse('result 必填且为 pass 或 reject'));
-    await pool.execute(
-      'INSERT INTO review_audit_logs (review_id, audit_type, result, missing_items, operator_id) VALUES (?, ?, ?, ?, ?)',
-      [reviewId, 'manual', result, missingItems ? JSON.stringify(missingItems) : null, req.adminUser || 'admin']
-    );
-    res.json(successResponse(null, '复核完成'));
+    const result = await adminService.postReviewAuditManual(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('人工复核失败:', error);
     res.status(500).json(errorResponse('复核失败', 500));
@@ -3862,27 +2663,8 @@ app.post('/api/v1/admin/review-audit/:reviewId/manual', authenticateAdmin, async
 // ===================== A12 破格升级审核 =====================
 app.get('/api/v1/admin/complexity-upgrade/list', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, status } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    let where = 'WHERE 1=1';
-    const params = [];
-    if (status !== undefined && status !== '') {
-      where += ' AND cur.status = ?';
-      params.push(parseInt(status));
-    }
-    const [list] = await pool.execute(
-      `SELECT cur.id, cur.request_id as requestId, cur.order_id as orderId, cur.user_id as userId, cur.current_level as currentLevel,
-              cur.requested_level as requestedLevel, cur.reason, cur.status, cur.created_at as createTime,
-              u.nickname as userName
-       FROM complexity_upgrade_requests cur
-       LEFT JOIN users u ON cur.user_id = u.user_id
-       ${where}
-       ORDER BY cur.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-    const [countRes] = await pool.execute(`SELECT COUNT(*) as total FROM complexity_upgrade_requests cur ${where}`, params);
-    res.json(successResponse({ list, total: countRes[0]?.total || 0 }));
+    const result = await adminService.getComplexityUpgradeList(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取破格升级列表失败:', error);
     res.status(500).json(errorResponse('获取破格升级列表失败', 500));
@@ -3891,14 +2673,11 @@ app.get('/api/v1/admin/complexity-upgrade/list', authenticateAdmin, async (req, 
 
 app.post('/api/v1/admin/complexity-upgrade/:requestId/audit', authenticateAdmin, async (req, res) => {
   try {
-    const { requestId } = req.params;
-    const { status, auditNote } = req.body;
-    if (![1, 2].includes(parseInt(status))) return res.status(400).json(errorResponse('status 需为 1(通过) 或 2(拒绝)'));
-    await pool.execute(
-      'UPDATE complexity_upgrade_requests SET status = ?, auditor_id = ?, audited_at = NOW() WHERE request_id = ?',
-      [parseInt(status), req.adminUser || 'admin', requestId]
-    );
-    res.json(successResponse(null, '审核完成'));
+    const result = await adminService.postComplexityUpgradeAudit(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('破格升级审核失败:', error);
     res.status(500).json(errorResponse('审核失败', 500));
@@ -3908,12 +2687,9 @@ app.post('/api/v1/admin/complexity-upgrade/:requestId/audit', authenticateAdmin,
 // ===================== 防刷管理（黑名单、防刷配置） =====================
 app.get('/api/v1/admin/antifraud/blacklist', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT id, blacklist_type as type, blacklist_value as value, reason, created_at as createTime FROM blacklist ORDER BY id DESC'
-    );
-    res.json(successResponse(rows));
+    const result = await adminService.getBlacklist(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.json(successResponse([]));
     console.error('获取黑名单失败:', error);
     res.status(500).json(errorResponse('获取黑名单失败', 500));
   }
@@ -3921,25 +2697,12 @@ app.get('/api/v1/admin/antifraud/blacklist', authenticateAdmin, async (req, res)
 
 app.post('/api/v1/admin/antifraud/blacklist', authenticateAdmin, async (req, res) => {
   try {
-    const { type, value, reason } = req.body;
-    if (!type || !value) return res.status(400).json(errorResponse('type、value 必填'));
-    const validTypes = ['user_id', 'phone', 'device_id', 'ip', 'id_card'];
-    if (!validTypes.includes(type)) return res.status(400).json(errorResponse('type 需为 user_id/phone/device_id/ip/id_card'));
-    await pool.execute(
-      'INSERT INTO blacklist (blacklist_type, blacklist_value, reason) VALUES (?, ?, ?)',
-      [type, String(value).trim(), reason || null]
-    );
-    await antifraud.writeAuditLog(pool, {
-      logType: 'blacklist',
-      action: 'create',
-      targetTable: 'blacklist',
-      newValue: { type, value: String(value).trim(), reason },
-      operatorId: req.adminUserId || 'admin',
-      ip: req.ip || req.headers['x-forwarded-for'],
-    });
-    res.json(successResponse(null, '添加成功'));
+    const result = await adminService.postBlacklist(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.status(500).json(errorResponse('请先执行防刷迁移脚本 migration-20260215-phase2-antifraud.sql'));
     console.error('添加黑名单失败:', error);
     res.status(500).json(errorResponse('添加失败', 500));
   }
@@ -3947,30 +2710,20 @@ app.post('/api/v1/admin/antifraud/blacklist', authenticateAdmin, async (req, res
 
 app.delete('/api/v1/admin/antifraud/blacklist/:id', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT blacklist_type, blacklist_value FROM blacklist WHERE id = ?', [req.params.id]);
-    await pool.execute('DELETE FROM blacklist WHERE id = ?', [req.params.id]);
-    if (rows.length > 0) {
-      await antifraud.writeAuditLog(pool, {
-        logType: 'blacklist',
-        action: 'delete',
-        targetTable: 'blacklist',
-        targetId: req.params.id,
-        oldValue: rows[0],
-        operatorId: req.adminUserId || 'admin',
-        ip: req.ip || req.headers['x-forwarded-for'],
-      });
+    const result = await adminService.deleteBlacklist(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 500).json(errorResponse(result.error));
     }
-    res.json(successResponse(null, '删除成功'));
+    res.json(successResponse(null, result.message));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.status(500).json(errorResponse('请先执行防刷迁移脚本'));
     res.status(500).json(errorResponse('删除失败', 500));
   }
 });
 
 app.get('/api/v1/admin/antifraud/config', authenticateAdmin, async (req, res) => {
   try {
-    const cfg = await antifraud.getAntifraudConfig(pool);
-    res.json(successResponse(cfg));
+    const result = await adminService.getAntifraudConfig(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取配置失败', 500));
   }
@@ -3978,32 +2731,8 @@ app.get('/api/v1/admin/antifraud/config', authenticateAdmin, async (req, res) =>
 
 app.put('/api/v1/admin/antifraud/config', authenticateAdmin, async (req, res) => {
   try {
-    const mapping = {
-      orderSameShopDays: 'antifraud_order_same_shop_days',
-      orderSameShopMax: 'antifraud_order_same_shop_max',
-      newUserDays: 'antifraud_new_user_days',
-      newUserOrderMax: 'antifraud_new_user_order_max',
-      l1MonthlyCap: 'antifraud_l1_monthly_cap',
-      l1l2FreezeDays: 'antifraud_l1l2_freeze_days',
-      l1l2SampleRate: 'antifraud_l1l2_sample_rate',
-    };
-    for (const [camel, key] of Object.entries(mapping)) {
-      if (req.body[camel] !== undefined) {
-        await pool.execute(
-          'INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
-          [key, String(req.body[camel]), String(req.body[camel])]
-        );
-      }
-    }
-    await antifraud.writeAuditLog(pool, {
-      logType: 'config',
-      action: 'update',
-      targetTable: 'settings',
-      newValue: req.body,
-      operatorId: req.adminUserId || 'admin',
-      ip: req.ip || req.headers['x-forwarded-for'],
-    });
-    res.json(successResponse(null, '保存成功'));
+    const result = await adminService.putAntifraudConfig(pool, req);
+    res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('保存失败', 500));
   }
@@ -4012,84 +2741,33 @@ app.put('/api/v1/admin/antifraud/config', authenticateAdmin, async (req, res) =>
 // ===================== 违规处理与审计 =====================
 app.get('/api/v1/admin/antifraud/violations', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, targetType, level, status } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    let where = 'WHERE 1=1';
-    const params = [];
-    if (targetType) { where += ' AND target_type = ?'; params.push(targetType); }
-    if (level) { where += ' AND violation_level = ?'; params.push(parseInt(level)); }
-    if (status !== undefined && status !== '') { where += ' AND status = ?'; params.push(parseInt(status)); }
-    const [list] = await pool.execute(
-      `SELECT record_id as recordId, target_type as targetType, target_id as targetId, violation_level as level,
-              violation_type as violationType, related_order_id as orderId, related_review_id as reviewId,
-              description, penalty_applied as penaltyApplied, status, created_at as createTime
-       FROM violation_records ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-    const [countRes] = await pool.execute(`SELECT COUNT(*) as total FROM violation_records ${where}`, params);
-    res.json(successResponse({ list, total: countRes[0]?.total || 0 }));
+    const result = await adminService.getViolations(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.json(successResponse({ list: [], total: 0 }));
+    console.error('获取违规列表失败:', error);
     res.status(500).json(errorResponse('获取违规列表失败', 500));
   }
 });
 
 app.post('/api/v1/admin/antifraud/violations', authenticateAdmin, async (req, res) => {
   try {
-    const { targetType, targetId, level, violationType, orderId, reviewId, description, penalty } = req.body;
-    if (!targetType || !targetId || !level) return res.status(400).json(errorResponse('targetType、targetId、level 必填'));
-    const recordId = 'VIO' + Date.now();
-    await pool.execute(
-      `INSERT INTO violation_records (record_id, target_type, target_id, violation_level, violation_type,
-       related_order_id, related_review_id, description, penalty_applied, status, operator_id, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())`,
-      [recordId, targetType, targetId, parseInt(level), violationType || null, orderId || null, reviewId || null,
-       description || null, penalty ? JSON.stringify(penalty) : null, req.adminUserId || 'admin']
-    );
-    if (targetType === 'user' && [3, 4].includes(parseInt(level))) {
-      await pool.execute('UPDATE users SET status = 0 WHERE user_id = ?', [targetId]);
-      try {
-        await pool.execute(
-          'INSERT IGNORE INTO blacklist (blacklist_type, blacklist_value, reason) VALUES (?, ?, ?)',
-          ['user_id', targetId, `违规${level}级处罚`]
-        );
-      } catch (_) {}
+    const result = await adminService.postViolation(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    await antifraud.writeAuditLog(pool, {
-      logType: 'violation',
-      action: 'create',
-      targetTable: 'violation_records',
-      targetId: recordId,
-      newValue: { targetType, targetId, level, description, penalty },
-      operatorId: req.adminUserId || 'admin',
-      ip: req.ip || req.headers['x-forwarded-for'],
-    });
-    res.json(successResponse({ recordId }, '处理完成'));
+    res.json(successResponse(result.data, result.message));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.status(500).json(errorResponse('请先执行 migration-20260215-phase3-antifraud.sql'));
+    console.error('违规处理失败:', error);
     res.status(500).json(errorResponse('处理失败', 500));
   }
 });
 
 app.get('/api/v1/admin/antifraud/audit-logs', authenticateAdmin, async (req, res) => {
   try {
-    const { page = 1, pageSize = 50, logType, startDate, endDate } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    let where = 'WHERE 1=1';
-    const params = [];
-    if (logType) { where += ' AND log_type = ?'; params.push(logType); }
-    if (startDate) { where += ' AND created_at >= ?'; params.push(startDate); }
-    if (endDate) { where += ' AND created_at <= ?'; params.push(endDate + ' 23:59:59'); }
-    const [list] = await pool.execute(
-      `SELECT id, log_type as logType, action, target_table as targetTable, target_id as targetId,
-              operator_id as operatorId, ip, created_at as createTime
-       FROM audit_logs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
-    );
-    const [countRes] = await pool.execute(`SELECT COUNT(*) as total FROM audit_logs ${where}`, params);
-    res.json(successResponse({ list, total: countRes[0]?.total || 0 }));
+    const result = await adminService.getAuditLogs(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
-    if (error.code === 'ER_NO_SUCH_TABLE') return res.json(successResponse({ list: [], total: 0 }));
+    console.error('获取审计日志失败:', error);
     res.status(500).json(errorResponse('获取审计日志失败', 500));
   }
 });
@@ -4097,36 +2775,8 @@ app.get('/api/v1/admin/antifraud/audit-logs', authenticateAdmin, async (req, res
 // ===================== 防刷数据报表 =====================
 app.get('/api/v1/admin/antifraud/statistics', authenticateAdmin, async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const end = endDate || new Date().toISOString().slice(0, 10);
-
-    const [orderCount] = await pool.execute(
-      'SELECT COUNT(*) as c FROM orders WHERE created_at >= ? AND created_at <= ?',
-      [start, end + ' 23:59:59']
-    );
-    const [reviewCount] = await pool.execute(
-      'SELECT COUNT(*) as c FROM reviews WHERE created_at >= ? AND created_at <= ? AND type = 1',
-      [start, end + ' 23:59:59']
-    );
-    const [violationCount] = await pool.execute(
-      'SELECT COUNT(*) as c FROM violation_records WHERE created_at >= ? AND created_at <= ?',
-      [start, end + ' 23:59:59']
-    ).catch(() => [{ c: 0 }]);
-    const [blacklistCount] = await pool.execute('SELECT COUNT(*) as c FROM blacklist').catch(() => [{ c: 0 }]);
-    const [rewardTotal] = await pool.execute(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'rebate' AND created_at >= ? AND created_at <= ?`,
-      [start, end + ' 23:59:59']
-    );
-
-    res.json(successResponse({
-      orderCount: orderCount[0]?.c || 0,
-      reviewCount: reviewCount[0]?.c || 0,
-      violationCount: violationCount[0]?.c || 0,
-      blacklistCount: blacklistCount[0]?.c || 0,
-      rewardTotal: parseFloat(rewardTotal[0]?.total || 0),
-      dateRange: { start, end },
-    }));
+    const result = await adminService.getAntifraudStatistics(pool, req);
+    res.json(successResponse(result.data));
   } catch (error) {
     res.status(500).json(errorResponse('获取防刷统计失败', 500));
   }
@@ -4152,7 +2802,7 @@ if (process.env.NODE_ENV !== 'production') {
         );
         if (rows.length === 0) return res.status(401).json(errorResponse('手机号或密码错误'));
         const m = rows[0];
-        if (!m.password_hash || !verifyPassword(String(password), m.password_hash)) {
+        if (!m.password_hash || !authService.verifyPassword(String(password), m.password_hash)) {
           return res.status(401).json(errorResponse('手机号或密码错误'));
         }
         if (m.status === 0) return res.status(403).json(errorResponse('账号审核中'));
@@ -4185,7 +2835,7 @@ if (process.env.NODE_ENV !== 'production') {
 
       // 2. 定损分析（使用模拟结果，不调 AI）
       const reportId = 'RPT' + Date.now();
-      const mockResult = getMockAnalysisResult(reportId, { plate_number: '京A12345', brand: '测试', model: '车型' });
+      const mockResult = damageService.getMockAnalysisResult(reportId, { plate_number: '京A12345', brand: '测试', model: '车型' });
       await pool.execute(
         `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, analysis_result, status, created_at)
          VALUES (?, ?, ?, ?, ?, 1, NOW())`,

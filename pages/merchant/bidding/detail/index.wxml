@@ -45,14 +45,6 @@
         </view>
       </view>
     </view>
-    <view class="detail-repair-suggestions" wx:if="{{bidding.analysis_result && bidding.analysis_result.repair_suggestions && bidding.analysis_result.repair_suggestions.length}}">
-      <text class="text-muted fs-cap">AI 维修建议</text>
-      <view class="detail-suggestion-list">
-        <view class="detail-suggestion-item" wx:for="{{bidding.analysis_result.repair_suggestions}}" wx:key="index">
-          <text class="fs-sm">{{item.item}}</text>
-        </view>
-      </view>
-    </view>
   </view>
 
   <!-- 报价明细 -->

@@ -161,6 +161,20 @@
   flex-direction: column;
   gap: var(--space-lg);
 }
+.bid-disclaimer {
+  margin-bottom: var(--space-xs);
+}
+.bid-quote-disclaimer {
+  display: block;
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border-light);
+}
+.bid-modal-disclaimer {
+  display: block;
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+}
 .bid-quote {
   padding: var(--space-xl);
 }

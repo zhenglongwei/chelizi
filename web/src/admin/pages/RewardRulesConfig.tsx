@@ -278,7 +278,7 @@ export default function RewardRulesConfig() {
     <div className="reward-rules-config" style={{ padding: '0 24px' }}>
       <Title level={2}>奖励金规则配置</Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        按《评价奖励金体系-设计方案》配置三级校准体系，运营后台可直接编辑，无需代码调整。
+        按《全指标底层逻辑梳理》第四章配置奖励金规则，运营后台可直接编辑，无需代码调整。
       </Text>
 
       <Tabs

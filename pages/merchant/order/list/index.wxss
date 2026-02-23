@@ -1,51 +1,137 @@
-/* 服务商订单列表 - M06 */
+/**
+ * 服务商订单列表 - M06
+ * 以《设计规范.md》、design-system 为准
+ */
 .merchant-order-list {
-  padding: var(--space-md);
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-xl) var(--page-padding-x);
 }
 
 .merchant-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-xl);
+  padding: var(--space-sm);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .merchant-tab {
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
   font-size: var(--fs-cap);
   color: var(--text-secondary);
+  background: var(--bg-placeholder);
+  transition: all 0.2s ease;
 }
 
 .merchant-tab.active {
-  color: var(--primary);
+  background: var(--primary);
+  color: var(--bg-card);
   font-weight: 500;
 }
 
-.merchant-list-scroll {
-  height: calc(100vh - 180rpx);
-}
-
-.merchant-order-card {
-  padding: var(--space-lg);
-  margin-bottom: var(--space-md);
-}
-
-.card-order-id {
-  font-weight: 500;
-  margin-bottom: var(--space-xs);
-}
-
-.card-meta {
-  display: flex;
-  justify-content: space-between;
-  margin-top: var(--space-xs);
-}
-
-.card-status {
-  color: var(--primary);
+.merchant-loading {
+  padding: var(--space-2xl);
+  text-align: center;
+  color: var(--text-hint);
 }
 
 .merchant-empty {
   padding: var(--space-2xl);
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.merchant-empty .text-muted {
+  color: var(--text-hint);
+}
+
+.merchant-scroll {
+  height: 100%;
+}
+
+.merchant-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.merchant-order-card {
+  margin-bottom: 0;
+  transition: transform 0.2s ease;
+}
+
+.merchant-order-card:active {
+  transform: scale(0.995);
+}
+
+.merchant-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.merchant-order-id {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchant-status-badge {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.merchant-plan-pending {
+  margin-top: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.merchant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.merchant-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.merchant-card-row .text-gold {
+  font-weight: 600;
+}
+
+.merchant-card-meta {
+  flex-wrap: wrap;
+  margin-top: var(--space-xs);
+  color: var(--text-hint);
+}
+
+.merchant-load-more {
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-hint);
+  font-size: var(--fs-cap);
+}
+
+.merchant-bottom-pad {
+  height: var(--space-2xl);
 }

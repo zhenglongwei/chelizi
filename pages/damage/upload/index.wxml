@@ -63,8 +63,9 @@
     </scroll-view>
 
     <view class="damage-footer">
-      <view class="damage-btn btn-primary" bindtap="onStartAnalyze">
-        <text class="fs-body fw-bold">{{analyzing ? '分析中...' : '开始 AI 分析'}}</text>
+      <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
+      <view class="damage-btn btn-primary {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onStartAnalyze">
+        <text class="fs-body fw-bold">{{analyzing ? '分析中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '开始 AI 分析')}}</text>
       </view>
     </view>
   </block>
@@ -128,11 +129,6 @@
           </view>
         </view>
 
-        <view class="damage-report-level" wx:if="{{currentDamageLevel || report.damage_level}}">
-          <text class="fs-body">损伤等级：</text>
-          <text class="text-primary fw-bold">{{currentDamageLevel === '无伤' ? '无伤' : (currentDamageLevel ? currentDamageLevel + '损伤' : ((!currentDamages || !currentDamages.length) && report.damage_level === '三级' ? '无伤' : (report.damage_level === '无伤' ? '无伤' : report.damage_level + '损伤')))}}</text>
-          <text class="text-muted fs-cap" wx:if="{{report.warranty}}">（{{report.warranty}}）</text>
-        </view>
         <view class="damage-report-damages">
           <view class="fs-body fw-bold">损伤部位</view>
           <view class="damage-damage-item" wx:for="{{currentDamages}}" wx:key="index">
@@ -140,12 +136,6 @@
             <text class="text-muted fs-sm" wx:if="{{item.knowledge_rule}}" style="display:block;margin-top:4rpx;">国标：{{item.knowledge_rule}}</text>
           </view>
           <text class="text-muted fs-body" wx:if="{{!currentDamages || !currentDamages.length}}">未发现明显损伤</text>
-        </view>
-        <view class="damage-report-repair" wx:if="{{currentRepairSuggestions && currentRepairSuggestions.length}}">
-          <view class="fs-body fw-bold">维修建议</view>
-          <view class="damage-repair-item" wx:for="{{currentRepairSuggestions}}" wx:key="index">
-            <text class="fs-body">{{item.item}}</text>
-          </view>
         </view>
       </view>
 
@@ -238,6 +228,7 @@
     </scroll-view>
 
     <view class="damage-footer">
+      <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
       <view class="damage-btn btn-primary" bindtap="onCreateBidding">
         <text class="fs-body fw-bold">{{submitting ? '提交中...' : '发起竞价'}}</text>
       </view>

@@ -8,22 +8,45 @@
     <view class="merchant-tab {{tabIndex === 2 ? 'active' : ''}}" data-index="2" bindtap="onTabChange">待确认</view>
     <view class="merchant-tab {{tabIndex === 3 ? 'active' : ''}}" data-index="3" bindtap="onTabChange">已完成</view>
   </view>
-  <scroll-view class="merchant-list-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscrolltolower="onReachBottom">
-    <view class="merchant-list" wx:if="{{list.length > 0}}">
+
+  <block wx:if="{{loading && list.length === 0}}">
+    <view class="merchant-loading">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+  <block wx:elif="{{empty && !loading}}">
+    <view class="merchant-empty card">
+      <text class="text-muted fs-body">暂无订单</text>
+    </view>
+  </block>
+  <scroll-view wx:else class="merchant-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onReachBottom">
+    <view class="merchant-list">
       <view class="merchant-order-card card" wx:for="{{list}}" wx:key="order_id" data-id="{{item.order_id}}" bindtap="onItemTap">
-        <view class="card-order-id fs-body">{{item.order_id}}</view>
-        <view class="card-vehicle fs-sm">{{item.vehicle_info.brand || ''}} {{item.vehicle_info.model || ''}}</view>
-        <view class="card-meta text-secondary fs-sm">
-          <text>¥{{item.quoted_amount}}</text>
-          <text wx:if="{{item.complexity_level}}"> · {{item.complexity_level}}</text>
-          <text wx:if="{{item.commission_rate}}"> · 佣金{{item.commission_rate}}</text>
-          <text class="card-status">{{item.status_text}}</text>
-          <text class="card-time">{{item.created_short}}</text>
+        <view class="merchant-card-header">
+          <text class="merchant-order-id fs-body fw-bold">{{item.order_id}}</text>
+          <text class="merchant-status-badge">{{item.status_text}}</text>
+        </view>
+        <view class="merchant-plan-pending text-warning fs-cap" wx:if="{{item.status === 1 && item.repair_plan_status === 1}}">维修方案待确认</view>
+        <view class="merchant-card-body">
+          <view class="merchant-card-row">
+            <text class="text-muted fs-sm">车辆：</text>
+            <text class="fs-body">{{item.vehicle_display}}</text>
+          </view>
+          <view class="merchant-card-row">
+            <text class="text-muted fs-sm">报价：</text>
+            <text class="fs-body text-gold fw-bold">¥{{item.quoted_amount}}</text>
+          </view>
+          <view class="merchant-card-row merchant-card-meta">
+            <text class="text-weak fs-sm" wx:if="{{item.complexity_level}}">{{item.complexity_level}}</text>
+            <text class="text-weak fs-sm" wx:if="{{item.commission_rate}}">佣金 {{item.commission_rate}}</text>
+            <text class="text-weak fs-sm">{{item.created_short}}</text>
+          </view>
         </view>
       </view>
     </view>
-    <view class="merchant-empty" wx:elif="{{empty && !loading}}">
-      <text class="text-hint fs-body">暂无订单</text>
+    <view class="merchant-load-more" wx:if="{{hasMore && !loading}}">
+      <text class="text-muted fs-sm">上拉加载更多</text>
     </view>
+    <view class="merchant-bottom-pad"></view>
   </scroll-view>
 </view>

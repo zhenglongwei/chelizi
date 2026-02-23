@@ -7,9 +7,8 @@ const logger = getLogger('App');
 App({
   globalData: {
     // 注意：根据规范，禁止在此处存储用户信息
-    // 用户信息统一存储在 storage 的 'userInfo' key 中
-    systemInfo: null,
-    location: null
+    // 用户信息、位置等统一存储在 storage，仅保留系统级数据
+    systemInfo: null
   },
 
   onLaunch(options) {
@@ -83,25 +82,23 @@ App({
     });
   },
 
-  // 从缓存读取用户选择的位置（chooseLocation 选择后缓存）
+  // 从缓存读取用户选择的位置（统一缓存 key: user_chosen_location）
   getCachedLocation() {
     try {
       const cached = wx.getStorageSync('user_chosen_location');
       if (cached && cached.latitude != null && cached.longitude != null) {
-        const loc = {
+        return {
           latitude: cached.latitude,
           longitude: cached.longitude,
           address: cached.address,
           name: cached.name
         };
-        this.globalData.location = loc;
-        return loc;
       }
     } catch (_) {}
-    return this.globalData.location || null;
+    return null;
   },
 
-  // 打开地图选择位置（不依赖 getLocation 授权），选择后缓存并返回
+  // 打开地图选择位置（不依赖 getLocation 授权），选择后写入 storage 并返回
   chooseLocation() {
     return new Promise((resolve, reject) => {
       wx.chooseLocation({
@@ -112,7 +109,6 @@ App({
             address: res.address,
             name: res.name
           };
-          this.globalData.location = location;
           try {
             wx.setStorageSync('user_chosen_location', location);
           } catch (_) {}

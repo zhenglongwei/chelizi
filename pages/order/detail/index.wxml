@@ -1,48 +1,130 @@
-<!-- 订单详情 -->
+<!-- 订单详情 - 07-订单详情页（参照服务商端布局，不含佣金等专属信息） -->
 <custom-nav-bar title="订单详情" showBack="{{true}}" />
 <view class="page-root order-detail-page" style="{{pageRootStyle}}">
   <block wx:if="{{loading}}">
     <view class="order-loading"><text class="text-muted fs-body">加载中...</text></view>
   </block>
   <block wx:elif="{{order}}">
-    <view class="order-detail card">
-      <view class="order-detail-row">
-        <text class="text-muted fs-sm">订单号</text>
-        <text class="fs-body">{{order.order_id}}</text>
+    <!-- 卡片1：订单状态 + 工期计时器 -->
+    <view class="detail-section card">
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">订单状态</view>
       </view>
-      <view class="order-detail-row">
-        <text class="text-muted fs-sm">维修厂</text>
-        <text class="fs-body">{{order.shop_name || '-'}}</text>
-      </view>
-      <view class="order-detail-row">
-        <text class="text-muted fs-sm">报价金额</text>
-        <text class="fs-body text-gold">¥{{order.quoted_amount}}</text>
-      </view>
-      <view class="order-detail-row">
-        <text class="text-muted fs-sm">订单状态</text>
-        <text class="fs-body">{{order.statusText}}</text>
-      </view>
-      <view class="order-detail-row" wx:if="{{order.address}}">
-        <text class="text-muted fs-sm">地址</text>
-        <text class="fs-sm">{{order.address}}</text>
-      </view>
-      <view class="order-reward-preview card" wx:if="{{rewardPreview && (order.canConfirm || order.canReview || order.canFollowup)}}">
-        <view class="order-reward-title fs-body fw-bold">奖励金预估</view>
-        <view class="order-reward-total">
-          <text class="text-muted fs-sm">可获奖励金</text>
-          <text class="fs-body text-gold fw-bold">¥{{rewardPreview.total_reward}}</text>
+      <view class="status-text">{{order.statusText}}</view>
+      <view class="duration-timer-wrap" wx:if="{{order.status <= 1 && order.duration_deadline}}">
+        <view class="section-head" style="margin-top: var(--space-md);">
+          <view class="section-title fs-body fw-medium">施工期限</view>
         </view>
-        <view class="order-reward-stages" wx:if="{{rewardPreview.stages && rewardPreview.stages.length}}">
-          <text class="text-weak fs-sm" wx:for="{{rewardPreview.stages}}" wx:key="stage">{{item.stage === 'main' ? '主评价' : item.stage === '1m' ? '1个月追评' : '3个月追评'}} {{item.percent}}%</text>
+        <view class="duration-timer {{durationCountdownExpired ? 'expired' : ''}}">
+          <view class="duration-timer-main">
+            <text class="duration-days">工期 {{order.displayDuration || order.quote_duration}} 天</text>
+            <text class="duration-deadline">至 {{order.duration_deadline_text}} 施工完毕</text>
+          </view>
+          <view class="duration-countdown" wx:if="{{!durationCountdownExpired}}">
+            <text class="countdown-label">剩余</text>
+            <text class="countdown-value">{{durationCountdownText}}</text>
+          </view>
+          <view class="duration-countdown expired" wx:else>
+            <text class="countdown-value">已超期</text>
+          </view>
         </view>
       </view>
-      <view class="order-detail-actions">
-        <button class="btn-secondary" bindtap="onCallShop" wx:if="{{order.shop_phone}}">联系维修厂</button>
-        <button class="btn-primary" wx:if="{{order.canConfirm}}" bindtap="onConfirm">确认完成</button>
-        <button class="btn-primary" wx:if="{{order.canReview}}" bindtap="onReview">去评价</button>
-        <button class="btn-primary" wx:if="{{order.canFollowup}}" bindtap="onFollowup">去追评</button>
-        <button class="btn-secondary order-cancel-btn" wx:if="{{order.canCancel}}" bindtap="onCancel">撤销订单</button>
+    </view>
+
+    <!-- 卡片2：车辆信息 + 损伤情况 + 报价 + 维修方案 + 增值服务 + 维修厂 -->
+    <view class="detail-section card">
+      <view class="section-head" wx:if="{{order.vehicle_info && (order.vehicle_info.brand || order.vehicle_info.plate_number)}}">
+        <view class="section-title fs-body fw-medium">车辆信息</view>
       </view>
+      <view class="vehicle-info text-muted fs-body" wx:if="{{order.vehicle_info && (order.vehicle_info.brand || order.vehicle_info.plate_number)}}">{{order.vehicle_info.brand || ''}} {{order.vehicle_info.model || ''}} {{order.vehicle_info.plate_number || ''}}</view>
+
+      <view class="section-head" wx:if="{{order.analysis_result && order.analysis_result.damages && order.analysis_result.damages.length}}">
+        <view class="section-title fs-body fw-medium">损伤情况</view>
+      </view>
+      <view class="damage-list" wx:if="{{order.analysis_result && order.analysis_result.damages && order.analysis_result.damages.length}}">
+        <view class="damage-item" wx:for="{{order.analysis_result.damages}}" wx:key="index">
+          <view wx:if="{{item.part && item.type}}" class="damage-item-row">
+            <text class="fs-body">{{item.part}}：</text>
+            <text class="text-muted fs-cap">{{item.type}}</text>
+          </view>
+          <block wx:elif="{{item.sub && item.sub.length}}">
+            <view class="damage-sub" wx:for="{{item.sub}}" wx:for-item="sub" wx:key="index">
+              <text class="fs-body">{{sub.damage_part || sub.name || sub.item}}</text>
+              <text class="text-muted fs-cap">{{sub.repair_type || '维修'}}{{sub.repair_type === '换' && sub.parts_type ? ' · ' + sub.parts_type : ''}}</text>
+            </view>
+          </block>
+          <view wx:else class="damage-item-row">
+            <text class="fs-body">{{item.damage_part || item.name || item.part || item.item}}：</text>
+            <text class="text-muted fs-cap">{{item.repair_type || item.type || '维修'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">报价</view>
+      </view>
+      <view class="quote-info">
+        <text class="text-gold fs-body fw-medium">¥{{order.displayAmount || order.quoted_amount}}</text>
+        <text class="text-muted fs-cap" wx:if="{{order.displayDuration || order.quote_duration || order.displayWarranty}}">，工期{{order.displayDuration || order.quote_duration || '-'}}天，质保{{order.displayWarranty || '-'}}月</text>
+      </view>
+
+      <view class="section-head" wx:if="{{planItems.length}}">
+        <view class="section-title fs-body fw-medium">维修方案</view>
+      </view>
+      <view class="repair-items" wx:if="{{planItems.length}}">
+        <view class="repair-item" wx:for="{{planItems}}" wx:key="index">
+          <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
+          <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}</text>
+        </view>
+      </view>
+
+      <view class="section-head" wx:if="{{planValueAdded.length}}">
+        <view class="section-title fs-body fw-medium">增值服务</view>
+      </view>
+      <view class="value-added-list" wx:if="{{planValueAdded.length}}">
+        <view class="value-added-item fs-body" wx:for="{{planValueAdded}}" wx:key="index">{{item.name || item}}</view>
+      </view>
+
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">维修厂</view>
+      </view>
+      <view class="shop-info fs-body">{{order.shop_name || '维修厂'}} <text class="link" bindtap="onCallShop" wx:if="{{order.shop_phone}}">拨打电话</text></view>
+      <view class="shop-address text-muted fs-cap" wx:if="{{order.address}}">{{order.address}}</view>
+    </view>
+
+    <!-- 维修方案待确认 -->
+    <view class="order-repair-plan-pending card" wx:if="{{order.repair_plan_status === 1}}">
+      <view class="repair-plan-pending-title fs-body fw-bold">维修方案已更新，请确认</view>
+      <view class="repair-plan-pending-items" wx:if="{{planItems.length}}">
+        <view class="repair-plan-item" wx:for="{{planItems}}" wx:key="index">
+          <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
+          <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}</text>
+        </view>
+      </view>
+      <view class="repair-plan-pending-actions">
+        <button class="btn-primary" disabled="{{approving}}" bindtap="onApprovePlan" data-approve="{{true}}">{{approving ? '处理中...' : '同意'}}</button>
+        <button class="btn-secondary" disabled="{{approving}}" bindtap="onApprovePlan" data-approve="{{false}}">不同意</button>
+      </view>
+    </view>
+
+    <view class="order-reward-preview card" wx:if="{{rewardPreview && (order.canConfirm || order.canReview || order.canFollowup)}}">
+      <view class="order-reward-title fs-body fw-bold">奖励金预估</view>
+      <view class="order-reward-total">
+        <text class="text-muted fs-sm">可获奖励金</text>
+        <text class="fs-body text-gold fw-bold">¥{{rewardPreview.total_reward}}</text>
+      </view>
+      <view class="order-reward-stages" wx:if="{{rewardPreview.stages && rewardPreview.stages.length}}">
+        <text class="text-weak fs-sm" wx:for="{{rewardPreview.stages}}" wx:key="stage">{{item.stage === 'main' ? '主评价' : item.stage === '1m' ? '1个月追评' : '3个月追评'}} {{item.percent}}%</text>
+      </view>
+    </view>
+
+    <view class="order-detail-actions">
+      <button class="btn-secondary" bindtap="onCallShop" wx:if="{{order.shop_phone}}">联系维修厂</button>
+      <button class="btn-primary" wx:if="{{order.canConfirm}}" bindtap="onConfirm">确认完成</button>
+      <button class="btn-primary" wx:if="{{order.canReview}}" bindtap="onReview">去评价</button>
+      <button class="btn-primary" wx:if="{{order.canFollowup}}" bindtap="onFollowup">去追评</button>
+      <button class="btn-secondary order-cancel-btn" wx:if="{{order.canCancel}}" bindtap="onCancel">{{order.cancelNeedsReason ? '申请撤销' : '撤销订单'}}</button>
+      <button class="btn-secondary" wx:if="{{order.cancelRejected}}" bindtap="onEscalateCancel">提交人工通道</button>
     </view>
   </block>
 </view>

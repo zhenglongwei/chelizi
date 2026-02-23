@@ -1,0 +1,57 @@
+<!-- 修改维修方案 - M07 -->
+<custom-nav-bar title="修改维修方案" showBack="{{true}}" />
+<view class="page-root repair-plan-edit" style="{{pageRootStyle}}">
+  <view class="edit-tip card" wx:if="{{order}}">
+    <text class="text-muted fs-cap">配件类型不可修改。可增删改项目、金额、工期、质保。</text>
+  </view>
+  <scroll-view class="edit-scroll" scroll-y style="{{scrollStyle}}" wx:if="{{order}}">
+    <view class="edit-card card">
+      <view class="edit-section">
+        <text class="edit-section-title fs-body fw-bold">维修项目</text>
+        <view class="edit-item" wx:for="{{items}}" wx:key="id">
+          <view class="edit-item-row">
+            <text class="edit-item-label">损失部位</text>
+            <input class="edit-item-input" placeholder="如：前保险杠" value="{{item.damage_part}}" data-id="{{item.id}}" data-f="damage_part" bindinput="onItemInput"/>
+          </view>
+          <view class="edit-item-row">
+            <text class="edit-item-label">维修方案</text>
+            <picker mode="selector" range="{{repairTypes}}" range-key="label" value="{{item.rtIdx}}" data-id="{{item.id}}" bindchange="onRepairTypeChange">
+              <view class="edit-item-picker">{{item.repair_type || '请选择'}}</view>
+            </picker>
+            <picker wx:if="{{item.repair_type === '换'}}" mode="selector" range="{{partsTypes}}" range-key="label" value="{{item.ptIdx}}" data-id="{{item.id}}" bindchange="onPartsTypeChange">
+              <view class="edit-item-picker {{item.partsTypeLocked ? 'edit-item-picker-locked' : ''}}">{{item.parts_type || '配件类型'}}</view>
+            </picker>
+          </view>
+          <view class="edit-item-del" data-id="{{item.id}}" bindtap="onDelItem">删除</view>
+        </view>
+        <view class="edit-item-add" bindtap="onAddItem">+ 添加项目</view>
+      </view>
+      <view class="edit-section">
+        <text class="edit-section-title fs-body fw-bold">增值服务</text>
+        <view class="edit-va-row" wx:for="{{valueAdded}}" wx:key="id">
+          <input class="edit-va-input" placeholder="如：代步车" value="{{item.name}}" data-id="{{item.id}}" bindinput="onVaInput"/>
+          <view class="edit-va-del" data-id="{{item.id}}" bindtap="onDelVa">删除</view>
+        </view>
+        <view class="edit-item-add" bindtap="onAddVa">+ 添加增值服务</view>
+      </view>
+      <view class="edit-section">
+        <view class="edit-row">
+          <text class="edit-row-label">总报价（元）</text>
+          <input class="edit-row-input" type="digit" value="{{amount}}" bindinput="onAmountInput"/>
+        </view>
+        <view class="edit-row">
+          <text class="edit-row-label">工期（天）</text>
+          <input class="edit-row-input" type="number" value="{{duration}}" bindinput="onDurationInput"/>
+        </view>
+        <view class="edit-row">
+          <text class="edit-row-label">质保（月）</text>
+          <input class="edit-row-input" type="number" value="{{warranty}}" bindinput="onWarrantyInput"/>
+        </view>
+      </view>
+    </view>
+    <view class="edit-bottom-pad"></view>
+  </scroll-view>
+  <view class="edit-submit-wrap safe-area-bottom">
+    <button class="btn-primary edit-submit" disabled="{{submitting}}" bindtap="onSubmit">{{submitting ? '提交中...' : '提交'}}</button>
+  </view>
+</view>

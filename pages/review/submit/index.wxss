@@ -65,6 +65,44 @@
   margin-bottom: var(--space-md);
   color: var(--text-primary);
 }
+.review-plan-compare {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border-left: 4rpx solid var(--warning);
+}
+.review-plan-compare-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--warning);
+  margin-bottom: var(--space-sm);
+}
+.review-plan-compare-row {
+  display: flex;
+  gap: var(--space-lg);
+}
+.review-plan-compare-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.review-plan-compare-label {
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+.review-plan-compare-item {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+}
+.review-plan-compare-meta {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  margin-top: var(--space-xs);
+}
 .review-repair-items {
   margin-top: var(--space-sm);
   display: flex;
@@ -104,6 +142,15 @@
   color: #fff;
   font-size: 36rpx;
   line-height: 1;
+}
+.review-source-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 2rpx 8rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: rgba(0,0,0,0.5);
 }
 .review-upload-btn {
   width: 160rpx;

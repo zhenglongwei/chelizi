@@ -33,16 +33,12 @@
       </view>
 
       <!-- AI 定损报告（可折叠） -->
-      <view class="bid-report card" wx:if="{{bidding.analysis_result && (bidding.analysis_result.damage_level || (bidding.analysis_result.damages && bidding.analysis_result.damages.length) || (bidding.analysis_result.repair_suggestions && bidding.analysis_result.repair_suggestions.length) || (bidding.analysis_result.total_estimate && bidding.analysis_result.total_estimate.length >= 2))}}">
+      <view class="bid-report card" wx:if="{{bidding.analysis_result && ((bidding.analysis_result.damages && bidding.analysis_result.damages.length) || (bidding.analysis_result.total_estimate && bidding.analysis_result.total_estimate.length >= 2))}}">
         <view class="bid-report-head" bindtap="toggleReport">
           <text class="fs-body fw-bold">AI 定损报告</text>
           <image class="bid-report-arrow" src="/images/icon/zhedie.png" mode="aspectFit" style="transform: rotate({{reportExpanded ? 180 : 0}}deg);"/>
         </view>
         <view class="bid-report-body" wx:if="{{reportExpanded}}">
-          <view class="bid-report-row" wx:if="{{bidding.analysis_result.damage_level}}">
-            <text class="text-muted fs-cap">损伤等级</text>
-            <text class="fs-body">{{bidding.analysis_result.damage_level === '无伤' ? '无伤' : bidding.analysis_result.damage_level + '损伤'}}</text>
-          </view>
           <view class="bid-report-row" wx:if="{{bidding.analysis_result.total_estimate && bidding.analysis_result.total_estimate.length >= 2}}">
             <text class="text-muted fs-cap">预估费用</text>
             <text class="fs-body">{{bidding.analysis_result.total_estimate[0]}}-{{bidding.analysis_result.total_estimate[1]}} 元</text>
@@ -51,12 +47,6 @@
             <text class="fs-cap fw-bold">损伤部位</text>
             <view class="bid-damage-item" wx:for="{{bidding.analysis_result.damages}}" wx:key="index">
               <text class="fs-cap">{{item.part}}：{{item.type}}</text>
-            </view>
-          </view>
-          <view class="bid-report-repair" wx:if="{{bidding.analysis_result.repair_suggestions && bidding.analysis_result.repair_suggestions.length}}">
-            <text class="fs-cap fw-bold">维修建议</text>
-            <view class="bid-repair-item" wx:for="{{bidding.analysis_result.repair_suggestions}}" wx:key="index">
-              <text class="fs-cap">{{item.item}}</text>
             </view>
           </view>
         </view>
@@ -70,6 +60,7 @@
 
       <!-- 报价列表 -->
       <view class="bid-list" wx:if="{{quotes.length > 0}}">
+        <view class="bid-disclaimer text-muted fs-cap">此报价仅供参考，以实际维修时为准</view>
         <view class="bid-quote card" wx:for="{{quotes}}" wx:key="quote_id">
           <view class="bid-quote-main">
             <image class="bid-quote-logo" src="{{item.logo || '/images/logo/logo_white.png'}}" mode="aspectFill"/>
@@ -101,6 +92,7 @@
                     <text class="bid-quote-value-added-title fs-cap">增值服务</text>
                     <view class="bid-quote-value-added-item fs-sm" wx:for="{{item.value_added_services}}" wx:for-item="va" wx:key="index">{{va.name || va}}</view>
                   </view>
+                  <text class="bid-quote-disclaimer text-muted fs-cap">此报价仅供参考，以实际维修时为准</text>
                 </view>
               </view>
             </view>
@@ -147,6 +139,7 @@
             <text class="fs-sm">{{item.name || item}}</text>
           </view>
         </view>
+        <text class="bid-modal-disclaimer text-muted fs-cap">此报价仅供参考，以实际维修时为准</text>
       </view>
       <view class="bid-modal-actions">
         <view class="btn-secondary bid-modal-cancel" bindtap="onCloseConfirm">取消</view>

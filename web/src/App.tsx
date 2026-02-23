@@ -17,6 +17,7 @@ import RewardRulesConfig from './admin/pages/RewardRulesConfig';
 import ReviewAudit from './admin/pages/ReviewAudit';
 import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
+import OrderCancelRequests from './admin/pages/OrderCancelRequests';
 import { useAuth } from './admin/hooks/useAuth';
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="merchants" element={<MerchantManagement />} />
         <Route path="orders" element={<OrderManagement />} />
+        <Route path="order-cancel-requests" element={<OrderCancelRequests />} />
         <Route path="rules" element={<RuleConfig />} />
         <Route path="settlement" element={<SettlementManagement />} />
         <Route path="disputes" element={<DisputeManagement />} />

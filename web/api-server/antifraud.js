@@ -131,54 +131,14 @@ function calcReviewWeight(complexityLevel, contentQuality, userTrustWeight, shop
 }
 
 /**
- * 计算店铺加权评价得分（规范：Σ(星级×权重)/Σ(权重)）
- * @param {object} pool - 数据库连接池
- * @param {string} shopId - 店铺ID
- * @returns {Promise<{score: number, count: number}>}
+ * 计算店铺加权评价得分（已迁移至 shop-score.js，此处保留兼容调用）
+ * @deprecated 使用 shop-score.computeShopScore
  */
 async function computeShopWeightedScore(pool, shopId) {
   try {
-    const [rows] = await pool.execute(
-      `SELECT r.review_id, r.rating, r.created_at, r.settlement_list_image, r.completion_images,
-              o.complexity_level, s.compliance_rate
-       FROM reviews r
-       JOIN orders o ON r.order_id = o.order_id
-       JOIN shops s ON r.shop_id = s.shop_id
-       WHERE r.shop_id = ? AND r.type = 1 AND r.status = 1`,
-      [shopId]
-    );
-    if (rows.length === 0) return { score: 0, count: 0 };
-
-    const now = new Date();
-    let sumWeightedRating = 0;
-    let sumWeight = 0;
-
-    for (const r of rows) {
-      const created = new Date(r.created_at);
-      const monthsAgo = (now - created) / (30 * 24 * 60 * 60 * 1000);
-      let decay = 0;
-      if (monthsAgo < 3) decay = 1;
-      else if (monthsAgo < 6) decay = 0.5;
-      else if (monthsAgo < 12) decay = 0.2;
-      else continue;
-
-      const orderWeight = { L1: 0.2, L2: 1.0, L3: 3.0, L4: 6.0 }[r.complexity_level] || 1.0;
-      const hasSettlement = r.settlement_list_image && String(r.settlement_list_image).trim();
-      let completionCount = 0;
-      try {
-        const imgs = typeof r.completion_images === 'string' ? JSON.parse(r.completion_images || '[]') : (r.completion_images || []);
-        completionCount = Array.isArray(imgs) ? imgs.length : 0;
-      } catch (_) {}
-      const contentWeight = hasSettlement && completionCount >= 2 ? 1.0 : 0.5;
-      const complianceCoeff = (r.compliance_rate != null && r.compliance_rate >= 95) ? 1.1 : 1.0;
-      const weight = orderWeight * contentWeight * complianceCoeff * decay;
-      const rating = parseFloat(r.rating) || 5;
-      sumWeightedRating += rating * weight;
-      sumWeight += weight;
-    }
-
-    const score = sumWeight > 0 ? Math.round((sumWeightedRating / sumWeight) * 10) / 10 : 0;
-    return { score, count: rows.length };
+    const shopScore = require('./shop-score');
+    const result = await shopScore.computeShopScore(pool, shopId);
+    return { score: result.score, count: result.count };
   } catch (err) {
     console.error('[antifraud] computeShopWeightedScore error:', err.message);
     return { score: 0, count: 0 };

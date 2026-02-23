@@ -60,10 +60,29 @@
       <view class="review-section card">
         <view class="review-section-title fs-body fw-bold">模块2：维修过程</view>
         <text class="text-weak fs-sm">{{orderTier >= 3 ? '三级/四级订单必填' : '一级/二级选填'}}</text>
+        <!-- 维修方案调整对比（有调整时展示） -->
+        <view class="review-plan-compare" wx:if="{{planCompare && planCompare.hasDiff}}">
+          <view class="review-plan-compare-title">维修方案有调整</view>
+          <view class="review-plan-compare-row">
+            <view class="review-plan-compare-col">
+              <text class="review-plan-compare-label">原方案（下单时）</text>
+              <view class="review-plan-compare-item" wx:for="{{planCompare.originalItems}}" wx:key="*this">{{item}}</view>
+              <view class="review-plan-compare-meta" wx:if="{{planCompare.originalAmount != null || planCompare.originalDuration != null || planCompare.originalWarranty != null}}">金额 ¥{{planCompare.originalAmount || '-'}} · 工期{{planCompare.originalDuration || '-'}}天 · 质保{{planCompare.originalWarranty || '-'}}月</view>
+              <view class="review-plan-compare-meta" wx:if="{{planCompare.originalValueAdded && planCompare.originalValueAdded.length}}">增值：{{planCompare.originalValueAdded.join('、')}}</view>
+            </view>
+            <view class="review-plan-compare-col">
+              <text class="review-plan-compare-label">最终方案（维修时）</text>
+              <view class="review-plan-compare-item" wx:for="{{planCompare.finalItems}}" wx:key="*this">{{item}}</view>
+              <view class="review-plan-compare-meta" wx:if="{{planCompare.finalAmount != null || planCompare.finalDuration != null || planCompare.finalWarranty != null}}">金额 ¥{{planCompare.finalAmount || '-'}} · 工期{{planCompare.finalDuration || '-'}}天 · 质保{{planCompare.finalWarranty || '-'}}月</view>
+              <view class="review-plan-compare-meta" wx:if="{{planCompare.finalValueAdded && planCompare.finalValueAdded.length}}">增值：{{planCompare.finalValueAdded.join('、')}}</view>
+            </view>
+          </view>
+        </view>
         <view class="review-upload-grid" style="margin-top: var(--space-md);">
-          <view class="review-upload-item" wx:for="{{module2.materials}}" wx:key="index">
-            <image class="review-thumb" src="{{item}}" mode="aspectFill"/>
-            <view class="review-del" data-index="{{index}}" bindtap="onM2DelMaterial"><text class="review-del-text">×</text></view>
+          <view class="review-upload-item" wx:for="{{module2.materialDisplayList}}" wx:key="index">
+            <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
+            <text class="review-source-tag" wx:if="{{item.fromMerchant}}">服务商</text>
+            <view class="review-del" data-index="{{index}}" data-from-merchant="{{item.fromMerchant}}" bindtap="onM2DelMaterial"><text class="review-del-text">×</text></view>
           </view>
           <view class="review-upload-btn" bindtap="onM2ChooseMaterial">
             <text class="review-add-text">+</text>
@@ -105,17 +124,19 @@
           </view>
           <view class="review-upload-item" wx:else>
             <image class="review-thumb" src="{{module3.settlement_list_image || module3.settlement_list_url}}" mode="aspectFill"/>
+            <text class="review-source-tag" wx:if="{{module3.settlementFromMerchant}}">服务商</text>
             <view class="review-del" bindtap="onM3DelSettlement"><text class="review-del-text">×</text></view>
           </view>
         </view>
         <view class="review-upload-row">
           <text class="fs-body">完工实拍图（至少 2 张）</text>
           <view class="review-upload-grid">
-            <view class="review-upload-item" wx:for="{{module3.completion_images}}" wx:key="index">
-              <image class="review-thumb" src="{{item}}" mode="aspectFill"/>
-              <view class="review-del" data-index="{{index}}" bindtap="onM3DelCompletion"><text class="review-del-text">×</text></view>
+            <view class="review-upload-item" wx:for="{{module3.completionDisplayList}}" wx:key="index">
+              <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
+              <text class="review-source-tag" wx:if="{{item.fromMerchant}}">服务商</text>
+              <view class="review-del" data-index="{{index}}" data-from-merchant="{{item.fromMerchant}}" bindtap="onM3DelCompletion"><text class="review-del-text">×</text></view>
             </view>
-            <view class="review-upload-btn" wx:if="{{!module3.completion_images || module3.completion_images.length < 8}}" bindtap="onM3ChooseCompletion">
+            <view class="review-upload-btn" wx:if="{{!module3.completionDisplayList || module3.completionDisplayList.length < 8}}" bindtap="onM3ChooseCompletion">
               <text class="review-add-text">+</text>
               <text class="text-muted fs-cap">添加</text>
             </view>

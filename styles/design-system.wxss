@@ -8,6 +8,7 @@
 page {
   /* 色彩（明亮、有活力） */
   --primary: #2563EB;
+  --primary-bg: rgba(37, 99, 235, 0.1); /* 主色浅背景，状态标签等 */
   --primary-light: #60A5FA;
   --accent: #EAB308;
   --accent-bg: rgba(234, 179, 8, 0.15); /* #EAB308 15% 透明度，快捷入口图标背景 */
@@ -25,6 +26,8 @@ page {
   /* 未登录头像占位：浅色主色背景，与登录入口呼应 */
   --avatar-placeholder-bg: #EFF6FF;
   --avatar-placeholder-border: rgba(37, 99, 235, 0.15);
+  /* 遮罩层（图片删除按钮等） */
+  --overlay-dark: rgba(0, 0, 0, 0.5);
 
   /* 间距（rpx） */
   --space-xs: 8rpx;
@@ -54,6 +57,7 @@ page {
   --shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
   --shadow-card: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  --shadow-top: 0 -4rpx 16rpx rgba(0, 0, 0, 0.06); /* 底部固定栏顶部阴影 */
 
   /* 页面边距（左右留白，防止溢出） */
   --page-padding-x: 32rpx;
@@ -87,6 +91,7 @@ page, view, scroll-view {
 .text-weak { color: var(--text-hint); }
 .text-gold { color: var(--accent); }
 .text-star { color: var(--warning); }
+.text-warning { color: var(--warning); }
 .text-success { color: var(--success); }
 .text-error { color: var(--danger); }
 .text-danger { color: var(--danger); }

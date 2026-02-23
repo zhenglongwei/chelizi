@@ -1,11 +1,65 @@
-.order-detail-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); }
+/* 订单详情 - 07-订单详情页（参照服务商端布局，不含佣金等专属信息） */
+.order-detail-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); padding-bottom: 120rpx; }
 .order-loading { padding: var(--space-2xl); text-align: center; }
-.order-detail { margin-top: var(--space-lg); }
-.order-detail-row { display: flex; justify-content: space-between; padding: var(--space-md) 0; border-bottom: 1rpx solid var(--border); }
-.order-detail-row:last-of-type { border-bottom: none; }
+
+.detail-section {
+  padding: var(--space-xl);
+  margin-bottom: var(--space-lg);
+}
+.section-head { margin-top: var(--space-md); }
+.section-head:first-child { margin-top: 0; }
+.section-title { font-size: var(--fs-body); margin-bottom: var(--space-xs); font-weight: 500; }
+
+.status-text {
+  display: inline-block;
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--fs-cap);
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--primary-bg);
+  border-radius: var(--radius-md);
+}
+
+.duration-timer-wrap { margin-top: var(--space-md); }
+.duration-timer {
+  padding: var(--space-md);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-xs);
+}
+.duration-timer.expired .duration-timer-main { opacity: 0.7; }
+.duration-timer-main { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; }
+.duration-days { font-size: var(--fs-body); font-weight: 500; color: var(--primary); }
+.duration-deadline { font-size: var(--fs-cap); color: var(--text-secondary); }
+.duration-countdown { margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1rpx solid var(--border); }
+.duration-countdown.expired .countdown-value { color: var(--danger); }
+.countdown-label { font-size: var(--fs-cap); color: var(--text-secondary); margin-right: var(--space-xs); }
+.countdown-value { font-size: var(--fs-body); font-weight: 600; color: var(--primary); }
+
+.vehicle-info { margin-top: var(--space-xs); }
+.damage-list, .repair-items, .value-added-list { margin-top: var(--space-xs); }
+.damage-item { display: flex; flex-direction: column; padding: var(--space-sm) 0; border-bottom: 1rpx solid var(--border); }
+.repair-item { display: flex; justify-content: space-between; align-items: center; padding: var(--space-sm) 0; border-bottom: 1rpx solid var(--border); }
+.damage-item:last-child, .repair-item:last-child { border-bottom: none; }
+.damage-item-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); }
+.damage-sub { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xs) 0 var(--space-xs) var(--space-md); }
+.value-added-item { padding: var(--space-xs) 0; color: var(--text-secondary); }
+.quote-info { line-height: 1.5; margin-top: var(--space-xs); }
+.shop-info { margin-top: var(--space-xs); }
+.shop-address { margin-top: var(--space-xs); }
+.link { color: var(--primary); margin-left: var(--space-sm); }
+
 .order-reward-preview { margin-top: var(--space-lg); }
 .order-reward-title { margin-bottom: var(--space-sm); }
 .order-reward-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs); }
 .order-reward-stages { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+
+.order-repair-plan-pending { margin-top: var(--space-lg); }
+.repair-plan-pending-title { margin-bottom: var(--space-md); color: var(--warning); }
+.repair-plan-pending-items { margin-bottom: var(--space-md); }
+.repair-plan-item { display: flex; justify-content: space-between; padding: var(--space-xs) 0; font-size: var(--fs-body); }
+.repair-plan-pending-actions { display: flex; gap: var(--space-md); }
+.repair-plan-pending-actions button { flex: 1; }
+
 .order-detail-actions { margin-top: var(--space-xl); display: flex; flex-wrap: wrap; gap: var(--space-md); }
 .order-detail-actions .btn-secondary, .order-detail-actions button { flex: 1; min-width: 160rpx; }

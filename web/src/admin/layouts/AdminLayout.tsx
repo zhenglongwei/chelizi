@@ -14,6 +14,7 @@ import {
   AuditOutlined,
   RiseOutlined,
   SafetyOutlined,
+  RollbackOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import './AdminLayout.css';
@@ -35,6 +36,11 @@ const menuItems = [
     key: '/admin/orders',
     icon: <FileTextOutlined />,
     label: '订单管理',
+  },
+  {
+    key: '/admin/order-cancel-requests',
+    icon: <RollbackOutlined />,
+    label: '撤单申请',
   },
   {
     key: '/admin/rules',

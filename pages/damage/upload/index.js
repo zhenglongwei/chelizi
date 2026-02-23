@@ -2,7 +2,7 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile } = require('../../../utils/api');
+const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 
 const logger = getLogger('DamageUpload');
@@ -58,7 +58,8 @@ Page({
     locationAddress: '',
     locationLat: null,
     locationLng: null,
-    pageRootStyle: 'padding-top: 88px'
+    pageRootStyle: 'padding-top: 88px',
+    dailyQuota: { remaining: 3, used: 0, limit: 3 }
   },
 
   onLoad(options) {
@@ -68,6 +69,7 @@ Page({
     const h = sys.windowHeight - navH - 140;
     this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
     this.checkToken();
+    if (getToken()) this._loadDailyQuota();
     const reportId = options.id || options.report_id;
     if (reportId && getToken()) {
       this.loadReportAndShowStep2(reportId);
@@ -83,11 +85,24 @@ Page({
     if (this.data.step === 2 && this.data.submitting) {
       this.setData({ submitting: false });
     }
+    // 每次显示时从统一缓存同步地址（首页选地址后切回定损页可带出）
+    this._loadBiddingLocation();
     // 从定损历史跳转过来（tab 页无法传参，用 storage 传递 report id）
     const pendingId = wx.getStorageSync('pendingReportId');
     if (pendingId) {
       wx.removeStorageSync('pendingReportId');
       this.loadReportAndShowStep2(pendingId);
+    }
+    if (this.data.step === 1 && getToken()) this._loadDailyQuota();
+  },
+
+  async _loadDailyQuota() {
+    if (!getToken()) return;
+    try {
+      const q = await getDamageDailyQuota();
+      this.setData({ dailyQuota: { remaining: q.remaining, used: q.used, limit: q.limit } });
+    } catch (err) {
+      logger.warn('获取定损配额失败', err);
     }
   },
 
@@ -143,9 +158,13 @@ Page({
   
 
   async onStartAnalyze() {
-    const { images, vehicleInfo, analyzing, hasToken } = this.data;
+    const { images, vehicleInfo, analyzing, hasToken, dailyQuota } = this.data;
     if (!hasToken) {
       ui.showWarning('请先登录');
+      return;
+    }
+    if ((dailyQuota?.remaining ?? 1) <= 0) {
+      ui.showWarning('今日定损次数已用完，请明日再试');
       return;
     }
     if (!images.length) {
@@ -188,6 +207,7 @@ Page({
       });
 
       const vehiclesList = this._normalizeVehiclesList(result.vehicle_info, result);
+      const quota = { remaining: result.remainingCount ?? 0, used: (result.maxCount ?? 3) - (result.remainingCount ?? 0), limit: result.maxCount ?? 3 };
       this.setData({
         analyzeProgress: 100,
         progressStyle: 'width: 100%',
@@ -197,7 +217,8 @@ Page({
         selectedVehicleIndex: 0,
         vehicleEdits: {},
         step: 2,
-        analyzing: false
+        analyzing: false,
+        dailyQuota: quota
       }, () => {
         this._updateVehicleDisplay(0);
       });
@@ -399,11 +420,11 @@ Page({
     this.setData({ [key]: (e.detail.value || '').trim() });
   },
 
-  /** 加载询价位置（storage 或用户资料） */
+  /** 加载询价位置（统一缓存 user_chosen_location，无则从用户资料拉取并回填） */
   _loadBiddingLocation() {
     try {
       const stored = wx.getStorageSync('user_chosen_location');
-      if (stored && (stored.latitude != null && stored.longitude != null)) {
+      if (stored && stored.latitude != null && stored.longitude != null) {
         const addr = stored.address || stored.name || null;
         this.setData({
           locationAddress: addr || '已选择位置（点击查看地图）',
@@ -412,29 +433,25 @@ Page({
         });
         return;
       }
-      const app = getApp();
-      if (app.globalData && app.globalData.location) {
-        const loc = app.globalData.location;
-        if (loc.latitude != null && loc.longitude != null) {
-          const addr = loc.address || loc.name || null;
-          this.setData({
-            locationAddress: addr || '已选择位置（点击查看地图）',
-            locationLat: loc.latitude,
-            locationLng: loc.longitude
-          });
-          return;
-        }
-      }
       if (getToken()) {
         getUserProfile().then((p) => {
           if (p && p.location && p.location.latitude != null && p.location.longitude != null) {
             const addr = [p.location.province, p.location.city, p.location.district].filter(Boolean).join('') ||
               p.location.address || p.location.name || null;
+            const loc = {
+              latitude: p.location.latitude,
+              longitude: p.location.longitude,
+              address: addr || p.location.address,
+              name: p.location.name
+            };
             this.setData({
               locationAddress: addr || '已选择位置（点击查看地图）',
-              locationLat: p.location.latitude,
-              locationLng: p.location.longitude
+              locationLat: loc.latitude,
+              locationLng: loc.longitude
             });
+            try {
+              wx.setStorageSync('user_chosen_location', loc);
+            } catch (_) {}
           }
         }).catch(() => {});
       }
@@ -465,8 +482,7 @@ Page({
   },
 
   /** 重新选择询价位置 */
-  async onRechooseBiddingLocation(e) {
-    e.stopPropagation();
+  async onRechooseBiddingLocation() {
     await this._openChooseLocation();
   },
 
@@ -533,7 +549,7 @@ Page({
   },
 
   onCloseReport() {
-    ui.showSuccess('已关闭，可在个人中心-历史记录中查看');
+    ui.showSuccess('已关闭，历史记录可查');
     this.setData({
       step: 1,
       report: null,
@@ -546,6 +562,7 @@ Page({
       currentRepairSuggestions: [],
       submitting: false
     });
+    this._loadDailyQuota();
   },
 
   async onCreateBidding() {
@@ -633,7 +650,7 @@ Page({
         longitude
       });
 
-      ui.showSuccess('竞价发起成功');
+      ui.showSuccess(res.duplicate ? '该定损单已发起竞价，正在跳转' : '竞价发起成功');
       this.setData({ submitting: false });
       navigation.navigateTo('/pages/bidding/detail/index', { id: res.bidding_id });
     } catch (err) {

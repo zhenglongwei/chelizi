@@ -61,11 +61,6 @@ Page({
           const loc = userInfo.location;
           locationAddress = [loc.province, loc.city, loc.district].filter(Boolean).join('') || '';
         }
-        const app = getApp();
-        if (!locationAddress && app.globalData && app.globalData.location) {
-          const loc = app.globalData.location;
-          locationAddress = loc.address || loc.name || '';
-        }
         if (locationAddress) {
           locationShort = locationAddress.length > 6 ? locationAddress.slice(0, 6) + '…' : locationAddress;
         }

@@ -1,0 +1,107 @@
+/* 修改维修方案 - M07，以《设计规范.md》、design-system 为准 */
+.repair-plan-edit {
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: 160rpx;
+}
+.edit-tip {
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+}
+.edit-scroll {
+  width: 100%;
+}
+.edit-card {
+  padding: var(--space-xl);
+}
+.edit-section {
+  margin-bottom: var(--space-xl);
+}
+.edit-section-title {
+  display: block;
+  margin-bottom: var(--space-md);
+}
+.edit-item {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border);
+}
+.edit-item-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-xs);
+}
+.edit-item-label {
+  width: 140rpx;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-cap);
+}
+.edit-item-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) 0;
+}
+.edit-item-picker {
+  flex: 1;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  padding: var(--space-xs) 0;
+}
+.edit-item-picker-locked {
+  color: var(--text-hint);
+}
+.edit-item-del {
+  margin-top: var(--space-xs);
+  font-size: var(--fs-cap);
+  color: var(--danger);
+}
+.edit-item-add {
+  margin-top: var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--primary);
+}
+.edit-va-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+.edit-va-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-sm) 0;
+}
+.edit-va-del {
+  margin-left: var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--danger);
+}
+.edit-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+.edit-row-label {
+  width: 160rpx;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+}
+.edit-row-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) 0;
+}
+.edit-bottom-pad {
+  height: var(--space-2xl);
+}
+.edit-submit-wrap {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-top);
+}
+.edit-submit {
+  width: 100%;
+}

@@ -1,6 +1,6 @@
 /**
  * 奖励金规则配置默认值与数据结构
- * 对应《评价奖励金体系-设计方案》
+ * 对应《全指标底层逻辑梳理》第四章
  */
 
 export function getDefaultRewardRulesConfig(): { rewardRules: Record<string, any> } {

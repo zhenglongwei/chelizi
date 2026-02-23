@@ -1,0 +1,22 @@
+# Cursor 索引排除 - 减少内存占用
+node_modules/
+**/node_modules/
+web/dist/
+web/dist-ssr/
+dist/
+*.local
+logs/
+*.log
+web/api-server/uploads/
+web/test-results/
+coverage/
+**/server-backup.js
+**/*-backup.*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.env
+.env.*
+project.private.config.json
+.DS_Store
+.idea/

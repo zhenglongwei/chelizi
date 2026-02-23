@@ -6,6 +6,45 @@
   background: var(--bg-page);
 }
 
+/* 询价位置卡片（与定损页共用数据，此处可提前选择） */
+.history-location-card {
+  margin: var(--space-xl) var(--page-padding-x) var(--space-lg);
+  padding: var(--space-lg);
+}
+
+.history-location-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.history-location-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.history-location-icon {
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.history-location-arrow {
+  font-size: var(--fs-h2);
+  color: var(--text-hint);
+  flex-shrink: 0;
+}
+
+.history-location-rechoose {
+  padding: var(--space-sm) 0;
+  margin-left: calc(40rpx + var(--space-md));
+  margin-top: var(--space-xs);
+}
+
 .history-empty {
   margin: var(--space-2xl) var(--page-padding-x);
   padding: var(--space-2xl);

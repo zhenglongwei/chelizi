@@ -11,6 +11,7 @@ const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认', 3: '已完�
 Page({
   data: {
     pageRootStyle: 'padding-top: 88px',
+    scrollStyle: 'height: 500px',
     tabIndex: -1,
     list: [],
     total: 0,
@@ -22,9 +23,14 @@ Page({
   },
 
   onLoad(options) {
-    this.setData({ pageRootStyle: 'padding-top: ' + getNavBarHeight() + 'px' });
+    const navH = getNavBarHeight();
+    const sys = wx.getSystemInfoSync();
+    this.setData({
+      pageRootStyle: 'padding-top: ' + navH + 'px',
+      scrollStyle: 'height: ' + (sys.windowHeight - navH - 120) + 'px'
+    });
     const status = options.status !== undefined ? parseInt(options.status, 10) : -1;
-    this.setData({ tabIndex: status });
+    this.setData({ tabIndex: (status >= 0 && status <= 4) ? status : -1 });
     this.checkAuth();
   },
 
@@ -62,18 +68,22 @@ Page({
     if (this.data.loading) return;
     this.setData({ loading: true });
     try {
-      const status = this.data.tabIndex >= 0 ? this.data.tabIndex : undefined;
-      const res = await getMerchantOrders({
-        page: this.data.page,
-        limit: this.data.limit,
-        status
-      });
+      const params = { page: this.data.page, limit: this.data.limit };
+      if (this.data.tabIndex >= 0) params.status = this.data.tabIndex;
+      const res = await getMerchantOrders(params);
       const rawList = res.list || [];
-      const list = rawList.map((item) => ({
-        ...item,
-        status_text: STATUS_MAP[item.status] || '未知',
-        created_short: item.created_at ? item.created_at.slice(0, 16).replace('T', ' ') : ''
-      }));
+      const list = rawList.map((item) => {
+        const vi = item.vehicle_info || {};
+        const arr = Array.isArray(vi) ? vi : [vi];
+        const first = arr[0] || {};
+        const vehicleDisplay = [first.plate_number, first.brand, first.model].filter(Boolean).join(' ') || '车辆信息';
+        return {
+          ...item,
+          status_text: STATUS_MAP[item.status] || '未知',
+          created_short: item.created_at ? item.created_at.slice(0, 16).replace('T', ' ') : '',
+          vehicle_display: vehicleDisplay
+        };
+      });
       const merged = this.data.page === 1 ? list : [...this.data.list, ...list];
       const hasMore = merged.length < (res.total || 0);
       this.setData({

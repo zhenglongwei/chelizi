@@ -1,0 +1,24 @@
+---
+description: 维修方案调整与确认、订单详情、报价免责、评价方案对比
+globs: pages/order/**/*,pages/merchant/order/**/*,pages/bidding/detail/**/*,pages/review/submit/**/*
+alwaysApply: false
+---
+
+# 维修方案与订单流程
+
+## 必读文档
+
+- **维修方案调整与确认流程**：`docs/维修方案调整与确认流程.md` —— 接单后报价升级为维修方案、服务商可调整、车主确认、维修完成禁用、报价免责、评价方案对比
+
+## 相关页面
+
+- **车主端**：`pages/order/detail`（订单详情，含维修方案待确认）、`pages/order/list`（维修方案待确认展示）
+- **服务商端**：`pages/merchant/order/detail`（修改方案、维修完成禁用）、`pages/merchant/order/repair-plan-edit`（方案编辑）、`pages/merchant/order/list`
+- **竞价**：`pages/bidding/detail`（报价免责提示）
+- **评价**：`pages/review/submit`（模块 2 维修方案对比）
+
+## 关键约束
+
+- `repair_plan_status`：0=已确认，1=待车主确认，2=车主已拒绝
+- 配件类型（`parts_type`）不可修改
+- 车主端订单详情**不含**佣金、复杂度等服务商专属信息

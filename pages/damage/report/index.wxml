@@ -16,10 +16,6 @@
     <scroll-view class="report-scroll" scroll-y style="{{scrollStyle}}">
       <view class="report-card card">
         <view class="report-title fs-h3 fw-bold">定损报告</view>
-        <view class="report-row">
-          <text class="report-label">损伤等级</text>
-          <text class="report-value">{{report.damage_level === '无伤' ? '无伤' : report.damage_level + '损伤'}}</text>
-        </view>
         <view class="report-row" wx:if="{{report.total_estimate && report.total_estimate.length >= 2}}">
           <text class="report-label">预估费用</text>
           <text class="report-value">{{report.total_estimate[0]}}-{{report.total_estimate[1]}} 元</text>
@@ -28,12 +24,6 @@
           <view class="fs-body fw-bold">损伤部位</view>
           <view class="report-damage-item" wx:for="{{report.damages}}" wx:key="index">
             <text class="fs-body">{{item.part}}：{{item.type}}</text>
-          </view>
-        </view>
-        <view class="report-repair" wx:if="{{report.repair_suggestions && report.repair_suggestions.length}}">
-          <view class="fs-body fw-bold">维修建议</view>
-          <view class="report-repair-item" wx:for="{{report.repair_suggestions}}" wx:key="index">
-            <text class="fs-body">{{item.item}}</text>
           </view>
         </view>
       </view>

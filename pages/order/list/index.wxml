@@ -30,6 +30,7 @@
           <text class="fs-body fw-bold">{{item.shop_name || '维修厂'}}</text>
           <text class="order-status-badge">{{item.statusText}}</text>
         </view>
+        <view class="order-plan-pending text-warning fs-cap" wx:if="{{item.status === 1 && item.repair_plan_status === 1}}">维修方案待确认</view>
         <view class="order-item-body">
           <view class="order-item-row">
             <text class="text-muted fs-sm">订单金额：</text>
