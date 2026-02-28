@@ -1,0 +1,17 @@
+<!-- 绑定车辆 - 仅车牌号 -->
+<custom-nav-bar title="绑定车辆" showBack="{{true}}" />
+<view class="page-root vehicles-page" style="{{pageRootStyle}}">
+  <view class="vehicles-desc text-muted fs-sm">绑定您的车辆车牌号，最多 3 台。AI 定损时若上传不同车辆会提醒您。</view>
+  <view class="vehicles-list card">
+    <view class="vehicles-item" wx:for="{{list}}" wx:key="id">
+      <text class="vehicles-plate fs-body fw-medium">{{item.plate_number}}</text>
+      <text class="text-muted fs-cap">绑定于 {{item.created_at_text}}</text>
+    </view>
+    <view class="vehicles-empty text-muted fs-sm" wx:if="{{list.length === 0}}">暂无绑定车辆</view>
+  </view>
+  <view class="vehicles-add card" wx:if="{{list.length < 3}}">
+    <view class="vehicles-add-label fs-body">添加车牌号</view>
+    <input class="vehicles-add-input" type="text" placeholder="如：京A12345" value="{{plateInput}}" bindinput="onPlateInput" maxlength="8"/>
+    <button class="btn-primary vehicles-add-btn" bindtap="onAdd" disabled="{{!plateInput || loading}}">{{loading ? '添加中...' : '添加'}}</button>
+  </view>
+</view>

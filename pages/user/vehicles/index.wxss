@@ -1,0 +1,11 @@
+.vehicles-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); }
+.vehicles-desc { margin-bottom: var(--space-lg); }
+.vehicles-list { padding: var(--space-lg); margin-bottom: var(--space-lg); }
+.vehicles-item { padding: var(--space-md) 0; border-bottom: 1rpx solid var(--border); }
+.vehicles-item:last-child { border-bottom: none; }
+.vehicles-plate { display: block; margin-bottom: var(--space-xs); }
+.vehicles-empty { padding: var(--space-xl); text-align: center; }
+.vehicles-add { padding: var(--space-xl); }
+.vehicles-add-label { margin-bottom: var(--space-md); }
+.vehicles-add-input { width: 100%; height: 80rpx; padding: 0 var(--space-md); border: 1rpx solid var(--border); border-radius: var(--radius-sm); margin-bottom: var(--space-lg); font-size: var(--fs-body); }
+.vehicles-add-btn { width: 100%; height: 88rpx; line-height: 88rpx; }

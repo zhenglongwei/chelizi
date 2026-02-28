@@ -1,0 +1,71 @@
+/* 商户申诉列表 - M09 */
+.merchant-appeal-list .merchant-tabs {
+  display: flex;
+  padding: 16rpx 24rpx;
+  gap: 24rpx;
+  background: #fff;
+}
+.merchant-appeal-list .merchant-tab {
+  padding: 12rpx 24rpx;
+  font-size: 28rpx;
+  color: #666;
+  border-radius: 8rpx;
+}
+.merchant-appeal-list .merchant-tab.active {
+  background: #EAB308;
+  color: #fff;
+}
+.merchant-appeal-list .merchant-scroll {
+  padding: 16rpx;
+}
+.merchant-appeal-list .merchant-appeal-card {
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+}
+.merchant-appeal-list .merchant-appeal-card.overdue {
+  border-left: 6rpx solid #ef4444;
+}
+.merchant-appeal-list .merchant-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+.merchant-appeal-list .merchant-status-badge {
+  font-size: 24rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.merchant-appeal-list .merchant-status-badge.status-0 { background: #fef3c7; color: #b45309; }
+.merchant-appeal-list .merchant-status-badge.status-1 { background: #dbeafe; color: #1d4ed8; }
+.merchant-appeal-list .merchant-status-badge.status-2 { background: #d1fae5; color: #047857; }
+.merchant-appeal-list .merchant-status-badge.status-3 { background: #fee2e2; color: #b91c1c; }
+.merchant-appeal-list .merchant-card-body .merchant-card-row {
+  margin-bottom: 8rpx;
+  font-size: 26rpx;
+}
+.merchant-appeal-list .merchant-card-footer {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  color: #EAB308;
+  font-size: 28rpx;
+}
+.merchant-appeal-list .text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400rpx;
+}
+.merchant-appeal-list .text-danger { color: #ef4444; }
+.merchant-appeal-list .merchant-loading,
+.merchant-appeal-list .merchant-empty {
+  padding: 80rpx 0;
+  text-align: center;
+}
+.merchant-appeal-list .merchant-bottom-pad { height: 40rpx; }

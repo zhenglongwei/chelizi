@@ -1,0 +1,69 @@
+/* 商户申诉提交 - M09 */
+.merchant-appeal-submit .appeal-tip {
+  margin: 24rpx;
+  padding: 24rpx;
+}
+.merchant-appeal-submit .appeal-tip .fs-body { display: block; margin-bottom: 12rpx; }
+.merchant-appeal-submit .appeal-tip .fs-cap { display: block; }
+.merchant-appeal-submit .appeal-upload {
+  margin: 24rpx;
+  padding: 24rpx;
+}
+.merchant-appeal-submit .section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+.merchant-appeal-submit .section-title { margin-right: 16rpx; }
+.merchant-appeal-submit .evidence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+.merchant-appeal-submit .evidence-thumb {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  position: relative;
+  background: #f3f4f6;
+}
+.merchant-appeal-submit .thumb-img {
+  width: 100%;
+  height: 100%;
+}
+.merchant-appeal-submit .thumb-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 36rpx;
+  line-height: 48rpx;
+  text-align: center;
+}
+.merchant-appeal-submit .evidence-add {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed #d1d5db;
+  border-radius: 12rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+.merchant-appeal-submit .add-icon { font-size: 48rpx; line-height: 1; }
+.merchant-appeal-submit .add-text { margin-top: 8rpx; }
+.merchant-appeal-submit .appeal-submit-wrap {
+  padding: 24rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+.merchant-appeal-submit .appeal-submit {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+}

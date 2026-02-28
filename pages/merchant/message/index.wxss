@@ -1,0 +1,76 @@
+/* 服务商消息页 */
+.merchant-message-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.message-empty,
+.message-loading {
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.message-scroll {
+  height: 100%;
+}
+
+.message-item {
+  margin-bottom: var(--space-lg);
+}
+
+.message-item.unread .message-title {
+  color: var(--text-primary);
+}
+
+.message-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.message-type-tag {
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+  padding: 2rpx var(--space-sm);
+  border-radius: var(--radius-sm);
+}
+
+.message-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.message-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+}
+
+.message-time {
+  color: var(--text-hint);
+}
+
+.message-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.message-content {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-load-more {
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.message-bottom-pad {
+  height: var(--tab-bar-bottom-padding);
+}

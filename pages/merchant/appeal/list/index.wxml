@@ -1,0 +1,48 @@
+<!-- 商户申诉列表 - M09 -->
+<custom-nav-bar title="我的申诉" showBack="{{true}}" />
+<view class="page-root merchant-appeal-list" style="{{pageRootStyle}}">
+  <view class="merchant-tabs">
+    <view class="merchant-tab {{tabIndex === 0 ? 'active' : ''}}" data-index="0" bindtap="onTabChange">待申诉</view>
+    <view class="merchant-tab {{tabIndex === 1 ? 'active' : ''}}" data-index="1" bindtap="onTabChange">全部</view>
+  </view>
+
+  <block wx:if="{{loading && list.length === 0}}">
+    <view class="merchant-loading">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+  <block wx:elif="{{empty && !loading}}">
+    <view class="merchant-empty card">
+      <text class="text-muted fs-body">暂无申诉</text>
+    </view>
+  </block>
+  <scroll-view wx:else class="merchant-scroll" scroll-y style="{{scrollStyle}}">
+    <view class="merchant-list">
+      <view class="merchant-appeal-card card {{item.status === 0 && item.is_overdue ? 'overdue' : ''}}" wx:for="{{list}}" wx:key="request_id" data-request-id="{{item.request_id}}" data-question-label="{{item.question_label}}" data-status="{{item.status}}" bindtap="onItemTap">
+        <view class="merchant-card-header">
+          <text class="merchant-appeal-question fs-body fw-bold">{{item.question_label}}</text>
+          <text class="merchant-status-badge status-{{item.status}}">{{item.status_text}}</text>
+        </view>
+        <view class="merchant-card-body">
+          <view class="merchant-card-row">
+            <text class="text-muted fs-sm">订单：</text>
+            <text class="fs-body">{{item.order_id}}</text>
+          </view>
+          <view class="merchant-card-row" wx:if="{{item.review_content}}">
+            <text class="text-muted fs-sm">评价：</text>
+            <text class="fs-body text-ellipsis">{{item.review_content}}</text>
+          </view>
+          <view class="merchant-card-row">
+            <text class="text-muted fs-sm">截止：</text>
+            <text class="fs-body {{item.is_overdue ? 'text-danger' : ''}}">{{item.deadline_short}}</text>
+          </view>
+        </view>
+        <view class="merchant-card-footer" wx:if="{{item.status === 0}}">
+          <text class="merchant-action-text">{{item.is_overdue ? '已逾期' : '去申诉'}}</text>
+          <text class="merchant-action-arrow">›</text>
+        </view>
+      </view>
+    </view>
+    <view class="merchant-bottom-pad"></view>
+  </scroll-view>
+</view>

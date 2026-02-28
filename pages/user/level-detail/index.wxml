@@ -1,0 +1,36 @@
+<!-- 等级详情 -->
+<custom-nav-bar title="等级详情" showBack="{{true}}" />
+<view class="page-root level-detail-page" style="{{pageRootStyle}}">
+  <block wx:if="{{loading}}">
+    <view class="level-loading text-muted fs-body">加载中...</view>
+  </block>
+  <block wx:elif="{{detail}}">
+    <view class="level-header card">
+      <view class="level-badge">L{{detail.level}}</view>
+      <text class="level-name fs-h3 fw-bold">{{detail.level_name}}</text>
+      <navigator wx:if="{{detail.needs_verification}}" url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Flevel-detail%2Findex" class="level-verify-prompt fs-sm">完成实名认证和车辆绑定，解锁更多权益</navigator>
+    </view>
+
+    <view class="level-section card">
+      <view class="level-section-title fs-body fw-bold">当前权益</view>
+      <view class="level-perks">
+        <view class="level-perk-item fs-sm" wx:for="{{detail.perks}}" wx:key="*this">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="level-section card" wx:if="{{detail.retention}}">
+      <view class="level-section-title fs-body fw-bold">保级条件</view>
+      <text class="level-retention fs-sm text-muted">{{detail.retention}}</text>
+    </view>
+
+    <view class="level-section card" wx:if="{{detail.upgrade_progress}}">
+      <view class="level-section-title fs-body fw-bold">升级至 L{{detail.upgrade_progress.next_level}}</view>
+      <view class="level-requirements">
+        <view class="level-req-item fs-sm" wx:for="{{detail.upgrade_progress.requirements}}" wx:key="key">
+          <text class="{{item.met ? 'text-success' : ''}}">{{item.key}}：{{item.current !== undefined ? item.current + ' / ' + item.required : item.required}}</text>
+          <text class="level-req-check" wx:if="{{item.met}}">✓</text>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,5 @@
+# Shell 脚本和 env 示例强制 LF，避免在 Linux 服务器上出现 bad interpreter / command not found
+*.sh text eol=lf
+*.env.example text eol=lf
+web/scripts/cron.env.example text eol=lf
+web/scripts/crontab.example text eol=lf

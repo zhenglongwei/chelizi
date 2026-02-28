@@ -1,0 +1,84 @@
+.level-detail-page {
+  padding: 16rpx;
+  min-height: 100vh;
+  background: var(--page-bg, #f5f5f5);
+}
+
+.level-loading {
+  padding: 80rpx;
+  text-align: center;
+}
+
+.level-header {
+  text-align: center;
+  padding: 40rpx;
+}
+
+.level-badge {
+  display: inline-block;
+  width: 80rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  background: linear-gradient(135deg, #EAB308, #F59E0B);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 32rpx;
+  font-weight: bold;
+  margin-bottom: 16rpx;
+}
+
+.level-name {
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.level-verify-prompt {
+  color: var(--primary, #EAB308);
+  margin-top: 16rpx;
+}
+
+.level-section {
+  margin-top: 24rpx;
+  padding: 24rpx;
+}
+
+.level-section-title {
+  margin-bottom: 16rpx;
+}
+
+.level-perks {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.level-perk-item {
+  padding-left: 16rpx;
+  border-left: 4rpx solid var(--primary, #EAB308);
+}
+
+.level-retention {
+  display: block;
+}
+
+.level-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.level-req-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.level-req-check {
+  color: #22c55e;
+  font-weight: bold;
+}
+
+.text-success {
+  color: #22c55e;
+}

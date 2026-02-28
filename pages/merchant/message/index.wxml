@@ -1,0 +1,40 @@
+<!-- 服务商消息页 -->
+<custom-nav-bar title="消息" showBack="{{true}}" />
+<view class="page-root merchant-message-page" style="{{pageRootStyle}}">
+  <block wx:if="{{loading && list.length === 0}}">
+    <view class="message-loading">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="message-empty card" wx:if="{{list.length === 0}}">
+      <text class="text-muted fs-body">暂无消息</text>
+    </view>
+    <scroll-view wx:else class="message-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
+      <view
+        class="message-item card {{item.is_read ? '' : 'unread'}}"
+        wx:for="{{list}}"
+        wx:key="message_id"
+        data-id="{{item.message_id}}"
+        data-type="{{item.type}}"
+        data-related="{{item.related_id}}"
+        data-read="{{item.is_read}}"
+        bindtap="onItemTap"
+      >
+        <view class="message-item-header">
+          <text class="message-type-tag fs-sm">{{item.typeLabel}}</text>
+          <view class="message-item-meta">
+            <view class="message-dot" wx:if="{{!item.is_read}}"></view>
+            <text class="message-time text-weak fs-sm">{{item.timeText}}</text>
+          </view>
+        </view>
+        <text class="message-title fs-body fw-bold">{{item.title}}</text>
+        <text class="message-content text-muted fs-cap" wx:if="{{item.content}}">{{item.content}}</text>
+      </view>
+      <view class="message-load-more" wx:if="{{hasMore && !loading}}">
+        <text class="text-muted fs-sm">上拉加载更多</text>
+      </view>
+      <view class="message-bottom-pad"></view>
+    </scroll-view>
+  </block>
+</view>
