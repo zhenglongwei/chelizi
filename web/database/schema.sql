@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS users (
   nickname VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
   avatar_url VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
   phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
-  level TINYINT UNSIGNED DEFAULT 1 COMMENT '用户等级 1-8',
+  level TINYINT UNSIGNED DEFAULT 0 COMMENT '用户可信度等级 0-4',
+  level_demoted_by_violation TINYINT UNSIGNED DEFAULT 0 COMMENT '是否曾因违规降级',
+  level_updated_at DATETIME DEFAULT NULL COMMENT '等级最后核算时间',
   points INT UNSIGNED DEFAULT 0 COMMENT '积分',
   balance DECIMAL(10, 2) DEFAULT 0.00 COMMENT '奖励金余额（原返点余额）',
   total_rebate DECIMAL(10, 2) DEFAULT 0.00 COMMENT '累计奖励金（原累计返点）',
@@ -115,6 +117,7 @@ CREATE TABLE IF NOT EXISTS biddings (
   range_km INT UNSIGNED DEFAULT 5 COMMENT '竞价范围（公里）',
   status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态 0-进行中 1-已结束 2-已取消',
   expire_at DATETIME NOT NULL COMMENT '过期时间',
+  tier1_window_ends_at DATETIME DEFAULT NULL COMMENT '第一梯队独家窗口结束时间',
   selected_shop_id VARCHAR(32) DEFAULT NULL COMMENT '选中的维修厂ID',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -217,6 +220,27 @@ CREATE TABLE IF NOT EXISTS order_cancel_requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单撤单申请';
 
 -- ========================================================
+-- 6b. 材料 AI 审核任务表 (material_audit_tasks)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS material_audit_tasks (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  task_id VARCHAR(32) NOT NULL UNIQUE COMMENT '任务唯一ID',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  shop_id VARCHAR(32) NOT NULL COMMENT '店铺ID',
+  completion_evidence JSON NOT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending=待审核 passed=通过 rejected=不通过',
+  reject_reason VARCHAR(500) DEFAULT NULL COMMENT '不通过原因',
+  ai_details JSON DEFAULT NULL COMMENT 'AI 审核详情',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME DEFAULT NULL,
+  INDEX idx_order_status (order_id, status),
+  INDEX idx_pending (status),
+  INDEX idx_created (created_at),
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='材料AI审核任务';
+
+-- ========================================================
 -- 7. 评价表 (reviews)
 -- ========================================================
 CREATE TABLE IF NOT EXISTS reviews (
@@ -229,6 +253,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   review_stage VARCHAR(20) DEFAULT NULL COMMENT 'main/1m/3m 追评阶段',
   settlement_list_image VARCHAR(500) DEFAULT NULL COMMENT '维修结算清单图片URL',
   completion_images JSON DEFAULT NULL COMMENT '完工实拍图URL数组',
+  fault_evidence_images JSON DEFAULT NULL COMMENT '用户举证故障未解决（q3选否时选填）',
   objective_answers JSON DEFAULT NULL COMMENT '客观题答案（报价/维修过程/完工验收各维度）',
   reward_amount DECIMAL(10, 2) DEFAULT NULL COMMENT '奖励金金额',
   tax_deducted DECIMAL(10, 2) DEFAULT 0.00 COMMENT '代扣个税',
@@ -244,6 +269,11 @@ CREATE TABLE IF NOT EXISTS reviews (
   ai_analysis JSON DEFAULT NULL COMMENT 'AI分析结果',
   is_anonymous TINYINT UNSIGNED DEFAULT 0 COMMENT '是否匿名 0-否 1-是',
   like_count INT UNSIGNED DEFAULT 0 COMMENT '点赞数',
+  content_quality_level TINYINT UNSIGNED DEFAULT 1 COMMENT '内容质量等级 1-4',
+  q3_weight_excluded TINYINT UNSIGNED DEFAULT 0 COMMENT '商户申诉有效时剔除q3权重 0-否 1-是',
+  vehicle_model_key VARCHAR(100) DEFAULT NULL COMMENT '车型键 brand|model 用于同车型统计',
+  repair_project_key VARCHAR(255) DEFAULT NULL COMMENT '维修项目键 用于同项目统计',
+  post_verify_like_count INT UNSIGNED DEFAULT 0 COMMENT '事后验证点赞数',
   rebate_amount DECIMAL(10, 2) DEFAULT 0.00 COMMENT '奖励金金额（兼容旧字段，新数据用reward_amount）',
   rebate_rate DECIMAL(4, 2) DEFAULT 0.00 COMMENT '奖励金比例（兼容，新规则用reward_rules）',
   status TINYINT UNSIGNED DEFAULT 1 COMMENT '状态 0-隐藏 1-显示',
@@ -254,10 +284,50 @@ CREATE TABLE IF NOT EXISTS reviews (
   INDEX idx_order_id (order_id),
   INDEX idx_shop_id (shop_id),
   INDEX idx_user_id (user_id),
+  INDEX idx_review_vehicle_project (vehicle_model_key(50), repair_project_key(100), type, status),
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评价表';
+
+-- ========================================================
+-- 7a. 评价有效阅读会话表 (review_reading_sessions)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS review_reading_sessions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  session_id VARCHAR(32) NOT NULL UNIQUE COMMENT '业务主键',
+  review_id VARCHAR(32) NOT NULL COMMENT '评价ID',
+  user_id VARCHAR(32) NOT NULL COMMENT '浏览用户',
+  effective_seconds INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '本次有效阅读秒数（单次最多180）',
+  saw_at DATETIME DEFAULT NULL COMMENT '「看到了」的时刻',
+  ended_at DATETIME DEFAULT NULL COMMENT '会话结束',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_review_user (review_id, user_id),
+  INDEX idx_user_review (user_id, review_id),
+  FOREIGN KEY (review_id) REFERENCES reviews(review_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评价有效阅读会话';
+
+-- ========================================================
+-- 7b. 评价点赞记录表 (review_likes)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS review_likes (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  like_id VARCHAR(32) NOT NULL UNIQUE COMMENT '业务主键',
+  review_id VARCHAR(32) NOT NULL COMMENT '评价ID',
+  user_id VARCHAR(32) NOT NULL COMMENT '点赞用户',
+  effective_reading_seconds INT UNSIGNED DEFAULT 0 COMMENT '点赞时累计有效阅读时长',
+  like_type VARCHAR(20) DEFAULT 'normal' COMMENT 'normal/post_verify',
+  is_valid_for_bonus TINYINT UNSIGNED DEFAULT 0 COMMENT '是否纳入奖金核算',
+  weight_coefficient DECIMAL(6,4) DEFAULT 0 COMMENT '账号综合权重系数',
+  vehicle_match_by_plate TINYINT UNSIGNED DEFAULT 0 COMMENT '车型匹配 1=车牌一致',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_user_review (user_id, review_id),
+  INDEX idx_review_id (review_id),
+  INDEX idx_user_id (user_id),
+  FOREIGN KEY (review_id) REFERENCES reviews(review_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评价点赞记录';
 
 -- ========================================================
 -- 8. 交易记录表 (transactions)
@@ -271,7 +341,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   reward_tier TINYINT UNSIGNED DEFAULT NULL COMMENT '订单分级 1-4',
   review_stage VARCHAR(20) DEFAULT NULL COMMENT 'main/1m/3m',
   tax_deducted DECIMAL(10, 2) DEFAULT 0.00 COMMENT '代扣个税',
-  description VARCHAR(200) DEFAULT NULL COMMENT '描述',
+  description VARCHAR(500) DEFAULT NULL COMMENT '描述（含计算依据供清单展示）',
+  settlement_month VARCHAR(7) DEFAULT NULL COMMENT '结算月份 YYYY-MM（定期结算类）',
   related_id VARCHAR(32) DEFAULT NULL COMMENT '关联ID（如评价ID、提现ID）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   
@@ -335,6 +406,56 @@ CREATE TABLE IF NOT EXISTS user_favorite_shops (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户收藏维修厂表';
 
 -- ========================================================
+-- 11a. 用户实名认证表 (user_verification)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS user_verification (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL UNIQUE COMMENT '用户ID',
+  verified TINYINT UNSIGNED DEFAULT 0 COMMENT '0=未认证 1=已认证',
+  verified_at DATETIME DEFAULT NULL COMMENT '认证完成时间',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_id (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户实名认证';
+
+-- ========================================================
+-- 11b. 用户绑定车辆表 (user_vehicles)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS user_vehicles (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+  plate_number VARCHAR(20) DEFAULT NULL COMMENT '车牌号',
+  vin VARCHAR(50) DEFAULT NULL COMMENT '车架号',
+  vehicle_info JSON DEFAULT NULL COMMENT '车辆信息',
+  status TINYINT UNSIGNED DEFAULT 1 COMMENT '0=已解绑 1=有效',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_id (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户绑定车辆';
+
+-- ========================================================
+-- 11c. 待回溯奖励表 (withheld_rewards)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS withheld_rewards (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
+  review_id VARCHAR(32) NOT NULL COMMENT '评价ID',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  amount DECIMAL(10, 2) NOT NULL COMMENT '应发税前金额',
+  tax_deducted DECIMAL(10, 2) DEFAULT 0.00 COMMENT '代扣个税',
+  user_receives DECIMAL(10, 2) NOT NULL COMMENT '用户实收金额',
+  status VARCHAR(20) DEFAULT 'pending' COMMENT 'pending/paid/rejected',
+  reason VARCHAR(50) DEFAULT 'no_verification' COMMENT 'no_verification=因未实名/车辆暂扣',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  paid_at DATETIME DEFAULT NULL COMMENT '实际发放时间',
+  INDEX idx_user_status (user_id, status),
+  INDEX idx_review_id (review_id),
+  FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='待回溯奖励';
+
+-- ========================================================
 -- 12. 服务商账号表 (merchant_users)
 -- ========================================================
 CREATE TABLE IF NOT EXISTS merchant_users (
@@ -372,6 +493,46 @@ CREATE TABLE IF NOT EXISTS merchant_messages (
   INDEX idx_merchant_created (merchant_id, created_at),
   FOREIGN KEY (merchant_id) REFERENCES merchant_users(merchant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商消息表';
+
+-- ========================================================
+-- 12b. 商户申诉任务表 (merchant_evidence_requests)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS merchant_evidence_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(32) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  review_id VARCHAR(32) NOT NULL COMMENT '评价ID',
+  shop_id VARCHAR(32) NOT NULL COMMENT '店铺ID',
+  question_key VARCHAR(32) NOT NULL COMMENT 'q1_progress_synced / q2_parts_shown',
+  status TINYINT UNSIGNED DEFAULT 0 COMMENT '0=待申诉 1=已申诉待审核 2=申诉有效 3=申诉无效/超时',
+  deadline DATETIME NOT NULL COMMENT '截止时间（通知发送+48h）',
+  evidence_urls JSON DEFAULT NULL COMMENT '申诉材料URL数组',
+  ai_result VARCHAR(50) DEFAULT NULL COMMENT 'AI初审结果',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_order_question (order_id, question_key),
+  INDEX idx_shop_status (shop_id, status),
+  INDEX idx_deadline (deadline),
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (review_id) REFERENCES reviews(review_id),
+  FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商户申诉任务';
+
+-- ========================================================
+-- 12c. 店铺违规记录表 (shop_violations)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS shop_violations (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  shop_id VARCHAR(32) NOT NULL COMMENT '店铺ID',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  violation_type VARCHAR(50) NOT NULL COMMENT 'progress_not_synced / parts_not_shown',
+  penalty INT NOT NULL COMMENT '扣分 5/15',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_shop_created (shop_id, created_at),
+  INDEX idx_order (order_id),
+  FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
+  FOREIGN KEY (order_id) REFERENCES orders(order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺违规记录';
 
 -- ========================================================
 -- 13. 维修厂惩罚记录表 (shop_penalties)
@@ -564,6 +725,19 @@ CREATE TABLE IF NOT EXISTS violation_records (
   INDEX idx_target (target_type, target_id),
   INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='违规记录';
+
+-- 竞价分发结果表（按《07-竞价单分发机制》）
+CREATE TABLE IF NOT EXISTS bidding_distribution (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  bidding_id VARCHAR(32) NOT NULL,
+  shop_id VARCHAR(32) NOT NULL,
+  tier TINYINT UNSIGNED NOT NULL COMMENT '1=第一梯队 2=第二梯队 3=第三梯队',
+  match_score DECIMAL(5,2) DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_bidding_shop (bidding_id, shop_id),
+  INDEX idx_bidding (bidding_id),
+  INDEX idx_shop (shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='竞价分发结果';
 
 -- 审计日志表（第三阶段）
 CREATE TABLE IF NOT EXISTS audit_logs (

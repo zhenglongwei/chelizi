@@ -78,6 +78,11 @@ const menuItems = [
     label: '评价审核',
   },
   {
+    key: '/admin/appeal-reviews',
+    icon: <AuditOutlined />,
+    label: '申诉复核',
+  },
+  {
     key: '/admin/antifraud',
     icon: <SafetyOutlined />,
     label: '防刷管理',

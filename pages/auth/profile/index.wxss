@@ -53,27 +53,37 @@
   color: var(--text-primary);
 }
 
-/* min-width 配合 justify-content: flex-end 使头像严格右对齐；父级 overflow:hidden 防止横向溢出 */
+/* flex:1 占满中间；min-width:0 允许收缩；内容统一右对齐 */
 .profile-row-value {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  min-width: 1000rpx;
+  gap: var(--space-sm);
   height: 100%;
+  overflow: hidden;
 }
 
-/* 头像按钮：完全去除 button 默认样式，仅作点击触发 */
+/* 头像：固定尺寸包装层，圆形裁剪去除外框，不受微信 button 默认样式影响 */
+.profile-avatar-wrap {
+  width: 80rpx;
+  height: 80rpx;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+}
 .profile-avatar-btn {
   padding: 0;
   margin: 0;
   background: transparent;
   border: none;
+  outline: none;
   line-height: 1;
   display: block;
-  width: 80rpx;
-  height: 80rpx;
-  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  box-shadow: none;
 }
 .profile-avatar-btn::after {
   border: none;
@@ -83,9 +93,10 @@
   display: block;
   width: 80rpx;
   height: 80rpx;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   background: var(--avatar-placeholder-bg);
   border: 1rpx solid var(--avatar-placeholder-border);
+  box-shadow: none;
 }
 
 .profile-row-arrow {
@@ -132,3 +143,48 @@
 .profile-submit[disabled] {
   opacity: 0.5;
 }
+
+/* 手机号 */
+.profile-phone-masked { font-size: var(--fs-body); color: var(--text-primary); }
+/* 包装层：view 控制右对齐，fake 负责视觉，button 仅作透明点击层（规避微信 button 默认样式） */
+.profile-phone-btn-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.profile-phone-btn-fake {
+  padding: 0 var(--space-md);
+  height: 64rpx;
+  line-height: 64rpx;
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  background: transparent;
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-phone-btn {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  opacity: 0;
+}
+.profile-phone-btn::after { border: none; }
+.profile-phone-manual { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); flex: 1; min-width: 0; }
+.profile-verify-btn {
+  flex-shrink: 0;
+  padding: 0 var(--space-md);
+  height: 64rpx;
+  line-height: 64rpx;
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  background: transparent;
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+}
+.profile-verify-btn::after { border: none; }

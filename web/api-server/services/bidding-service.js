@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const antifraud = require('../antifraud');
 const rewardCalculator = require('../reward-calculator');
+const biddingDistribution = require('./bidding-distribution');
 const LOG_PREFIX = '[BiddingService]';
 
 function merchantVisibleWhereFragment(tablePrefix = 'b') {
@@ -60,14 +61,28 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
   } else {
     const baseWhere = merchantVisibleWhereFragment('b');
     const quoteCondition = status === 'quoted' ? '> 0' : '= 0';
+    const visibilityFragment = `AND (
+      NOT EXISTS (SELECT 1 FROM bidding_distribution bd2 WHERE bd2.bidding_id = b.bidding_id)
+      OR EXISTS (
+        SELECT 1 FROM bidding_distribution bd
+        WHERE bd.bidding_id = b.bidding_id AND bd.shop_id = ?
+        AND (
+          bd.tier = 1
+          OR (bd.tier = 2 AND (b.tier1_window_ends_at IS NULL OR NOW() >= b.tier1_window_ends_at))
+          OR (bd.tier = 3 AND (b.tier1_window_ends_at IS NULL OR NOW() >= b.tier1_window_ends_at)
+              AND (SELECT COUNT(*) FROM quotes q2 WHERE q2.bidding_id = b.bidding_id AND q2.quote_status = 0) < 3)
+        )
+      )
+    )`;
 
     const countSql = `SELECT COUNT(DISTINCT b.bidding_id) as total FROM biddings b
       INNER JOIN damage_reports dr ON b.report_id = dr.report_id
       INNER JOIN users u ON b.user_id = u.user_id
       INNER JOIN shops s ON s.shop_id = ?
       WHERE ${baseWhere}
+        ${visibilityFragment}
         AND (SELECT COUNT(*) FROM quotes q WHERE q.bidding_id = b.bidding_id AND q.shop_id = ?) ${quoteCondition}`;
-    const [countRows] = await pool.execute(countSql, [shopId, shopId]);
+    const [countRows] = await pool.execute(countSql, [shopId, shopId, shopId]);
     total = countRows[0]?.total ?? 0;
 
     const listSql = `SELECT * FROM (
@@ -82,9 +97,10 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
        INNER JOIN users u ON b.user_id = u.user_id
        INNER JOIN shops s ON s.shop_id = ?
        WHERE ${baseWhere}
+         ${visibilityFragment}
          AND (SELECT COUNT(*) FROM quotes q WHERE q.bidding_id = b.bidding_id AND q.shop_id = ?) ${quoteCondition}
     ) t ORDER BY created_at DESC LIMIT ${limitNum} OFFSET ${offsetNum}`;
-    const listParams = [shopId, shopId, shopId, shopId];
+    const listParams = [shopId, shopId, shopId, shopId, shopId];
     const [listRows] = await pool.execute(listSql, listParams);
     list = listRows || [];
 
@@ -192,6 +208,11 @@ async function createBidding(pool, userId, body) {
   if (!report_id) {
     return { success: false, error: '定损报告ID不能为空', statusCode: 400 };
   }
+  // 0 级禁止下单（点赞追加奖金方案：0级仅浏览，禁止下单/评价；点赞保持开放）
+  const trust = await antifraud.getUserTrustLevel(pool, userId);
+  if (trust.level === 0) {
+    return { success: false, error: '您的账号等级不足，完成实名认证和车辆绑定后可发起竞价', statusCode: 403 };
+  }
   const vi = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
   const plate = (vi.plate_number || vi.plateNumber || '').trim();
   if (!plate) {
@@ -239,12 +260,20 @@ async function createBidding(pool, userId, body) {
   }
   const biddingId = 'BID' + Date.now();
   const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const config = await biddingDistribution.getBiddingDistributionConfig(pool);
+  const tier1Minutes = config.tier1ExclusiveMinutes || 15;
+  const tier1WindowEndsAt = new Date(Date.now() + tier1Minutes * 60 * 1000);
   await pool.execute(
     `INSERT INTO biddings (bidding_id, user_id, report_id, vehicle_info, 
-     insurance_info, range_km, status, expire_at, created_at) 
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, NOW())`,
-    [biddingId, userId, report_id, JSON.stringify(vehicle_info || {}), JSON.stringify(insurance_info || {}), range || 5, expireAt]
+     insurance_info, range_km, status, expire_at, tier1_window_ends_at, created_at) 
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
+    [biddingId, userId, report_id, JSON.stringify(vehicle_info || {}), JSON.stringify(insurance_info || {}), range || 5, expireAt, tier1WindowEndsAt]
   );
+  try {
+    await biddingDistribution.runBiddingDistribution(pool, biddingId);
+  } catch (distErr) {
+    console.warn(`${LOG_PREFIX} runBiddingDistribution error:`, distErr.message);
+  }
   return { success: true, data: { bidding_id: biddingId } };
 }
 
@@ -258,6 +287,11 @@ async function selectQuote(pool, req) {
 
   if (!id || !shop_id) {
     return { success: false, error: id ? '维修厂ID不能为空' : '竞价ID不能为空', statusCode: 400 };
+  }
+  // 0 级禁止下单
+  const trust = await antifraud.getUserTrustLevel(pool, userId);
+  if (trust.level === 0) {
+    return { success: false, error: '您的账号等级不足，完成实名认证和车辆绑定后可下单', statusCode: 403 };
   }
 
   const [existingOrder] = await pool.execute(

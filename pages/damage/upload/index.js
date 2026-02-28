@@ -2,7 +2,7 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota } = require('../../../utils/api');
+const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota, getUserVehicles } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 
 const logger = getLogger('DamageUpload');
@@ -274,6 +274,15 @@ Page({
 
   _normalizePlate(s) {
     return (s || '').replace(/[\s·\-]/g, '').toUpperCase();
+  },
+
+  async _getBoundPlates() {
+    try {
+      const res = await getUserVehicles();
+      return (res?.list || []).map((r) => r.plate_number).filter(Boolean);
+    } catch (_) {
+      return [];
+    }
   },
 
   _matchVehicleByInput(input, vehiclesList) {
@@ -618,6 +627,25 @@ Page({
     if (!bidVehicleInfo.plate_number) {
       ui.showWarning('请填写车牌号');
       return;
+    }
+
+    // 与已绑定车辆比对：若不同则提醒
+    const boundPlates = await this._getBoundPlates();
+    if (boundPlates.length > 0) {
+      const currentPlate = this._normalizePlate(bidVehicleInfo.plate_number);
+      const isBound = boundPlates.some((p) => this._normalizePlate(p) === currentPlate);
+      if (!isBound) {
+        const ok = await new Promise((resolve) => {
+          wx.showModal({
+            title: '车辆提醒',
+            content: `您上传的车辆（${bidVehicleInfo.plate_number}）与已绑定车辆不一致，是否继续？`,
+            confirmText: '继续',
+            cancelText: '取消',
+            success: (res) => resolve(res.confirm)
+          });
+        });
+        if (!ok) return;
+      }
     }
 
     this.setData({ submitting: true });

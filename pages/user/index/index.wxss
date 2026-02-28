@@ -37,6 +37,7 @@
 }
 .user-name { color: var(--text-primary); }
 .user-level { color: var(--text-secondary); }
+.user-verify-prompt { color: var(--primary); margin-top: var(--space-xs); }
 .user-header-location {
   position: absolute;
   top: var(--space-md);
@@ -51,7 +52,6 @@
 .user-header-location-text { font-size: var(--fs-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-header-location-arrow { width: 18rpx; height: 18rpx; opacity: 0.5; transform: rotate(90deg); flex-shrink: 0; }
 .user-login-btn { color: var(--primary); font-size: var(--fs-body); display: block; text-align: center; padding: var(--space-xl) 0; }
-.user-complete-profile { color: var(--primary); font-size: var(--fs-cap); display: block; text-align: center; margin-top: var(--space-md); }
 /* 服务商快捷入口（仅 hasMerchantToken 时显示） */
 .user-merchant-entry { margin-top: var(--space-lg); }
 .user-merchant-btn { display: flex; flex-direction: column; gap: var(--space-xs); }

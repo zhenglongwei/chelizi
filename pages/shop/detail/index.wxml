@@ -84,14 +84,35 @@
       <!-- 评价列表 -->
       <view class="detail-section card" wx:if="{{reviews.length}}">
         <view class="detail-review-list">
-          <view class="detail-review-item" wx:for="{{reviews}}" wx:key="review_id">
+          <view
+            class="detail-review-item {{item.expanded ? 'detail-review-item-expanded' : ''}}"
+            wx:for="{{reviews}}"
+            wx:key="review_id"
+            id="review-{{item.review_id}}"
+            data-review-id="{{item.review_id}}"
+          >
             <view class="detail-review-head">
               <text class="detail-review-user text-primary fs-body">{{item.user.nickname}}</text>
               <text class="detail-review-date text-weak fs-cap">{{item.dateText}}</text>
             </view>
             <view class="detail-review-stars text-star fs-cap" wx:if="{{item.rating}}">{{item.ratingText}}</view>
-            <text class="detail-review-content text-muted fs-body" wx:if="{{item.content}}">{{item.content}}</text>
+            <view class="detail-review-content-wrap">
+              <text class="detail-review-content text-muted fs-body {{item.expanded ? '' : 'detail-review-content-collapsed'}}" wx:if="{{item.content}}">{{item.expanded ? item.content : item.contentPreview}}</text>
+              <text class="detail-review-expand-btn text-primary fs-sm" wx:if="{{item.content && !item.expanded && item.content.length > 60}}" bindtap="onExpandReview" data-index="{{index}}">展开</text>
+            </view>
+            <view class="detail-review-images" wx:if="{{item.after_images && item.after_images.length}}">
+              <image class="detail-review-img" wx:for="{{item.after_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            </view>
             <view class="detail-review-badge text-weak fs-sm" wx:if="{{item.isLowRating}}">该用户已完成全部评价要求，全额领取对应奖励</view>
+            <view class="detail-review-owner-verify text-danger fs-sm" wx:if="{{item.has_owner_verify_badge}}">车主验证・真实避坑</view>
+            <view class="detail-review-actions">
+              <view class="detail-review-like" bindtap="onLikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
+                <!-- 点赞图标：like.png 未点赞，liked.png 已点赞；若不存在需补充 -->
+                <image class="detail-review-like-icon" src="{{item.liked ? '/images/icon/liked.png' : '/images/icon/like.png'}}" mode="aspectFit"/>
+                <text class="text-muted fs-cap">{{item.like_count || 0}} 点赞</text>
+                <text class="text-weak fs-sm" wx:if="{{item.post_verify_count > 0}}"> · {{item.post_verify_count}}位车主验证有用</text>
+              </view>
+            </view>
           </view>
         </view>
         <view class="detail-more text-muted fs-cap" wx:if="{{loadingReviews}}">加载更多...</view>

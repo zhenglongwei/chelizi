@@ -10,18 +10,21 @@
         <image class="user-header-location-arrow" src="/images/icon/right.png" mode="aspectFit"/>
       </view>
       <view class="user-header-inner">
-        <view class="user-avatar" wx:if="{{userInfo.avatar_url}}">
+        <navigator url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-avatar" wx:if="{{userInfo.avatar_url}}">
           <image src="{{userInfo.avatar_url}}" mode="aspectFill"/>
-        </view>
-        <view class="user-avatar user-avatar-placeholder" wx:else>
+        </navigator>
+        <navigator url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-avatar user-avatar-placeholder" wx:else>
           <image src="/images/icon/person.png" mode="aspectFit"/>
-        </view>
+        </navigator>
         <view class="user-header-info">
           <text class="user-name fs-body fw-bold">{{userInfo.nickname || '用户'}}</text>
-          <text class="user-level text-muted fs-sm" wx:if="{{userInfo.level}}">会员等级 Lv{{userInfo.level}}</text>
+          <navigator url="/pages/user/level-detail/index" class="user-level-wrap">
+            <text class="user-level text-muted fs-sm" wx:if="{{userInfo.level_name}}">{{userInfo.level_name}}</text>
+            <text class="user-level-arrow fs-cap" wx:if="{{userInfo.level_name}}">›</text>
+          </navigator>
+          <navigator wx:if="{{userInfo.needs_verification}}" url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-verify-prompt fs-sm">完成实名认证和车辆绑定，可领取奖励金</navigator>
         </view>
       </view>
-      <navigator wx:if="{{needCompleteProfile}}" url="/pages/auth/profile/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-complete-profile">完善资料</navigator>
     </block>
     <navigator wx:else url="/pages/auth/login/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-login-btn">登录</navigator>
   </view>

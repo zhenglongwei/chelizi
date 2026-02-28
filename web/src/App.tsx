@@ -15,6 +15,7 @@ import DataStatistics from './admin/pages/DataStatistics';
 import SystemConfig from './admin/pages/SystemConfig';
 import RewardRulesConfig from './admin/pages/RewardRulesConfig';
 import ReviewAudit from './admin/pages/ReviewAudit';
+import AppealReviewManagement from './admin/pages/AppealReviewManagement';
 import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
 import OrderCancelRequests from './admin/pages/OrderCancelRequests';
@@ -50,6 +51,7 @@ function App() {
         <Route path="config" element={<SystemConfig />} />
         <Route path="reward-rules" element={<RewardRulesConfig />} />
         <Route path="review-audit" element={<ReviewAudit />} />
+        <Route path="appeal-reviews" element={<AppealReviewManagement />} />
         <Route path="complexity-upgrade" element={<ComplexityUpgrade />} />
         <Route path="antifraud" element={<AntiFraudManagement />} />
       </Route>

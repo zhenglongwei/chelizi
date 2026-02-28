@@ -77,5 +77,25 @@
       </view>
       <text class="merchant-action-arrow">›</text>
     </view>
+    <view class="merchant-action card" bindtap="onMessageTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">消息中心</text>
+        <text class="text-muted fs-cap">申诉、材料审核等通知</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+    <view class="merchant-action card" bindtap="onAppealTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">我的申诉</text>
+        <text class="text-muted fs-cap">评价异议申诉</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
   </view>
 </view>

@@ -44,6 +44,7 @@ const pool = mysql.createPool(dbConfig);
 const rewardCalculator = require('./reward-calculator');
 const antifraud = require('./antifraud');
 const biddingService = require('./services/bidding-service');
+const biddingDistribution = require('./services/bidding-distribution');
 const reviewService = require('./review-service');
 const shopSortService = require('./shop-sort-service');
 const appointmentService = require('./services/appointment-service');
@@ -52,6 +53,9 @@ const orderService = require('./services/order-service');
 const authService = require('./services/auth-service');
 const shopService = require('./services/shop-service');
 const adminService = require('./services/admin-service');
+const reviewLikeService = require('./services/review-like-service');
+const materialAuditService = require('./services/material-audit-service');
+const merchantEvidenceService = require('./services/merchant-evidence-service');
 
 // 测试数据库连接并验证 schema
 async function testDBConnection() {
@@ -184,6 +188,38 @@ app.post('/api/v1/auth/login', async (req, res) => {
   } catch (error) {
     console.error('登录错误:', error);
     res.status(500).json(errorResponse('登录失败: ' + error.message, 500));
+  }
+});
+
+// 手机号：微信 getPhoneNumber 授权（需已登录）
+app.post('/api/v1/auth/phone', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    const result = await authService.getPhoneFromCodeAndUpdate(pool, req.userId, code, {
+      WX_APPID,
+      WX_SECRET,
+    });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '手机号已更新'));
+  } catch (error) {
+    console.error('[auth/phone]', error);
+    res.status(500).json(errorResponse(error.message || '获取手机号失败', 500));
+  }
+});
+
+// 手机号：短信验证（预留，短信包未开通）
+app.post('/api/v1/auth/phone/verify-sms', authenticateToken, async (req, res) => {
+  try {
+    const { phone, sms_code } = req.body || {};
+    const result = await authService.verifyPhoneBySms(pool, req.userId, phone, sms_code);
+    if (!result.success) {
+      return res.status(result.statusCode || 501).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '验证成功'));
+  } catch (error) {
+    res.status(500).json(errorResponse(error.message || '验证失败', 500));
   }
 });
 
@@ -329,6 +365,13 @@ app.get('/api/v1/merchant/biddings', authenticateMerchant, async (req, res) => {
     const status = (req.query.status || 'pending'); // pending | quoted | ended
 
     console.log(`[merchant/biddings] shopId=${shopId} status=${status} page=${page} limit=${limit} ${req.reqId || ''}`);
+    if (status === 'pending') {
+      try {
+        await biddingDistribution.sendDelayedBiddingMessagesForShop(pool, shopId);
+      } catch (e) {
+        console.warn(`[merchant/biddings] sendDelayedBiddingMessagesForShop error:`, e?.message);
+      }
+    }
     const { list, total } = await biddingService.listBiddingsForShop(pool, shopId, status, page, limit, { reqId: req.reqId || '' });
     const items = (list || []).map((row) => biddingService.mapBiddingRowToItem(row));
 
@@ -431,6 +474,14 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     if (!bidding_id || !amount || amount <= 0) {
       return res.status(400).json(errorResponse('请填写有效报价金额'));
     }
+    const dur = duration != null && duration !== '' ? parseInt(duration, 10) : NaN;
+    const war = warranty != null && warranty !== '' ? parseInt(warranty, 10) : NaN;
+    if (isNaN(dur) || dur < 0) {
+      return res.status(400).json(errorResponse('请填写预计工期（天）'));
+    }
+    if (isNaN(war) || war < 0) {
+      return res.status(400).json(errorResponse('请填写质保期（月）'));
+    }
 
     const [biddingCheck] = await pool.execute(
       'SELECT bidding_id, status FROM biddings WHERE bidding_id = ?',
@@ -457,11 +508,14 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     );
     if (inRange.length === 0) return res.status(403).json(errorResponse('该竞价未邀请您'));
 
+    const visible = await biddingDistribution.isShopVisibleForBidding(pool, shopId, bidding_id, 'pending');
+    if (!visible) return res.status(403).json(errorResponse('该竞价未邀请您'));
+
     const quoteId = 'QUO' + Date.now();
     await pool.execute(
       `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [quoteId, bidding_id, shopId, amount, JSON.stringify(items || []), JSON.stringify(value_added_services || []), duration || 3, warranty || 12, remark || null]
+      [quoteId, bidding_id, shopId, amount, JSON.stringify(items || []), JSON.stringify(value_added_services || []), dur, war, remark || null]
     );
 
     console.log(`[merchant/quote] ${req.reqId || ''} quoteId=${quoteId} biddingId=${bidding_id} shopId=${shopId} amount=${amount}`);
@@ -607,6 +661,21 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
 
     const pendingCancel = await orderService.getPendingCancelRequest(pool, id, shopId);
 
+    let materialAuditStatus = null;
+    let materialAuditRejectReason = null;
+    if (parseInt(o.status, 10) === 1) {
+      try {
+        const [auditRows] = await pool.execute(
+          `SELECT status, reject_reason FROM material_audit_tasks WHERE order_id = ? ORDER BY created_at DESC LIMIT 1`,
+          [id]
+        );
+        if (auditRows.length > 0) {
+          materialAuditStatus = auditRows[0].status;
+          materialAuditRejectReason = auditRows[0].reject_reason;
+        }
+      } catch (_) {}
+    }
+
     let repairPlan = null;
     let repairPlanStatus = 0;
     if (o.repair_plan) {
@@ -636,7 +705,9 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       duration_deadline_text: durationDeadlineText,
       created_at: o.created_at,
       accepted_at: o.accepted_at,
-      pending_cancel_request: pendingCancel
+      pending_cancel_request: pendingCancel,
+      material_audit_status: materialAuditStatus,
+      material_audit_reject_reason: materialAuditRejectReason
     }));
   } catch (error) {
     console.error('服务商订单详情错误:', error);
@@ -659,12 +730,18 @@ app.post('/api/v1/merchant/orders/:id/accept', authenticateMerchant, requireQual
 });
 
 // 更新订单状态（维修中→待确认，1→2 时 completion_evidence 必传）
+// 材料 AI 审核：返回 auditing 时异步审核，通过后自动 status=2
 app.put('/api/v1/merchant/orders/:id/status', authenticateMerchant, async (req, res) => {
   try {
     const { status, completion_evidence } = req.body || {};
     const result = await orderService.updateOrderStatus(pool, req.params.id, req.shopId, status, completion_evidence);
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    if (result.data.status === 'auditing' && result.data.task_id) {
+      const baseUrl = process.env.BASE_URL || (req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${PORT}`);
+      materialAuditService.runMaterialAuditAsync(pool, result.data.task_id, baseUrl);
+      return res.json(successResponse(result.data, result.data.message || '材料审核中，请稍后查看结果'));
     }
     res.json(successResponse(result.data, '已标记为待用户确认'));
   } catch (error) {
@@ -701,6 +778,37 @@ app.post('/api/v1/merchant/orders/:id/cancel-request/:requestId/respond', authen
   } catch (error) {
     console.error('响应撤单申请错误:', error);
     res.status(500).json(errorResponse('操作失败', 500));
+  }
+});
+
+// 商户申诉：待申诉列表
+app.get('/api/v1/merchant/appeals', authenticateMerchant, async (req, res) => {
+  try {
+    const status = req.query.status;
+    const limit = parseInt(req.query.limit) || 20;
+    const list = await merchantEvidenceService.listAppealRequests(pool, req.shopId, { status, limit });
+    res.json(successResponse({ list }));
+  } catch (error) {
+    console.error('获取申诉列表错误:', error);
+    res.status(500).json(errorResponse('获取失败', 500));
+  }
+});
+
+// 商户申诉：提交申诉材料（提交后异步 AI 初审）
+app.post('/api/v1/merchant/appeals/:requestId/submit', authenticateMerchant, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { evidence_urls } = req.body || {};
+    const result = await merchantEvidenceService.submitAppealRequest(pool, requestId, req.shopId, evidence_urls);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    const baseUrl = process.env.BASE_URL || (req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${PORT}`);
+    merchantEvidenceService.runAppealReviewAsync(pool, requestId, baseUrl);
+    res.json(successResponse(result.data, '申诉材料已提交，请等待审核'));
+  } catch (error) {
+    console.error('提交申诉材料错误:', error);
+    res.status(500).json(errorResponse('提交失败', 500));
   }
 });
 
@@ -943,12 +1051,16 @@ app.get('/api/v1/user/profile', authenticateToken, async (req, res) => {
     }
 
     const user = users[0];
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    const levelNames = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
     res.json(successResponse({
       user_id: user.user_id,
       nickname: user.nickname,
       avatar_url: user.avatar_url,
       phone: user.phone,
-      level: user.level,
+      level: trust.level,
+      level_name: levelNames[trust.level] || levelNames[0],
+      needs_verification: trust.needsVerification === true,
       points: user.points,
       balance: user.balance,
       total_rebate: user.total_rebate,
@@ -1013,10 +1125,112 @@ app.put('/api/v1/user/profile', authenticateToken, async (req, res) => {
       `UPDATE users SET ${updates.join(', ')} WHERE user_id = ?`,
       params
     );
+    // 手机号更新：同步实名认证，并尝试触发回溯奖励
+    if (phone !== undefined && phone !== null && String(phone).trim()) {
+      try {
+        await pool.execute(
+          `INSERT INTO user_verification (user_id, verified, verified_at) VALUES (?, 1, NOW())
+           ON DUPLICATE KEY UPDATE verified = 1, verified_at = COALESCE(verified_at, NOW())`,
+          [req.userId]
+        );
+        const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+        if (trust.level >= 1) {
+          await pool.execute(
+            'UPDATE users SET level = ?, level_updated_at = NOW() WHERE user_id = ?',
+            [trust.level, req.userId]
+          );
+          const backfill = await antifraud.processWithheldRewards(pool, req.userId);
+          if (backfill.paid > 0) {
+            console.log(`[user/profile] 用户 ${req.userId} 完成认证，回溯发放奖励 ${backfill.paid} 元`);
+          }
+        }
+      } catch (e) {
+        console.error('[user/profile] 实名同步或回溯失败:', e.message);
+      }
+    }
     res.json(successResponse(null, '更新成功'));
   } catch (error) {
     console.error('[PUT /api/v1/user/profile]', error);
     res.status(500).json(errorResponse(error.message || '更新失败', 500));
+  }
+});
+
+// 获取用户等级与可信度（供前端展示、判断是否需提示实名/车辆）
+app.get('/api/v1/user/trust-level', authenticateToken, async (req, res) => {
+  try {
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    res.json(successResponse({
+      level: trust.level,
+      level_name: trust.levelName,
+      weight: trust.weight,
+      needs_verification: trust.needsVerification === true,
+    }));
+  } catch (error) {
+    res.status(500).json(errorResponse('获取等级失败', 500));
+  }
+});
+
+// 获取用户等级详情（升级进度、权益、保级条件，供个人中心等级详情页）
+app.get('/api/v1/user/level-detail', authenticateToken, async (req, res) => {
+  try {
+    const detail = await antifraud.getUserLevelDetail(pool, req.userId);
+    res.json(successResponse(detail));
+  } catch (error) {
+    res.status(500).json(errorResponse('获取等级详情失败', 500));
+  }
+});
+
+// 绑定车辆（阶段1：实名+车辆完成可升级1级并触发回溯）
+app.post('/api/v1/user/vehicles', authenticateToken, async (req, res) => {
+  try {
+    const { plate_number, vin, vehicle_info } = req.body || {};
+    const [count] = await pool.execute(
+      'SELECT COUNT(*) as c FROM user_vehicles WHERE user_id = ? AND status = 1',
+      [req.userId]
+    );
+    if ((count[0]?.c || 0) >= 3) {
+      return res.status(400).json(errorResponse('最多绑定 3 台车辆'));
+    }
+    const vInfo = vehicle_info && typeof vehicle_info === 'object' ? JSON.stringify(vehicle_info) : null;
+    await pool.execute(
+      'INSERT INTO user_vehicles (user_id, plate_number, vin, vehicle_info, status) VALUES (?, ?, ?, ?, 1)',
+      [req.userId, (plate_number || '').trim() || null, (vin || '').trim() || null, vInfo]
+    );
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    if (trust.level >= 1) {
+      await pool.execute(
+        'UPDATE users SET level = ?, level_updated_at = NOW() WHERE user_id = ?',
+        [trust.level, req.userId]
+      );
+      const backfill = await antifraud.processWithheldRewards(pool, req.userId);
+      if (backfill.paid > 0) {
+        console.log(`[user/vehicles] 用户 ${req.userId} 完成车辆绑定，回溯发放奖励 ${backfill.paid} 元`);
+      }
+    }
+    res.json(successResponse(null, '绑定成功'));
+  } catch (error) {
+    console.error('[POST /api/v1/user/vehicles]', error);
+    res.status(500).json(errorResponse(error.message || '绑定失败', 500));
+  }
+});
+
+// 获取绑定车辆列表
+app.get('/api/v1/user/vehicles', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT id, plate_number, vin, vehicle_info, status, created_at FROM user_vehicles WHERE user_id = ? AND status = 1 ORDER BY created_at DESC',
+      [req.userId]
+    );
+    const list = (rows || []).map((r) => ({
+      id: r.id,
+      plate_number: r.plate_number,
+      vin: r.vin,
+      vehicle_info: r.vehicle_info ? (typeof r.vehicle_info === 'string' ? JSON.parse(r.vehicle_info) : r.vehicle_info) : null,
+      created_at: r.created_at,
+    }));
+    res.json(successResponse({ list }));
+  } catch (error) {
+    res.status(500).json(errorResponse('获取失败', 500));
   }
 });
 
@@ -1026,16 +1240,32 @@ app.get('/api/v1/user/balance', authenticateToken, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
+    const month = (req.query.month || '').trim();
+    const typeFilter = (req.query.type || '').trim();
+
+    let where = 'user_id = ?';
+    const params = [req.userId];
+    if (month) {
+      where += ' AND settlement_month = ?';
+      params.push(month);
+    }
+    if (typeFilter) {
+      const types = typeFilter.split(',').map(s => s.trim()).filter(Boolean);
+      if (types.length > 0) {
+        where += ' AND type IN (' + types.map(() => '?').join(',') + ')';
+        params.push(...types);
+      }
+    }
 
     const [userRes, transRes, countRes] = await Promise.all([
       pool.execute('SELECT balance, total_rebate FROM users WHERE user_id = ?', [req.userId]),
       pool.execute(
-        `SELECT transaction_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at
-         FROM transactions WHERE user_id = ?
+        `SELECT transaction_id, type, amount, description, settlement_month, related_id, reward_tier, review_stage, tax_deducted, created_at
+         FROM transactions WHERE ${where}
          ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-        [req.userId, limit, offset]
+        [...params, limit, offset]
       ),
-      pool.execute('SELECT COUNT(*) as total FROM transactions WHERE user_id = ?', [req.userId])
+      pool.execute(`SELECT COUNT(*) as total FROM transactions WHERE ${where}`, params)
     ]);
 
     const userRows = userRes[0];
@@ -1044,14 +1274,18 @@ app.get('/api/v1/user/balance', authenticateToken, async (req, res) => {
     const balance = userRows && userRows.length > 0 ? parseFloat(userRows[0].balance) || 0 : 0;
     const total_rebate = userRows && userRows.length > 0 ? parseFloat(userRows[0].total_rebate) || 0 : 0;
 
+    const typeLabels = { rebate: '主评价/追评奖励', upgrade_diff: '评价升级差额', like_bonus: '常规点赞追加', conversion_bonus: '内容转化追加', post_verify_bonus: '事后验证补发' };
+
     res.json(successResponse({
       balance,
       total_rebate,
       list: transactions.map(t => ({
         transaction_id: t.transaction_id,
         type: t.type,
+        type_label: typeLabels[t.type] || t.type,
         amount: t.amount,
         description: t.description,
+        settlement_month: t.settlement_month,
         related_id: t.related_id,
         reward_tier: t.reward_tier,
         review_stage: t.review_stage,
@@ -1567,8 +1801,36 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
     const merchantCompletion = completionEvidence?.repair_photos || [];
     const merchantMaterials = completionEvidence?.material_photos || [];
 
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    const levelNames = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
+
+    // 系统核验（6项）：告知费用、额外项目、服务商一致、结算金额、工期、质保
+    const quotedNum = parseFloat(order.quoted_amount) || 0;
+    const actualNum = parseFloat(order.actual_amount) || 0;
+    const orderVerification = {
+      informed: !!order.quote_id,
+      no_extra_project: true,
+      shop_match: true,
+      settlement_match: quotedNum <= 0 ? true : (Math.abs(actualNum - quotedNum) / quotedNum <= 0.1),
+      on_time: true,
+      warranty_informed: false
+    };
+    if (quotePlan?.warranty != null || repairPlan?.warranty != null) orderVerification.warranty_informed = true;
+    const durationDays = repairPlan?.duration ?? quotePlan?.duration ?? 3;
+    if (order.accepted_at && order.completed_at && durationDays != null) {
+      const accepted = new Date(order.accepted_at);
+      const completed = new Date(order.completed_at);
+      const promisedEnd = new Date(accepted);
+      promisedEnd.setDate(promisedEnd.getDate() + Number(durationDays));
+      orderVerification.on_time = completed <= new Date(promisedEnd.getTime() + 86400000);
+    }
+    const allVerified = Object.values(orderVerification).every(Boolean);
+
     res.json(successResponse({
       order_id: order.order_id,
+      needs_verification: trust.needsVerification === true,
+      level: trust.level,
+      level_name: levelNames[trust.level] || levelNames[0],
       shop_name: order.shop_name,
       shop_logo: order.shop_logo,
       quoted_amount: order.quoted_amount,
@@ -1580,7 +1842,9 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       merchant_completion_images: merchantCompletion,
       merchant_material_images: merchantMaterials,
       quote_plan: quotePlan,
-      repair_plan: repairPlan
+      repair_plan: repairPlan,
+      order_verification: orderVerification,
+      order_verification_all_ok: allVerified
     }));
   } catch (error) {
     res.status(500).json(errorResponse('获取评价信息失败', 500));
@@ -2033,10 +2297,49 @@ app.post('/api/v1/reviews', authenticateToken, async (req, res) => {
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    res.json(successResponse(result.data, '评价提交成功'));
+    res.json(successResponse(result.data, result.message || '评价提交成功'));
   } catch (error) {
     console.error('提交评价错误:', error);
     res.status(500).json(errorResponse('提交评价失败', 500));
+  }
+});
+
+// 上报有效阅读会话（点赞追加奖金：看到了+有效阅读时长）
+app.post('/api/v1/reviews/:id/reading', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { effective_seconds, saw_at } = req.body || {};
+    const sec = Math.min(Math.max(0, Math.floor(Number(effective_seconds) || 0)), 180);
+    if (sec <= 0) {
+      return res.json(successResponse({ added: 0, total: 0 }));
+    }
+    const [exists] = await pool.execute('SELECT 1 FROM reviews WHERE review_id = ?', [id]);
+    if (!exists.length) return res.status(404).json(errorResponse('评价不存在', 404));
+    const saw = saw_at ? new Date(saw_at) : new Date();
+    const result = await reviewLikeService.reportReadingSession(pool, req.userId, id, sec, saw);
+    res.json(successResponse({ added: result.added, total: result.total, capped: !!result.capped }));
+  } catch (err) {
+    console.error('[reviews/reading]', err);
+    res.status(500).json(errorResponse(err.message || '上报失败', 500));
+  }
+});
+
+// 点赞评价（可直接点，后台校验有效阅读≥30秒决定是否纳入奖金）
+app.post('/api/v1/reviews/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await reviewLikeService.likeReview(pool, req.userId, id);
+    if (!result.success) {
+      return res.status(400).json(errorResponse(result.error));
+    }
+    res.json(successResponse({
+      like_id: result.like_id,
+      is_valid_for_bonus: result.is_valid_for_bonus,
+      message: result.is_valid_for_bonus ? '点赞成功' : '点赞成功（有效阅读不足30秒，不纳入奖金核算）',
+    }));
+  } catch (err) {
+    console.error('[reviews/like]', err);
+    res.status(500).json(errorResponse(err.message || '点赞失败', 500));
   }
 });
 
@@ -2092,6 +2395,10 @@ app.post('/api/v1/reviews/:id/followup', authenticateToken, async (req, res) => 
   try {
     const { id } = req.params;
     const { content, images, stage = '1m', is_return_visit, objective_answers } = req.body;
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    if (trust.level === 0) {
+      return res.status(403).json(errorResponse('您的账号等级不足，完成实名认证和车辆绑定后可评价', 403));
+    }
 
     const [reviews] = await pool.execute(
       'SELECT * FROM reviews WHERE review_id = ? AND user_id = ?',
@@ -2178,6 +2485,10 @@ app.post('/api/v1/reviews/:id/followup', authenticateToken, async (req, res) => 
       review_id: followupId,
       reward: { amount: userReceives.toFixed(2), tax_deducted: taxDeducted, stage: stageVal }
     }, '追评提交成功'));
+
+    // 异步：主评价+追评整体重评估，回写主评价 content_quality（整体性评估原则）
+    const baseUrl = (req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${PORT}`);
+    reviewService.recomputeHolisticContentQuality(pool, firstReview.order_id, { baseUrl, port: PORT }).catch(() => {});
   } catch (error) {
     console.error('提交追评错误:', error);
     res.status(500).json(errorResponse('提交追评失败', 500));
@@ -2188,6 +2499,10 @@ app.post('/api/v1/reviews/:id/followup', authenticateToken, async (req, res) => 
 app.post('/api/v1/reviews/return', authenticateToken, async (req, res) => {
   try {
     const { order_id, images, content } = req.body;
+    const trust = await antifraud.getUserTrustLevel(pool, req.userId);
+    if (trust.level === 0) {
+      return res.status(403).json(errorResponse('您的账号等级不足，完成实名认证和车辆绑定后可评价', 403));
+    }
 
     if (!order_id) return res.status(400).json(errorResponse('订单ID不能为空'));
     if (!images || !Array.isArray(images) || images.length === 0) {
@@ -2566,6 +2881,151 @@ app.post('/api/v1/admin/config/batch', authenticateAdmin, async (req, res) => {
     res.json(successResponse(null, result.message));
   } catch (error) {
     res.status(500).json(errorResponse('保存配置失败', 500));
+  }
+});
+
+// 定时任务：补发第二、第三梯队竞价消息（可由系统 cron 或云定时任务调用）
+// 方式1：admin 登录后调用；方式2：X-Cron-Secret 与 CRON_SECRET 匹配
+app.post('/api/v1/admin/cron/send-delayed-bidding-messages', async (req, res) => {
+  let authorized = false;
+  const cronSecret = req.headers['x-cron-secret'];
+  if (process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET) authorized = true;
+  if (!authorized && req.headers['authorization']) {
+    try {
+      const token = req.headers['authorization'].replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded?.role === 'admin') authorized = true;
+    } catch (_) {}
+  }
+  if (!authorized) {
+    return res.status(401).json(errorResponse('需要管理员登录或有效的 X-Cron-Secret'));
+  }
+  try {
+    const sentCount = await biddingDistribution.sendAllDelayedBiddingMessages(pool);
+    res.json(successResponse({ sentCount }, `已补发 ${sentCount} 条消息`));
+  } catch (error) {
+    console.error('[cron] send-delayed-bidding-messages error:', error);
+    res.status(500).json(errorResponse('补发失败', 500));
+  }
+});
+
+// 定时任务：处理逾期未申诉的商户申诉请求 → 写入 shop_violations
+app.post('/api/v1/admin/cron/process-overdue-evidence', async (req, res) => {
+  let authorized = false;
+  const cronSecret = req.headers['x-cron-secret'];
+  if (process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET) authorized = true;
+  if (!authorized && req.headers['authorization']) {
+    try {
+      const token = req.headers['authorization'].replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded?.role === 'admin') authorized = true;
+    } catch (_) {}
+  }
+  if (!authorized) {
+    return res.status(401).json(errorResponse('需要管理员登录或有效的 X-Cron-Secret'));
+  }
+  try {
+    const { processed } = await merchantEvidenceService.processOverdueEvidenceRequests(pool);
+    res.json(successResponse({ processed }, `已处理 ${processed} 条逾期申诉`));
+  } catch (error) {
+    console.error('[cron] process-overdue-evidence error:', error);
+    res.status(500).json(errorResponse('处理失败', 500));
+  }
+});
+
+// 定时任务：处理待 AI 初审的申诉（status=1，补漏）
+app.post('/api/v1/admin/cron/process-pending-appeals', async (req, res) => {
+  let authorized = false;
+  const cronSecret = req.headers['x-cron-secret'];
+  if (process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET) authorized = true;
+  if (!authorized && req.headers['authorization']) {
+    try {
+      const token = req.headers['authorization'].replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded?.role === 'admin') authorized = true;
+    } catch (_) {}
+  }
+  if (!authorized) {
+    return res.status(401).json(errorResponse('需要管理员登录或有效的 X-Cron-Secret'));
+  }
+  try {
+    const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+    const { processed } = await merchantEvidenceService.processPendingAppealReviews(pool, baseUrl);
+    res.json(successResponse({ processed }, `已处理 ${processed} 条待初审申诉`));
+  } catch (error) {
+    console.error('[cron] process-pending-appeals error:', error);
+    res.status(500).json(errorResponse('处理失败', 500));
+  }
+});
+
+// 定时任务：月度奖励结算（每月10日，结算上月：评价升级差额、常规点赞追加）
+app.post('/api/v1/admin/cron/settle-monthly-rewards', async (req, res) => {
+  let authorized = false;
+  const cronSecret = req.headers['x-cron-secret'];
+  if (process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET) authorized = true;
+  if (!authorized && req.headers['authorization']) {
+    try {
+      const token = req.headers['authorization'].replace('Bearer ', '');
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded?.role === 'admin') authorized = true;
+    } catch (_) {}
+  }
+  if (!authorized) {
+    return res.status(401).json(errorResponse('需要管理员登录或有效的 X-Cron-Secret'));
+  }
+  try {
+    const { month } = req.query || {};
+    let settleMonth = month;
+    if (!settleMonth) {
+      const d = new Date();
+      const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      settleMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const settlementService = require('./services/settlement-service');
+    const result = await settlementService.settleMonth(pool, settleMonth);
+    res.json(successResponse({
+      month: settleMonth,
+      upgradeDiff: result.upgradeDiff,
+      likeBonus: result.likeBonus,
+      conversionBonus: result.conversionBonus,
+      postVerifyBonus: result.postVerifyBonus,
+      errors: result.errors,
+    }, '月度结算完成'));
+  } catch (error) {
+    console.error('[cron] settle-monthly-rewards error:', error);
+    res.status(500).json(errorResponse('月度结算失败', 500));
+  }
+});
+
+// 商户申诉人工复核（status=4 待人工复核）
+app.get('/api/v1/admin/appeal-reviews', authenticateAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const result = await merchantEvidenceService.listAppealReviewsForAdmin(pool, { page, limit });
+    res.json(successResponse(result));
+  } catch (error) {
+    console.error('获取待复核申诉列表失败:', error);
+    res.status(500).json(errorResponse('获取失败', 500));
+  }
+});
+app.post('/api/v1/admin/appeal-reviews/:requestId/resolve', authenticateAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { approved } = req.body;
+    if (typeof approved !== 'boolean') {
+      return res.status(400).json(errorResponse('请提供 approved: true/false'));
+    }
+    const result = await merchantEvidenceService.resolveAppealReview(
+      pool, requestId, approved, req.adminUserId || 'admin'
+    );
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
+  } catch (error) {
+    console.error('人工复核申诉失败:', error);
+    res.status(500).json(errorResponse('复核失败', 500));
   }
 });
 

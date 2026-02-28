@@ -38,6 +38,21 @@
   opacity: 0.6;
 }
 
+.balance-filter-bar {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.balance-filter-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+}
+
 .balance-list-title {
   margin-bottom: var(--space-lg);
 }

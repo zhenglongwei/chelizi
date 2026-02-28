@@ -81,7 +81,7 @@ async function userLogin(pool, req, options = {}) {
     const userId = 'U' + Date.now();
     await pool.execute(
       `INSERT INTO users (user_id, openid, unionid, level, points, balance, total_rebate, total_reviews, created_at, updated_at) 
-       VALUES (?, ?, ?, 1, 0, 0, 0, 0, NOW(), NOW())`,
+       VALUES (?, ?, ?, 0, 0, 0, 0, 0, NOW(), NOW())`,
       [userId, openid, unionid || null]
     );
     [users] = await pool.execute('SELECT * FROM users WHERE openid = ?', [openid]);
@@ -262,10 +262,72 @@ async function merchantLogin(pool, req, options = {}) {
   };
 }
 
+/**
+ * 通过微信 getPhoneNumber 返回的 code 获取手机号并更新用户
+ * @param {object} pool - 数据库连接池
+ * @param {string} userId - 用户ID（需已登录）
+ * @param {string} code - getPhoneNumber 回调返回的 code
+ * @param {object} options - { WX_APPID, WX_SECRET }
+ */
+async function getPhoneFromCodeAndUpdate(pool, userId, code, options = {}) {
+  const { WX_APPID, WX_SECRET } = options;
+  if (!WX_APPID || !WX_SECRET) {
+    return { success: false, error: '未配置微信参数', statusCode: 500 };
+  }
+  if (!code || !String(code).trim()) {
+    return { success: false, error: 'code 不能为空', statusCode: 400 };
+  }
+
+  const axios = require('axios');
+  const tokenRes = await axios.get('https://api.weixin.qq.com/cgi-bin/token', {
+    params: { appid: WX_APPID, secret: WX_SECRET, grant_type: 'client_credential' },
+  });
+  if (tokenRes.data.errcode) {
+    return { success: false, error: '获取 access_token 失败: ' + (tokenRes.data.errmsg || ''), statusCode: 500 };
+  }
+  const accessToken = tokenRes.data.access_token;
+
+  const phoneRes = await axios.post(
+    `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`,
+    { code: String(code).trim() }
+  );
+  if (phoneRes.data.errcode !== 0) {
+    return { success: false, error: '获取手机号失败: ' + (phoneRes.data.errmsg || '用户拒绝或 code 无效'), statusCode: 400 };
+  }
+  const phone = phoneRes.data.phone_info?.phoneNumber || phoneRes.data.phone_info?.purePhoneNumber;
+  if (!phone) {
+    return { success: false, error: '未获取到手机号', statusCode: 400 };
+  }
+
+  await pool.execute('UPDATE users SET phone = ?, updated_at = NOW() WHERE user_id = ?', [phone, userId]);
+  await pool.execute(
+    `INSERT INTO user_verification (user_id, verified, verified_at) VALUES (?, 1, NOW())
+     ON DUPLICATE KEY UPDATE verified = 1, verified_at = COALESCE(verified_at, NOW())`,
+    [userId]
+  );
+
+  const trust = await antifraud.getUserTrustLevel(pool, userId);
+  if (trust.level >= 1) {
+    await pool.execute('UPDATE users SET level = ?, level_updated_at = NOW() WHERE user_id = ?', [trust.level, userId]);
+    await antifraud.processWithheldRewards(pool, userId);
+  }
+
+  return { success: true, data: { phone } };
+}
+
+/**
+ * 短信验证手机号（预留，短信包未开通时返回提示）
+ */
+async function verifyPhoneBySms(pool, userId, phone, smsCode) {
+  return { success: false, error: '短信验证功能暂未开通，请使用微信授权获取手机号', statusCode: 501 };
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
   userLogin,
+  getPhoneFromCodeAndUpdate,
+  verifyPhoneBySms,
   merchantRegister,
   merchantLogin,
 };

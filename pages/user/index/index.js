@@ -13,7 +13,6 @@ Page({
     hasToken: false,
     hasMerchantToken: false,
     userInfo: {},
-    needCompleteProfile: false,
     balanceText: '0.00',
     totalRebateText: '0.00',
     locationAddress: '',
@@ -49,7 +48,6 @@ Page({
       const userInfo = profile || {};
       const balanceText = formatMoney(userInfo.balance);
       const totalRebateText = formatMoney(userInfo.total_rebate);
-      const needCompleteProfile = !userInfo.avatar_url || !userInfo.nickname;
       let locationAddress = '';
       let locationShort = '';
       try {
@@ -69,9 +67,10 @@ Page({
         userInfo: {
           nickname: userInfo.nickname,
           avatar_url: userInfo.avatar_url,
-          level: userInfo.level
+          level: userInfo.level,
+          level_name: userInfo.level_name,
+          needs_verification: userInfo.needs_verification
         },
-        needCompleteProfile,
         balanceText,
         totalRebateText,
         locationAddress,

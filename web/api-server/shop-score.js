@@ -6,6 +6,18 @@
 
 const antifraud = require('./antifraud');
 
+async function hasColumn(pool, table, col) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, col]
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 // 订单含金量权重 L1:0.2 L2:1.0 L3:3.0 L4:6.0，保险事故车×2
 const ORDER_WEIGHT = { L1: 0.2, L2: 1.0, L3: 3.0, L4: 6.0 };
 
@@ -51,8 +63,11 @@ function calcReviewWeight(params) {
  */
 async function computeShopScore(pool, shopId) {
   try {
+    const hasQ3Excluded = await hasColumn(pool, 'reviews', 'q3_weight_excluded');
+    const q3Col = hasQ3Excluded ? 'r.q3_weight_excluded,' : '';
     const [rows] = await pool.execute(
-      `SELECT r.review_id, r.user_id, r.rating, r.created_at, r.weight, r.content_quality,
+      `SELECT r.review_id, r.user_id, r.rating, r.created_at, r.weight, r.content_quality, r.content_quality_level,
+              ${q3Col}
               o.complexity_level, o.is_insurance_accident,
               s.compliance_rate
        FROM reviews r
@@ -77,6 +92,9 @@ async function computeShopScore(pool, shopId) {
     let sumWeight = 0;
 
     for (const r of rows) {
+      // q3_weight_excluded=1：商户申诉有效，该评价不计入店铺得分（02/05 文档）
+      if (hasQ3Excluded && r.q3_weight_excluded === 1) continue;
+
       const decay = getTimeDecay(r.created_at);
       if (decay <= 0) continue;
 
@@ -86,7 +104,7 @@ async function computeShopScore(pool, shopId) {
       } else {
         const trust = await antifraud.getUserTrustLevel(pool, r.user_id);
         const isNegative = (parseFloat(r.rating) || 5) <= 2;
-        const contentQuality = r.content_quality === 'premium' ? 'premium' : 'valid';
+        const contentQuality = (r.content_quality_level >= 2 || r.content_quality === 'premium' || r.content_quality === '维权参考' || r.content_quality === '标杆' || r.content_quality === '爆款') ? 'premium' : 'valid';
         weight = calcReviewWeight({
           complexityLevel: r.complexity_level,
           isInsuranceAccident: !!r.is_insurance_accident,

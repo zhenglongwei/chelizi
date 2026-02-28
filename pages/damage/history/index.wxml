@@ -27,12 +27,6 @@
           <text class="fs-body fw-bold">{{item.vehicle_info.plate_number || item.vehicle_info.model || '车辆'}}</text>
           <text class="text-muted fs-sm">{{item.created_at}}</text>
         </view>
-        <view class="history-item-body" wx:if="{{item.total_estimate && item.total_estimate.length >= 2}}">
-          <view class="history-item-row">
-            <text class="text-muted fs-sm">预估费用：</text>
-            <text class="fs-body">{{item.total_estimate[0]}}-{{item.total_estimate[1]}} 元</text>
-          </view>
-        </view>
         <view class="history-item-images" wx:if="{{item.images && item.images.length}}">
           <image class="history-thumb" wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill"/>
         </view>

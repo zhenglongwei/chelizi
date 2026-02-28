@@ -35,8 +35,8 @@ Page({
     repairTypeOptions: REPAIR_TYPES,
     partsTypeOptions: PARTS_TYPES,
     amount: '',
-    duration: 3,
-    warranty: 12,
+    duration: '',
+    warranty: '',
     remark: '',
     submitting: false,
     hasAiSuggestions: false
@@ -68,8 +68,8 @@ Page({
       this.setData({
         bidding: res,
         hasAiSuggestions: hasAi,
-        duration: res.my_quote ? res.my_quote.duration : 3,
-        warranty: res.my_quote ? res.my_quote.warranty : 12,
+        duration: res.my_quote ? res.my_quote.duration : '',
+        warranty: res.my_quote ? res.my_quote.warranty : '',
         remark: res.my_quote ? (res.my_quote.remark || '') : ''
       });
       if (!res.my_quote) {
@@ -180,15 +180,29 @@ Page({
   },
 
   onDurationInput(e) {
-    this.setData({ duration: parseInt(e.detail.value, 10) || 3 });
+    const val = (e.detail.value || '').trim();
+    const num = parseInt(val, 10);
+    this.setData({ duration: val === '' ? '' : (isNaN(num) ? '' : num) });
   },
 
   onWarrantyInput(e) {
-    this.setData({ warranty: parseInt(e.detail.value, 10) || 12 });
+    const val = (e.detail.value || '').trim();
+    const num = parseInt(val, 10);
+    this.setData({ warranty: val === '' ? '' : (isNaN(num) ? '' : num) });
   },
 
   onRemarkInput(e) {
     this.setData({ remark: (e.detail.value || '').trim() });
+  },
+
+  onPreviewPhoto(e) {
+    const idx = e.currentTarget.dataset.index;
+    const images = (this.data.bidding && this.data.bidding.images) || [];
+    if (!images.length) return;
+    wx.previewImage({
+      current: images[idx] || images[0],
+      urls: images
+    });
   },
 
   async onSubmit() {
@@ -196,6 +210,16 @@ Page({
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) {
       ui.showWarning('请输入有效报价金额');
+      return;
+    }
+    const dur = duration === '' || duration == null ? null : parseInt(duration, 10);
+    const war = warranty === '' || warranty == null ? null : parseInt(warranty, 10);
+    if (dur == null || isNaN(dur) || dur < 0) {
+      ui.showWarning('请填写预计工期（天）');
+      return;
+    }
+    if (war == null || isNaN(war) || war < 0) {
+      ui.showWarning('请填写质保期（月）');
       return;
     }
     if (submitting) return;
@@ -219,8 +243,8 @@ Page({
         amount: amt,
         items,
         value_added_services,
-        duration: duration || 3,
-        warranty: warranty || 12,
+        duration: dur,
+        warranty: war,
         remark: remark || null
       });
       ui.showSuccess('报价已提交');

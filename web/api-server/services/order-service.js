@@ -185,6 +185,7 @@ async function hasColumn(pool, table, col) {
 /**
  * 服务商更新订单状态（维修中 1->待确认 2）
  * 1->2 时 completion_evidence 必传：repair_photos、settlement_photos、material_photos 各至少 1 张
+ * 材料 AI 审核：数量校验通过后创建审核任务，status 保持 1，返回 auditing；后台 AI 通过则更新为 2
  * repair_plan_status=1（待车主确认）时不可点击维修完成
  */
 async function updateOrderStatus(pool, orderId, shopId, targetStatus, completionEvidence) {
@@ -208,6 +209,31 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, completion
     if (!valid.ok) {
       return { success: false, error: valid.msg, statusCode: 400 };
     }
+
+    const hasMaterialAuditTable = await hasTable(pool, 'material_audit_tasks');
+    if (hasMaterialAuditTable) {
+      const taskId = 'mat_' + crypto.randomBytes(12).toString('hex');
+      const evidenceJson = JSON.stringify(completionEvidence || {});
+      try {
+        await pool.execute(
+          `INSERT INTO material_audit_tasks (task_id, order_id, shop_id, completion_evidence, status)
+           VALUES (?, ?, ?, ?, 'pending')`,
+          [taskId, orderId, shopId, evidenceJson]
+        );
+        return {
+          success: true,
+          data: {
+            order_id: orderId,
+            status: 'auditing',
+            task_id: taskId,
+            message: '材料审核中，请稍后查看结果'
+          }
+        };
+      } catch (err) {
+        console.warn('[OrderService] 创建材料审核任务失败，回退为直接通过:', err.message);
+      }
+    }
+
     const evidenceJson = JSON.stringify(completionEvidence || {});
     const hasEvidence = await hasColumn(pool, 'orders', 'completion_evidence');
     if (hasEvidence) {
@@ -224,6 +250,18 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, completion
     return { success: true, data: { order_id: orderId } };
   }
   return { success: false, error: '当前状态不可更新', statusCode: 400 };
+}
+
+async function hasTable(pool, tableName) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [tableName]
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -93,7 +93,9 @@ function requestWithHeaders(options) {
             resolve(body.data !== undefined ? body.data : body);
           }
         } else {
-          reject(new Error(body.message || '请求失败'));
+          const err = new Error(body.message || '请求失败');
+          err.statusCode = res.statusCode;
+          reject(err);
         }
       },
       fail: (err) => reject(err)
@@ -177,8 +179,14 @@ module.exports = {
   getDamageReport: (id) => api.get('/api/v1/damage/report/' + id),
   createBidding: (data) => api.post('/api/v1/bidding/create', data),
   authLogin: (code) => api.post('/api/v1/auth/login', { code }),
+  authPhoneByCode: (code) => api.post('/api/v1/auth/phone', { code }),
+  authPhoneBySms: (phone, smsCode) => api.post('/api/v1/auth/phone/verify-sms', { phone, sms_code: smsCode }),
   updateUserProfile: (data) => api.put('/api/v1/user/profile', data),
   getUserProfile: () => api.get('/api/v1/user/profile'),
+  getUserTrustLevel: () => api.get('/api/v1/user/trust-level'),
+  getUserLevelDetail: () => api.get('/api/v1/user/level-detail'),
+  getUserVehicles: () => api.get('/api/v1/user/vehicles'),
+  addUserVehicle: (data) => api.post('/api/v1/user/vehicles', data),
   getUserBiddings: (params) => api.get('/api/v1/user/biddings', params),
   getBiddingDetail: (id) => api.get('/api/v1/bidding/' + id),
   getBiddingQuotes: (id, params) => api.get('/api/v1/bidding/' + id + '/quotes', params),
@@ -198,6 +206,10 @@ module.exports = {
   submitReview: (data) => api.post('/api/v1/reviews', data),
   analyzeReview: (data) => api.post('/api/v1/reviews/analyze', data),
   getReviewDetail: (id) => api.get('/api/v1/reviews/' + id),
+  /** 上报有效阅读会话（点赞追加奖金） */
+  reportReviewReading: (reviewId, data) => api.post('/api/v1/reviews/' + reviewId + '/reading', data),
+  /** 点赞评价 */
+  likeReview: (reviewId) => api.post('/api/v1/reviews/' + reviewId + '/like'),
   submitFollowup: (id, data) => api.post('/api/v1/reviews/' + id + '/followup', data),
   submitReturnReview: (data) => api.post('/api/v1/reviews/return', data),
   getUserBalance: (params) => api.get('/api/v1/user/balance', params),
@@ -225,5 +237,13 @@ module.exports = {
   /** 职业证书 AI 识别 */
   merchantAnalyzeTechnicianCert: (imgUrl) => merchantRequest({ url: '/api/v1/merchant/technician-cert/analyze', method: 'POST', data: { img_url: imgUrl } }),
   /** 维修资质证明 AI 识别（营业执照未识别到时使用） */
-  merchantAnalyzeQualificationCert: (imgUrl) => merchantRequest({ url: '/api/v1/merchant/qualification-cert/analyze', method: 'POST', data: { img_url: imgUrl } })
+  merchantAnalyzeQualificationCert: (imgUrl) => merchantRequest({ url: '/api/v1/merchant/qualification-cert/analyze', method: 'POST', data: { img_url: imgUrl } }),
+  /** 商户申诉：待申诉列表 */
+  getMerchantAppeals: (params) => merchantRequest({ url: '/api/v1/merchant/appeals', method: 'GET', data: params }),
+  /** 商户申诉：提交申诉材料 */
+  submitMerchantAppeal: (requestId, data) => merchantRequest({ url: '/api/v1/merchant/appeals/' + requestId + '/submit', method: 'POST', data }),
+  /** 服务商消息 */
+  getMerchantMessages: (params) => merchantRequest({ url: '/api/v1/merchant/messages', method: 'GET', data: params }),
+  markMerchantMessagesRead: (data) => merchantRequest({ url: '/api/v1/merchant/messages/read', method: 'POST', data }),
+  getMerchantUnreadCount: () => merchantRequest({ url: '/api/v1/merchant/messages/unread-count', method: 'GET' })
 };

@@ -2,10 +2,14 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getShopDetail, getShopReviews } = require('../../../utils/api');
+const { getShopDetail, getShopReviews, reportReviewReading, likeReview } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 
 const logger = getLogger('ShopDetail');
+
+// 有效阅读：单次最多 180 秒，总最多 300 秒
+const MAX_SESSION_SEC = 180;
+const MAX_TOTAL_SEC = 300;
 
 function getDeviationClass(rate) {
   const r = parseFloat(rate) || 0;
@@ -27,7 +31,8 @@ Page({
     loading: true,
     loadingReviews: false,
     favored: false,
-    pageRootStyle: 'padding-top: 88px'
+    pageRootStyle: 'padding-top: 88px',
+    _readingTimers: {}, // reviewId -> { intervalId, sawAt, sessionSec, totalReported }
   },
 
   onLoad(options) {
@@ -103,8 +108,12 @@ Page({
 
       const mapped = list.map((r) => {
         const rating = parseFloat(r.rating) || 0;
+        const content = r.content || '';
         return {
           ...r,
+          contentPreview: content.length > 60 ? content.slice(0, 60) + '...' : content,
+          expanded: false,
+          liked: false,
           ratingText: '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating)),
           dateText: formatDate(r.created_at),
           isLowRating: rating > 0 && rating < 4
@@ -154,6 +163,89 @@ Page({
   onFavorite() {
     this.setData({ favored: !this.data.favored });
     ui.showSuccess(this.data.favored ? '已收藏' : '已取消收藏');
+  },
+
+  onExpandReview(e) {
+    const idx = e.currentTarget.dataset.index;
+    const reviews = [...this.data.reviews];
+    if (!reviews[idx]) return;
+    reviews[idx].expanded = true;
+    this.setData({ reviews });
+    setTimeout(() => this.startReadingObserver(reviews[idx].review_id), 100);
+  },
+
+  startReadingObserver(reviewId) {
+    const timers = this.data._readingTimers || {};
+    if (timers[reviewId]) return;
+    const state = { sawAt: null, sessionSec: 0, totalReported: 0, intervalId: null, observer: null };
+    timers[reviewId] = state;
+    this.setData({ _readingTimers: timers });
+
+    const observer = this.createIntersectionObserver({ observeAll: false });
+    observer.relativeToViewport({ bottom: 0 }).observe('#review-' + reviewId, (res) => {
+      const ratio = res.intersectionRatio || 0;
+      if (ratio >= 0.5) {
+        if (!state.intervalId) {
+          state.intervalId = setInterval(() => {
+            if (!state.sawAt) state.sawAt = new Date(); // ≥1秒视为「看到了」
+            state.sessionSec += 1;
+            if (state.sessionSec >= MAX_SESSION_SEC || state.totalReported + state.sessionSec >= MAX_TOTAL_SEC) {
+              this.reportAndStopReading(reviewId);
+            }
+          }, 1000);
+        }
+      } else {
+        if (state.intervalId) {
+          this.reportAndStopReading(reviewId);
+        }
+      }
+    });
+    state.observer = observer;
+  },
+
+  async reportAndStopReading(reviewId) {
+    const timers = this.data._readingTimers || {};
+    const t = timers[reviewId];
+    if (!t) return;
+    if (t.intervalId) clearInterval(t.intervalId);
+    t.intervalId = null;
+    if (t.observer) t.observer.disconnect();
+    t.observer = null;
+    const sec = Math.min(Math.max(0, t.sessionSec), MAX_SESSION_SEC, MAX_TOTAL_SEC - t.totalReported);
+    delete timers[reviewId];
+    this.setData({ _readingTimers: timers });
+    if (sec <= 0) return;
+    try {
+      await reportReviewReading(reviewId, {
+        effective_seconds: sec,
+        saw_at: (t.sawAt || new Date()).toISOString()
+      });
+    } catch (err) {
+      logger.warn('上报阅读失败', { reviewId, err: err.message });
+    }
+  },
+
+  onLikeReview(e) {
+    const idx = e.currentTarget.dataset.index;
+    const reviewId = e.currentTarget.dataset.reviewId;
+    const reviews = [...this.data.reviews];
+    if (!reviews[idx] || reviews[idx].liked) return;
+    likeReview(reviewId).then((res) => {
+      reviews[idx].liked = true;
+      reviews[idx].like_count = (reviews[idx].like_count || 0) + 1;
+      this.setData({ reviews });
+      ui.showSuccess(res?.message || '点赞成功');
+    }).catch((err) => {
+      ui.showError(err.message || '点赞失败');
+    });
+  },
+
+  onUnload() {
+    const timers = this.data._readingTimers || {};
+    Object.keys(timers).forEach((reviewId) => {
+      const t = timers[reviewId];
+      if (t?.intervalId) clearInterval(t.intervalId);
+    });
   }
 });
 

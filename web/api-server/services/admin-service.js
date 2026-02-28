@@ -709,14 +709,21 @@ async function postViolation(db, req) {
       [recordId, targetType, targetId, parseInt(level), violationType || null, orderId || null, reviewId || null,
         description || null, penalty ? JSON.stringify(penalty) : null, req.adminUserId || 'admin']
     );
-    if (targetType === 'user' && [3, 4].includes(parseInt(level))) {
-      await db.execute('UPDATE users SET status = 0 WHERE user_id = ?', [targetId]);
-      try {
-        await db.execute(
-          'INSERT IGNORE INTO blacklist (blacklist_type, blacklist_value, reason) VALUES (?, ?, ?)',
-          ['user_id', targetId, `违规${level}级处罚`]
-        );
-      } catch (_) {}
+    if (targetType === 'user') {
+      const lv = parseInt(level, 10);
+      await db.execute(
+        'UPDATE users SET level_demoted_by_violation = 1 WHERE user_id = ?',
+        [targetId]
+      );
+      if ([3, 4].includes(lv)) {
+        await db.execute('UPDATE users SET status = 0, level = 0 WHERE user_id = ?', [targetId]);
+        try {
+          await db.execute(
+            'INSERT IGNORE INTO blacklist (blacklist_type, blacklist_value, reason) VALUES (?, ?, ?)',
+            ['user_id', targetId, `违规${level}级处罚`]
+          );
+        } catch (_) {}
+      }
     }
     await antifraud.writeAuditLog(db, {
       logType: 'violation',

@@ -415,17 +415,16 @@ async function analyzeQualificationCertificateWithQwen(imgUrl, apiKey) {
 
 // ===================== 评价 AI 审核 =====================
 
-const REVIEW_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的评价审核助手，仅做形式化、可比对的合规校验。
+const REVIEW_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的评价审核助手，负责评价合规校验与内容质量分级。
 
 ## 职责
-- 校验结算单真实性（是否为维修结算单、商户名/金额是否与订单一致）
-- 校验施工图与维修项目匹配度（图片是否体现对应维修场景）
-- 校验评价内容质量（是否与维修项目相关、是否无意义水评）
 - 校验内容合规（无广告、低俗、辱骂、虚假宣传）
+- 校验评价内容质量：**真实性**（是否像真实车主亲身经历）、**有效性**（是否与维修项目相关、信息具体可验证）、**参考价值**（是否对其他车主有决策参考意义）
 - 判断内容是否像套模板、AI 生成批量套话
+- 若有结算单/施工图，可辅助校验与订单一致性，但**内容质量等级仅与文字内容相关**，不依赖图片数量
 
 ## 合规红线
-- 不审核好评/差评倾向，只校验完整性、真实性、违规
+- 不审核好评/差评倾向，只校验合规与内容质量
 - 不对维修质量做担保
 - 必须返回合法 JSON，禁止自然语言兜底`;
 
@@ -444,20 +443,26 @@ function buildReviewAuditUserPrompt(order, review, images) {
 ${orderJson}
 \`\`\`
 
-## 评价信息
+## 评价信息（含客观题答案，供真实性、参考价值判断）
 \`\`\`json
 ${reviewJson}
 \`\`\`
+注：objectiveAnswers 为车主对 3 道必答题的答案（进度同步、展示新旧配件、故障已解决），可结合主观描述综合判断真实性。
 
 ## 图片列表（上方已附图片，此处为类型说明）
 ${imagesDesc}
 
 ## 审核要求
 1. **settlementCheck**：若有结算单图，判断是否为维修结算单、是否含商户名/公章、金额是否与订单 quotedAmount 接近（±20% 内可接受）
-2. **imageMatchCheck**：施工图（completion）是否与 repairProjects 匹配（如钣金喷漆应有施工/完工图，换滤芯应有相关图）
-3. **contentQuality**：评价内容是否与维修项目相关、是否≥10 字、是否非纯水词（如仅「不错」「很好」）
+2. **imageMatchCheck**：施工图（completion）是否与 repairProjects 匹配。注：图片为辅助，**不影响 contentQuality 等级**
+3. **contentQuality**：评价内容质量等级，**仅依据文字内容**，重点考察真实性、有效性、参考价值。quality 取值：invalid（无效水评）/ basic（1级基础）/ quality（2级优质）/ benchmark（3级标杆）/ 维权参考（有效差评）
+   - **invalid**：纯水评（仅「好、不错、划算」等）、与项目无关、明显套模板/AI 生成
+   - **basic**：有效评价，有与维修项目相关的描述，信息真实
+   - **quality**：basic + 具备参考价值，如避坑提示、价格对比、服务细节、故障排查过程、师傅/门店具体信息等，能帮助其他车主做决策
+   - **benchmark**：quality + 信息密度高、细节详实、对同车型/同项目车主决策价值大
+   - **维权参考**：差评但内容真实、有参考价值（如具体问题描述、沟通经过）
 4. **contentViolation**：是否含广告、低俗、辱骂、虚假宣传
-5. **similarityRisk**：是否像套模板、AI 生成套话（如过于工整、缺乏具体细节）
+5. **similarityRisk**：是否像套模板、AI 生成套话（如过于工整、缺乏具体细节、无个人化表述）
 
 ## 返回格式（严格 JSON，不要输出其他内容）
 {
@@ -476,7 +481,7 @@ ${imagesDesc}
       "note": "简要说明"
     },
     "contentQuality": {
-      "quality": "invalid"|"basic"|"quality"|"维权参考",
+      "quality": "invalid"|"basic"|"quality"|"benchmark"|"维权参考",
       "relevant": true/false,
       "minLengthOk": true/false,
       "note": "简要说明"
@@ -548,10 +553,185 @@ function mapReviewAuditResponse(raw) {
   };
 }
 
+// ========== 材料审核（维修完成凭证） ==========
+
+const MATERIAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的维修完成材料审核专家。根据订单维修方案、报价金额，审核服务商上传的维修完成凭证（修复后照片、结算单、物料照片），判断材料是否真实、与订单匹配、合规。`;
+
+function buildMaterialAuditUserPrompt(order, evidenceDesc) {
+  const repairItems = (order.repair_plan?.items || []).map((i) => {
+    const part = i.damage_part || i.part || '';
+    const type = i.repair_type || i.type || '';
+    return `- ${part}：${type}`;
+  }).join('\n');
+  const quotedAmount = order.quoted_amount != null ? Number(order.quoted_amount) : null;
+  return `## 订单信息
+- 报价金额：${quotedAmount != null ? `¥${quotedAmount}` : '未知'}
+- 维修项目：
+${repairItems || '（无明细）'}
+
+## 上传材料说明
+${evidenceDesc}
+
+## 审核要求
+1. **结算单**：是否为维修/定损结算单，是否含商户名或公章，金额是否与报价接近（±20% 内可接受）
+2. **施工图**：修复后照片是否与维修项目匹配（可见维修部位、施工效果）
+3. **物料照片**：是否展示配件/材料，与维修项目是否相关
+
+## 返回格式（严格 JSON，不要输出其他内容）
+{
+  "pass": true 或 false,
+  "rejectReason": "不通过时给服务商的提示，通过时为 null",
+  "details": {
+    "settlementCheck": { "valid": true/false, "note": "简要说明" },
+    "constructionCheck": { "matchesProject": true/false, "note": "简要说明" },
+    "materialCheck": { "valid": true/false, "note": "简要说明" }
+  }
+}
+
+请直接输出 JSON，不要输出其他文字。`;
+}
+
+/**
+ * 材料审核（维修完成凭证 AI 审核）
+ * @param {Object} params - { order, evidence, baseUrl, apiKey }
+ * @param {Object} params.order - { repair_plan, quoted_amount }
+ * @param {Object} params.evidence - { repair_photos, settlement_photos, material_photos } 数组，元素为 URL 或路径
+ * @param {string} params.baseUrl - 用于将相对路径转为绝对 URL
+ * @param {string} params.apiKey - 千问 API Key
+ * @returns {Promise<{pass: boolean, rejectReason?: string, details?: Object}>}
+ */
+async function analyzeCompletionEvidenceWithQwen({ order, evidence, baseUrl, apiKey }) {
+  if (!apiKey || !String(apiKey).trim()) {
+    throw new Error('未配置千问 API Key');
+  }
+  const toAbs = (u) => {
+    const s = String(u || '').trim();
+    if (!s) return null;
+    if (s.startsWith('http')) return s;
+    const base = (baseUrl || '').replace(/\/$/, '');
+    return base + (s.startsWith('/') ? s : '/' + s);
+  };
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const allUrls = [
+    ...arr(evidence?.repair_photos).map(toAbs).filter(Boolean),
+    ...arr(evidence?.settlement_photos).map(toAbs).filter(Boolean),
+    ...arr(evidence?.material_photos).map(toAbs).filter(Boolean)
+  ];
+  const unique = [...new Set(allUrls)];
+  if (unique.length === 0) {
+    return { pass: false, rejectReason: '未提供有效图片', details: {} };
+  }
+
+  const content = [];
+  const maxImages = 8;
+  for (let i = 0; i < Math.min(unique.length, maxImages); i++) {
+    content.push({ type: 'image_url', image_url: { url: unique[i] } });
+  }
+  const evidenceDesc = [
+    `修复后照片：${arr(evidence?.repair_photos).length} 张`,
+    `结算单：${arr(evidence?.settlement_photos).length} 张`,
+    `物料照片：${arr(evidence?.material_photos).length} 张`
+  ].join('；');
+  content.push({ type: 'text', text: buildMaterialAuditUserPrompt(order, evidenceDesc) });
+
+  const raw = await callQwenVision(content, apiKey, MATERIAL_AUDIT_SYSTEM_PROMPT);
+  return mapMaterialAuditResponse(raw);
+}
+
+function mapMaterialAuditResponse(raw) {
+  let parsed = {};
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      parsed = JSON.parse(jsonMatch[0]);
+    }
+  } catch (_) {}
+  const pass = parsed.pass === true;
+  const rejectReason = pass ? null : (String(parsed.rejectReason || '').trim() || '材料未通过 AI 审核');
+  return {
+    pass,
+    rejectReason: pass ? null : rejectReason,
+    details: parsed.details || {}
+  };
+}
+
+// ========== 商户申诉材料 AI 初审 ==========
+
+const APPEAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的商户申诉材料审核专家。车主在评价中对某题选「否」，商户提交材料申诉。请根据题目含义，判断商户上传的材料是否有效证明其合规。`;
+
+function buildAppealAuditUserPrompt(questionKey, questionLabel) {
+  const requirements = {
+    q1_progress_synced: '材料需能证明维修进度与车主同步（如系统通知截图、微信/短信记录、通话记录、车主签字确认单等）',
+    q2_parts_shown: '材料需能证明已向车主展示新旧配件（如配件实拍图/视频、车主签字确认单、车间监控片段等）',
+    q3_fault_resolved: '材料需能证明车辆故障已解决（如竣工检验单、检测报告、试车记录等），或能证明用户反馈不实'
+  };
+  const req = requirements[questionKey] || '材料需与题目相关且能证明商户合规';
+  return `## 题目
+${questionLabel || questionKey}
+
+## 审核要求
+${req}
+
+## 返回格式（严格 JSON，不要输出其他内容）
+{
+  "pass": true 或 false,
+  "rejectReason": "不通过时简要说明，通过时为 null",
+  "needHumanReview": true 或 false,
+  "note": "审核说明"
+}
+
+- needHumanReview：当材料模糊、难以判断、或涉及复杂争议时设为 true，转人工复核
+- 能明确判断通过/不通过时，needHumanReview 为 false
+
+请直接输出 JSON，不要输出其他文字。`;
+}
+
+/**
+ * 商户申诉材料 AI 初审
+ * @param {Object} params - { questionKey, questionLabel, evidenceUrls, baseUrl, apiKey }
+ */
+async function analyzeAppealEvidenceWithQwen({ questionKey, questionLabel, evidenceUrls, baseUrl, apiKey }) {
+  if (!apiKey || !String(apiKey).trim()) {
+    throw new Error('未配置千问 API Key');
+  }
+  const toAbs = (u) => {
+    const s = String(u || '').trim();
+    if (!s) return null;
+    if (s.startsWith('http')) return s;
+    const base = (baseUrl || '').replace(/\/$/, '');
+    return base + (s.startsWith('/') ? s : '/' + s);
+  };
+  const urls = (Array.isArray(evidenceUrls) ? evidenceUrls : []).map(toAbs).filter(Boolean);
+  const unique = [...new Set(urls)];
+  if (unique.length === 0) {
+    return { pass: false, rejectReason: '未提供有效图片', note: '' };
+  }
+
+  const content = [];
+  const maxImages = 8;
+  for (let i = 0; i < Math.min(unique.length, maxImages); i++) {
+    content.push({ type: 'image_url', image_url: { url: unique[i] } });
+  }
+  content.push({ type: 'text', text: buildAppealAuditUserPrompt(questionKey, questionLabel) });
+
+  const raw = await callQwenVision(content, apiKey, APPEAL_AUDIT_SYSTEM_PROMPT);
+  let parsed = {};
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+  } catch (_) {}
+  const pass = parsed.pass === true;
+  const needHumanReview = parsed.needHumanReview === true;
+  const rejectReason = pass ? null : (String(parsed.rejectReason || '').trim() || '申诉材料未通过 AI 初审');
+  return { pass, rejectReason, needHumanReview, note: parsed.note || '' };
+}
+
 module.exports = {
   analyzeWithQwen,
   analyzeLicenseWithQwen,
   analyzeVocationalCertificateWithQwen,
   analyzeQualificationCertificateWithQwen,
-  analyzeReviewWithQwen
+  analyzeReviewWithQwen,
+  analyzeCompletionEvidenceWithQwen,
+  analyzeAppealEvidenceWithQwen
 };

@@ -2,7 +2,7 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const { getNavBarHeight } = require('../../../utils/util');
-const { getToken, updateUserProfile, uploadImage, getUserProfile } = require('../../../utils/api');
+const { getToken, updateUserProfile, uploadImage, getUserProfile, authPhoneByCode, authPhoneBySms, getUserVehicles } = require('../../../utils/api');
 
 const logger = getLogger('Profile');
 
@@ -10,6 +10,10 @@ Page({
   data: {
     avatarUrl: '',
     nickname: '',
+    phone: '',
+    phoneManualMode: false,
+    phoneInput: '',
+    vehicleCount: 0,
     canSubmit: false,
     loading: false,
     pageRootStyle: 'padding-top: 88px'
@@ -28,16 +32,62 @@ Page({
 
   async loadCurrentProfile() {
     try {
-      const profile = await getUserProfile();
+      const [profile, vehiclesRes] = await Promise.all([
+        getUserProfile(),
+        getUserVehicles().catch(() => ({ list: [] }))
+      ]);
       if (profile) {
+        const phone = profile.phone || '';
+        const masked = phone ? (phone.slice(0, 3) + '****' + phone.slice(-4)) : '';
         this.setData({
           avatarUrl: profile.avatar_url || '',
           nickname: profile.nickname || '',
+          phone: masked || '',
+          phoneRaw: phone,
+          vehicleCount: (vehiclesRes?.list || []).length,
           canSubmit: !!(profile.avatar_url || profile.nickname)
         });
       }
     } catch (err) {
       logger.warn('加载资料失败', err);
+    }
+  },
+
+  async onGetPhoneNumber(e) {
+    const { code, errMsg } = e.detail || {};
+    if (code) {
+      try {
+        ui.showLoading('获取中...');
+        const res = await authPhoneByCode(code);
+        ui.hideLoading();
+        ui.showSuccess('手机号已绑定');
+        this.loadCurrentProfile();
+      } catch (err) {
+        ui.hideLoading();
+        ui.showError(err.message || '获取失败');
+      }
+      return;
+    }
+    if (errMsg && errMsg.includes('deny') || errMsg?.includes('fail')) {
+      this.setData({ phoneManualMode: true });
+      ui.showToast('您已拒绝授权，可手动输入手机号', 'none', 2000);
+    }
+  },
+
+  onPhoneInput(e) {
+    this.setData({ phoneInput: (e.detail.value || '').trim() });
+  },
+
+  async onVerifyPhoneBySms() {
+    const { phoneInput } = this.data;
+    if (!/^1\d{10}$/.test(phoneInput)) {
+      ui.showError('请输入正确的11位手机号');
+      return;
+    }
+    try {
+      await authPhoneBySms(phoneInput, '');
+    } catch (err) {
+      ui.showError(err.message || '验证失败');
     }
   },
 

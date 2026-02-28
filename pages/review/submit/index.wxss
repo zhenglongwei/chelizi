@@ -1,4 +1,4 @@
-/* 主评价页 - 05-评价页（3 模块 1 次提交） */
+/* 主评价页 - 固定问题、材料、自主评价 */
 .review-page {
   min-height: 100vh;
   background: var(--bg-page);
@@ -19,8 +19,37 @@
   border: 1rpx solid var(--border);
   margin-bottom: var(--space-md);
 }
+.review-compliance-highlight {
+  background: var(--primary-bg);
+  border: 2rpx solid var(--primary);
+  border-left-width: 8rpx;
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+.review-compliance-text {
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.review-verification {
+  background: var(--primary-bg);
+  border-left: 4rpx solid var(--primary);
+}
+.review-verification-text {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
 .review-objective {
   margin-top: var(--space-md);
+}
+.review-fault-evidence {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+.review-fault-evidence .review-upload-grid {
+  margin-top: var(--space-sm);
 }
 .review-objective .fs-body { display: block; margin-bottom: var(--space-xs); }
 .review-radio-group { display: flex; gap: var(--space-lg); margin-top: var(--space-xs); }
@@ -37,6 +66,9 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
+}
+radio{
+    transform: scale(0.7);
 }
 .review-reward { }
 .review-reward-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs); }

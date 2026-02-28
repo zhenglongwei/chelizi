@@ -17,9 +17,12 @@ const VEHICLE_COEFF = [
   { max: Infinity, coeff: 3.0 },
 ];
 
-// 全指标 4.6 单订单封顶（元）
+// 全指标 4.6 按复杂度单订单封顶（元）
 const ORDER_CAP = { L1: 50, L2: 200, L3: 800, L4: 2000 };
 const INSURANCE_ACCIDENT_CAP = 3000;
+
+// 03-全链路激励 按订单分级封顶（元）：一级≤1000/二级150/三级800/四级2000
+const ORDER_TIER_CAP = { 1: 30, 2: 150, 3: 800, 4: 2000 };
 
 // 全指标 4.5 优质内容浮动奖励：优质评价 = 基础奖励的 50%，爆款标杆 = 100%
 const PREMIUM_FLOAT_RATIO = 0.5;
@@ -183,7 +186,11 @@ async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], s
 
   const capBase = isInsuranceAccident ? INSURANCE_ACCIDENT_CAP : (ORDER_CAP[L] ?? ORDER_CAP.L2);
   const capFromRules = rules.orderCap?.[L] ?? rules[`orderCap${L}`];
-  const orderCap = capFromRules ?? capBase;
+  let capByComplexity = capFromRules ?? capBase;
+  const isLowEndVehicle = vehiclePrice != null && vehiclePrice <= 100000;
+  if (isLowEndVehicle) capByComplexity *= (rules.lowEndCapBoost ?? 1.2);
+
+  const capByOrderTier = ORDER_TIER_CAP[orderTier] ?? ORDER_TIER_CAP[2];
 
   const commissionRate = calcCommissionRate(
     rules, M_order,
@@ -194,7 +201,9 @@ async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], s
   const commission = M_order * commissionRate;
   const maxByCommission = commission * ((rules.complianceRedLine ?? 70) / 100);
 
-  let rewardPre = Math.min(baseReward, orderCap, maxByCommission);
+  // 双重约束：min(按订单分级封顶, 按复杂度封顶, 实收佣金×70%)
+  const effectiveCap = Math.min(capByComplexity, capByOrderTier);
+  let rewardPre = Math.min(baseReward, effectiveCap, maxByCommission);
   rewardPre = Math.max(0, Math.round(rewardPre * 100) / 100);
 
   return {
@@ -253,5 +262,6 @@ module.exports = {
   getReleaseStages,
   BASE_REWARD,
   ORDER_CAP,
+  ORDER_TIER_CAP,
   PREMIUM_FLOAT_RATIO,
 };

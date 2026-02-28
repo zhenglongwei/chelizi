@@ -3,17 +3,19 @@
 <view class="page-root profile-page" style="{{pageRootStyle}}">
   <view class="profile-content">
     <view class="profile-list card">
-      <!-- 头像行 -->
+      <!-- 头像行：固定尺寸包装层，避免微信 button 默认样式影响对齐 -->
       <view class="profile-row">
         <text class="profile-row-label">头像</text>
         <view class="profile-row-value">
-          <button class="profile-avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
-            <image
-              class="profile-avatar-img"
-              src="{{avatarUrl || '/images/icon/person.png'}}"
-              mode="aspectFill"
-            />
-          </button>
+          <view class="profile-avatar-wrap">
+            <button class="profile-avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+              <image
+                class="profile-avatar-img"
+                src="{{avatarUrl || '/images/icon/person.png'}}"
+                mode="aspectFill"
+              />
+            </button>
+          </view>
         </view>
         <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
       </view>
@@ -21,16 +23,48 @@
       <!-- 昵称行 -->
       <view class="profile-row profile-row-input">
         <text class="profile-row-label">昵称</text>
-        <input
-          class="profile-row-input-field"
-          type="nickname"
-          placeholder="请输入昵称"
-          placeholder-class="profile-placeholder"
-          value="{{nickname}}"
-          bindinput="onNicknameInput"
-        />
+        <view class="profile-row-value">
+          <input
+            class="profile-row-input-field"
+            type="nickname"
+            placeholder="请输入昵称"
+            placeholder-class="profile-placeholder"
+            value="{{nickname}}"
+            bindinput="onNicknameInput"
+          />
+        </view>
         <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
       </view>
+
+      <!-- 手机号行：微信授权优先，拒绝时可手动输入（短信验证预留） -->
+      <view class="profile-row">
+        <text class="profile-row-label">手机号</text>
+        <view class="profile-row-value" wx:if="{{phone}}">
+          <text class="profile-phone-masked">{{phone}}</text>
+          <text class="text-muted fs-cap">已实名</text>
+        </view>
+        <view class="profile-row-value" wx:else>
+          <view wx:if="{{!phoneManualMode}}" class="profile-phone-btn-wrap">
+            <view class="profile-phone-btn-fake">微信授权获取手机号</view>
+            <button class="profile-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber"/>
+          </view>
+          <view wx:else class="profile-phone-manual">
+            <input class="profile-row-input-field" type="number" placeholder="请输入手机号" value="{{phoneInput}}" bindinput="onPhoneInput" maxlength="11"/>
+            <button class="profile-verify-btn" bindtap="onVerifyPhoneBySms">验证</button>
+          </view>
+        </view>
+        <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </view>
+
+      <!-- 绑定车辆 -->
+      <navigator class="profile-row" url="/pages/user/vehicles/index">
+        <text class="profile-row-label">绑定车辆</text>
+        <view class="profile-row-value">
+          <text class="fs-body" wx:if="{{vehicleCount > 0}}">已绑定 {{vehicleCount}} 台</text>
+          <text class="text-muted fs-sm" wx:else>去绑定</text>
+        </view>
+        <image class="profile-row-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+      </navigator>
     </view>
 
     <button class="profile-submit btn-primary btn-brand" bindtap="onSubmit" disabled="{{!canSubmit || loading}}">

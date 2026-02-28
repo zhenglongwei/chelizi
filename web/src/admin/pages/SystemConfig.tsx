@@ -11,6 +11,7 @@ export default function SystemConfig() {
 
   useEffect(() => {
     loadConfig();
+    loadBiddingDistConfig();
   }, []);
 
   const loadConfig = async () => {
@@ -131,6 +132,80 @@ export default function SystemConfig() {
     }
   };
 
+  const [biddingDistForm] = Form.useForm();
+  const [biddingDistLoading, setBiddingDistLoading] = useState(false);
+
+  const loadBiddingDistConfig = async () => {
+    try {
+      const result = await callCloudFunction('queryData', { collection: 'system_config' });
+      const configList = result.data || [];
+      const item = configList.find((c: any) => c.key === 'biddingDistribution');
+      let cfg: any = {};
+      if (item?.value) {
+        try {
+          cfg = JSON.parse(item.value);
+        } catch (_) {}
+      }
+      biddingDistForm.setFieldsValue({
+        filterComplianceMin: cfg.filterComplianceMin ?? 80,
+        filterViolationDays: cfg.filterViolationDays ?? 30,
+        fallbackDistanceExpandRate: cfg.fallbackDistanceExpandRate ?? 0.2,
+        fallbackMinShops: cfg.fallbackMinShops ?? 3,
+        tier1MatchScoreMin: cfg.tier1MatchScoreMin ?? 80,
+        tier1ComplianceMin: cfg.tier1ComplianceMin ?? 95,
+        tier2MatchScoreMin: cfg.tier2MatchScoreMin ?? 60,
+        tier2MatchScoreMax: cfg.tier2MatchScoreMax ?? 79,
+        tier2ComplianceMin: cfg.tier2ComplianceMin ?? 85,
+        tier1ExclusiveMinutes: cfg.tier1ExclusiveMinutes ?? 15,
+        tier3MaxShops: cfg.tier3MaxShops ?? 2,
+        distributeL1L2Max: cfg.distributeL1L2Max ?? 10,
+        distributeL1L2ValidStop: cfg.distributeL1L2ValidStop ?? 5,
+        distributeL3L4Max: cfg.distributeL3L4Max ?? 15,
+        distributeL3L4ValidStop: cfg.distributeL3L4ValidStop ?? 8,
+        newShopDays: cfg.newShopDays ?? 90,
+        newShopBaseScore: cfg.newShopBaseScore ?? 60,
+        sameProjectScorePriority: cfg.sameProjectScorePriority ?? 15,
+        sameProjectScoreFallback: cfg.sameProjectScoreFallback ?? 5,
+      });
+    } catch (_) {}
+  };
+
+  const handleBiddingDistSubmit = async (values: any) => {
+    setBiddingDistLoading(true);
+    try {
+      const cfg = {
+        filterComplianceMin: Number(values.filterComplianceMin) ?? 80,
+        filterViolationDays: Number(values.filterViolationDays) ?? 30,
+        fallbackDistanceExpandRate: Number(values.fallbackDistanceExpandRate) ?? 0.2,
+        fallbackMinShops: Number(values.fallbackMinShops) ?? 3,
+        tier1MatchScoreMin: Number(values.tier1MatchScoreMin) ?? 80,
+        tier1ComplianceMin: Number(values.tier1ComplianceMin) ?? 95,
+        tier2MatchScoreMin: Number(values.tier2MatchScoreMin) ?? 60,
+        tier2MatchScoreMax: Number(values.tier2MatchScoreMax) ?? 79,
+        tier2ComplianceMin: Number(values.tier2ComplianceMin) ?? 85,
+        tier1ExclusiveMinutes: Number(values.tier1ExclusiveMinutes) ?? 15,
+        tier3MaxShops: Number(values.tier3MaxShops) ?? 2,
+        distributeL1L2Max: Number(values.distributeL1L2Max) ?? 10,
+        distributeL1L2ValidStop: Number(values.distributeL1L2ValidStop) ?? 5,
+        distributeL3L4Max: Number(values.distributeL3L4Max) ?? 15,
+        distributeL3L4ValidStop: Number(values.distributeL3L4ValidStop) ?? 8,
+        newShopDays: Number(values.newShopDays) ?? 90,
+        newShopBaseScore: Number(values.newShopBaseScore) ?? 60,
+        sameProjectScorePriority: Number(values.sameProjectScorePriority) ?? 15,
+        sameProjectScoreFallback: Number(values.sameProjectScoreFallback) ?? 5,
+      };
+      await callCloudFunction('addData', {
+        collection: 'system_config',
+        data: { key: 'biddingDistribution', value: JSON.stringify(cfg) }
+      });
+      message.success('竞价分发配置已保存');
+    } catch (e: any) {
+      message.error(e.message || '保存失败');
+    } finally {
+      setBiddingDistLoading(false);
+    }
+  };
+
   const basicConfigItems = [
     {
       key: 'basic',
@@ -167,6 +242,82 @@ export default function SystemConfig() {
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading}>
               保存配置
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+    {
+      key: 'biddingDist',
+      label: '竞价分发',
+      children: (
+        <Form form={biddingDistForm} onFinish={handleBiddingDistSubmit} layout="vertical">
+          <Title level={5}>硬门槛</Title>
+          <Form.Item name="filterComplianceMin" label="合规率最低要求（%）">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="filterViolationDays" label="重大违规统计天数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Title level={5}>兜底</Title>
+          <Form.Item name="fallbackDistanceExpandRate" label="距离扩大幅度（0.2=20%）">
+            <InputNumber min={0.1} max={1} step={0.1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="fallbackMinShops" label="兜底最少店铺数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Title level={5}>梯队</Title>
+          <Form.Item name="tier1MatchScoreMin" label="第一梯队匹配分下限">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier1ComplianceMin" label="第一梯队合规率下限（%）">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier2MatchScoreMin" label="第二梯队匹配分下限">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier2MatchScoreMax" label="第二梯队匹配分上限">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier2ComplianceMin" label="第二梯队合规率下限（%）">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier1ExclusiveMinutes" label="第一梯队独家窗口（分钟）">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="tier3MaxShops" label="第三梯队最多家数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Title level={5}>分发数量</Title>
+          <Form.Item name="distributeL1L2Max" label="L1-L2 最多分发家数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="distributeL1L2ValidStop" label="L1-L2 有效报价满 N 家停止">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="distributeL3L4Max" label="L3-L4 最多分发家数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="distributeL3L4ValidStop" label="L3-L4 有效报价满 N 家停止">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Title level={5}>新店</Title>
+          <Form.Item name="newShopDays" label="新店定义天数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="newShopBaseScore" label="新店基础分">
+            <InputNumber min={0} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Title level={5}>同项目完单量分</Title>
+          <Form.Item name="sameProjectScorePriority" label="优先匹配加分">
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="sameProjectScoreFallback" label="兜底匹配加分">
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={biddingDistLoading}>
+              保存竞价分发配置
             </Button>
           </Form.Item>
         </Form>

@@ -301,9 +301,10 @@ async function getDetail(pool, shopId) {
 }
 
 /**
- * 店铺评价列表
+ * 店铺评价列表（含点赞追加奖金体系：post_verify_count、车主验证标签）
  */
 async function getReviews(pool, shopId, query) {
+  const reviewLikeService = require('./review-like-service');
   const { sort = 'completeness', page = 1, limit = 20 } = query;
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
@@ -328,29 +329,42 @@ async function getReviews(pool, shopId, query) {
     [shopId]
   );
 
+  const reviewIds = reviews.map(r => r.review_id);
+  let likeStats = {};
+  try {
+    likeStats = await reviewLikeService.getReviewLikeStats(pool, reviewIds);
+  } catch (_) {
+    // review_likes 表可能尚未迁移
+  }
+
   return {
     success: true,
     data: {
-      list: reviews.map(r => ({
-        review_id: r.review_id,
-        user: {
-          nickname: r.is_anonymous ? '匿名用户' : r.nickname,
-          avatar_url: r.is_anonymous ? '' : r.avatar_url,
-        },
-        rating: r.rating,
-        ratings: {
-          quality: r.ratings_quality,
-          price: r.ratings_price,
-          service: r.ratings_service,
-          speed: r.ratings_speed,
-          parts: r.ratings_parts,
-        },
-        content: r.content,
-        after_images: JSON.parse(r.after_images || '[]'),
-        ai_analysis: JSON.parse(r.ai_analysis || '{}'),
-        like_count: r.like_count,
-        created_at: r.created_at,
-      })),
+      list: reviews.map(r => {
+        const stats = likeStats[r.review_id] || {};
+        return {
+          review_id: r.review_id,
+          user: {
+            nickname: r.is_anonymous ? '匿名用户' : r.nickname,
+            avatar_url: r.is_anonymous ? '' : r.avatar_url,
+          },
+          rating: r.rating,
+          ratings: {
+            quality: r.ratings_quality,
+            price: r.ratings_price,
+            service: r.ratings_service,
+            speed: r.ratings_speed,
+            parts: r.ratings_parts,
+          },
+          content: r.content,
+          after_images: JSON.parse(r.after_images || '[]'),
+          ai_analysis: JSON.parse(r.ai_analysis || '{}'),
+          like_count: r.like_count ?? stats.like_count ?? 0,
+          post_verify_count: stats.post_verify_count ?? 0,
+          has_owner_verify_badge: !!stats.has_owner_verify_badge,
+          created_at: r.created_at,
+        };
+      }),
       total: countResult[0].total,
       page: pageNum,
       limit: limitNum,

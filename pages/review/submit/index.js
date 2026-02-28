@@ -3,12 +3,10 @@ const { getToken, getOrderForReview, getRewardPreview, submitReview, uploadImage
 const { getNavBarHeight } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
 
+// 选填星级：仅保留主观可评价维度。报价透明度、完工时效由平台客观计算；售后响应在追评时评价
 const RATING_KEYS = [
-  { key: 'price_transparency', label: '报价透明度', dbKey: 'price' },
   { key: 'service', label: '服务态度', dbKey: 'service' },
-  { key: 'timeliness', label: '完工时效', dbKey: 'speed' },
-  { key: 'environment', label: '维修环境', dbKey: 'quality' },
-  { key: 'after_sales', label: '售后响应', dbKey: 'parts' }
+  { key: 'environment', label: '维修环境', dbKey: 'quality' }
 ];
 
 function formatMoney(v) {
@@ -62,37 +60,37 @@ Page({
     error: '',
     scrollStyle: 'height: 600px',
     pageRootStyle: 'padding-top: 88px',
-    // 模块1 报价服务（选填）
-    module1: { q1_settlement_match: null, q2_informed: null, content: '' },
-    // 模块2 维修过程（三级/四级必填）
-    module2: { materials: [], materialUrls: [], q1_project_match: null, q2_parts_match: null, q3_progress_synced: null },
+    orderVerification: null,
+    orderVerificationAllOk: false,
+    planCompare: null,
+    // 用户必答 3 道
+    answers: { q1_progress_synced: null, q2_parts_shown: null, q3_fault_resolved: null },
+    // 模块2 维修过程（三级/四级必填材料）
+    module2: { materials: [], materialUrls: [], materialDisplayList: [] },
     // 模块3 完工验收（必填）
     module3: {
       settlement_list_image: '',
       settlement_list_url: '',
       completion_images: [],
       completion_urls: [],
-      q1_shop_match: null,
-      q2_settlement_match: null,
-      q3_fault_resolved: null,
-      q4_warranty_informed: null,
+      completionDisplayList: [],
+      fault_evidence_images: [],
+      faultEvidenceDisplayList: [],
       content: '',
-      ratings: { price_transparency: 5, service: 5, timeliness: 5, environment: 5, after_sales: 5 }
+      ratings: { service: 5, environment: 5 }
     },
     isAnonymous: false,
     submitting: false,
     submitted: false,
+    isInvalidReview: false,
     rewardAmount: '0.00',
     reviewId: '',
     progressText: '0/4',
     canSubmit: false,
     planCompare: null,
     ratingItems: [
-      { key: 'price_transparency', label: '报价透明度', value: 5 },
       { key: 'service', label: '服务态度', value: 5 },
-      { key: 'timeliness', label: '完工时效', value: 5 },
-      { key: 'environment', label: '维修环境', value: 5 },
-      { key: 'after_sales', label: '售后响应', value: 5 }
+      { key: 'environment', label: '维修环境', value: 5 }
     ]
   },
 
@@ -133,7 +131,7 @@ Page({
         else if (amount < 20000) orderTier = 3;
         else orderTier = 4;
       }
-      const ratings = { price_transparency: 5, service: 5, timeliness: 5, environment: 5, after_sales: 5 };
+      const ratings = { service: 5, environment: 5 };
       const ratingItems = RATING_KEYS.map((k) => ({ ...k, value: ratings[k.key] ?? 5 }));
 
       const merchantMaterials = info.merchant_material_images || [];
@@ -166,6 +164,8 @@ Page({
         module2,
         module3,
         planCompare,
+        orderVerification: info.order_verification || null,
+        orderVerificationAllOk: !!info.order_verification_all_ok,
         loading: false
       });
       this.updateProgress();
@@ -175,40 +175,24 @@ Page({
   },
 
   updateProgress() {
-    const { orderTier, module2, module3 } = this.data;
-    const m2Required = orderTier >= 3;
+    const { answers, module3 } = this.data;
+    const answersDone = answers.q1_progress_synced != null && answers.q2_parts_shown != null && answers.q3_fault_resolved != null;
+    const contentLen = (module3.content || '').trim().length;
+    const contentOk = contentLen >= 5;
     let done = 0;
-    const total = m2Required ? 4 : 3;
-    if (module3.settlement_list_url || module3.settlement_list_image) done++;
-    const completionCount = (module3.completionDisplayList || []).length;
-    if (completionCount >= 2) done++;
-    if (module3.q1_shop_match != null && module3.q2_settlement_match != null && module3.q3_fault_resolved != null && module3.q4_warranty_informed != null) done++;
-    if (m2Required) {
-      const minMats = orderTier === 4 ? 5 : 1;
-      const matCount = module2.materialDisplayList?.length || 0;
-      const m2Done = matCount >= minMats && module2.q1_project_match != null && module2.q2_parts_match != null && module2.q3_progress_synced != null;
-      if (m2Done) done++;
-    }
-    const canSubmit = done >= total;
+    if (answersDone) done++;
+    if (contentOk) done++;
+    const hint = done >= 2 ? '完成' : '完成 3 道题 + 至少 1 句描述可获奖励';
     this.setData({
-      progressText: done + '/' + total,
-      canSubmit
+      progressText: hint,
+      canSubmit: true
     });
   },
 
-  onM1Q1(e) { const v = e.detail.value === 'true'; this.setData({ 'module1.q1_settlement_match': v }); },
-  onM1Q2(e) { const v = e.detail.value === 'true'; this.setData({ 'module1.q2_informed': v }); },
-  onM1Content(e) { this.setData({ 'module1.content': (e.detail.value || '').trim() }); },
-
-  onM2Q1(e) { const v = e.detail.value === 'true'; this.setData({ 'module2.q1_project_match': v }, () => this.updateProgress()); },
-  onM2Q2(e) { const v = e.detail.value === 'true'; this.setData({ 'module2.q2_parts_match': v }, () => this.updateProgress()); },
-  onM2Q3(e) { const v = e.detail.value === 'true'; this.setData({ 'module2.q3_progress_synced': v }, () => this.updateProgress()); },
-
-  onM3Q1(e) { const v = e.detail.value === 'true'; this.setData({ 'module3.q1_shop_match': v }, () => this.updateProgress()); },
-  onM3Q2(e) { const v = e.detail.value === 'true'; this.setData({ 'module3.q2_settlement_match': v }, () => this.updateProgress()); },
-  onM3Q3(e) { const v = e.detail.value === 'true'; this.setData({ 'module3.q3_fault_resolved': v }, () => this.updateProgress()); },
-  onM3Q4(e) { const v = e.detail.value === 'true'; this.setData({ 'module3.q4_warranty_informed': v }, () => this.updateProgress()); },
-  onM3Content(e) { this.setData({ 'module3.content': (e.detail.value || '').trim() }); },
+  onQ1(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q1_progress_synced': v }, () => this.updateProgress()); },
+  onQ2(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q2_parts_shown': v }, () => this.updateProgress()); },
+  onQ3(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q3_fault_resolved': v }, () => this.updateProgress()); },
+  onM3Content(e) { this.setData({ 'module3.content': (e.detail.value || '').trim() }, () => this.updateProgress()); },
 
   onAnonymousChange(e) { this.setData({ isAnonymous: !!e.detail.value }); },
 
@@ -295,6 +279,31 @@ Page({
     this.setData({ module3 }, () => this.updateProgress());
   },
 
+  onM3ChooseFaultEvidence() {
+    const { module3 } = this.data;
+    const remain = 5 - (module3.faultEvidenceDisplayList?.length || 0);
+    if (remain <= 0) { ui.showWarning('最多 5 张'); return; }
+    wx.chooseMedia({
+      count: Math.min(remain, 5),
+      mediaType: ['image'],
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const newPaths = (res.tempFiles || []).map(f => f.tempFilePath);
+        const fault_evidence_images = [...(module3.fault_evidence_images || []), ...newPaths];
+        const faultEvidenceDisplayList = [...(module3.faultEvidenceDisplayList || []), ...newPaths.map((p) => ({ url: p }))];
+        this.setData({ 'module3.fault_evidence_images': fault_evidence_images, 'module3.faultEvidenceDisplayList': faultEvidenceDisplayList }, () => this.updateProgress());
+      }
+    });
+  },
+  onM3DelFaultEvidence(e) {
+    const idx = e.currentTarget.dataset.index;
+    const module3 = { ...this.data.module3 };
+    module3.fault_evidence_images.splice(idx, 1);
+    module3.faultEvidenceDisplayList.splice(idx, 1);
+    this.setData({ module3 }, () => this.updateProgress());
+  },
+
   onM3DelSettlement() {
     if (this.data.module3.settlementFromMerchant) {
       ui.showWarning('服务商上传的结算单不可删除');
@@ -311,17 +320,13 @@ Page({
     this.setData({ 'module3.ratings': ratings, ratingItems });
   },
 
-  async onSubmit() {
-    const { orderId, orderTier, module1, module2, module3, isAnonymous, canSubmit } = this.data;
-    if (!canSubmit) {
-      ui.showWarning('请完成必填项');
-      return;
-    }
+  async onSubmit(forceSubmit = false) {
+    const { orderId, orderTier, answers, module2, module3, isAnonymous, rewardPreview } = this.data;
     if (this.data.submitting) return;
 
     this.setData({ submitting: true });
     try {
-      let settlementUrl = module3.settlement_list_url;
+      let settlementUrl = module3.settlement_list_url || '';
       if (module3.settlement_list_image && !settlementUrl) {
         settlementUrl = await uploadImage(module3.settlement_list_image);
         this.setData({ 'module3.settlement_list_url': settlementUrl });
@@ -331,54 +336,34 @@ Page({
       for (let i = 0; i < (module3.completion_images?.length || 0); i++) {
         completionUrls.push(await uploadImage(module3.completion_images[i]));
       }
-      if (completionUrls.length < 2) {
-        ui.showWarning('请上传至少 2 张完工实拍图');
-        this.setData({ submitting: false });
-        return;
+
+      let faultEvidenceUrls = [];
+      for (let i = 0; i < (module3.fault_evidence_images?.length || 0); i++) {
+        faultEvidenceUrls.push(await uploadImage(module3.fault_evidence_images[i]));
       }
 
       let materialUrls = [...(module2.materialUrls || [])];
-      if (orderTier >= 3) {
-        for (let i = 0; i < (module2.materials?.length || 0); i++) {
-          materialUrls.push(await uploadImage(module2.materials[i]));
-        }
-        const minMaterials = orderTier === 4 ? 5 : 1;
-        if (materialUrls.length < minMaterials) {
-          ui.showWarning(orderTier === 4 ? '四级订单请上传至少 5 张维修过程材料' : '三级订单请上传至少 1 张维修过程材料');
-          this.setData({ submitting: false });
-          return;
-        }
+      for (let i = 0; i < (module2.materials?.length || 0); i++) {
+        materialUrls.push(await uploadImage(module2.materials[i]));
       }
 
       const ratings = module3.ratings || {};
       const ratingsForApi = {
         quality: ratings.environment ?? 5,
-        price: ratings.price_transparency ?? 5,
-        service: ratings.service ?? 5,
-        speed: ratings.timeliness ?? 5,
-        parts: ratings.after_sales ?? 5
+        service: ratings.service ?? 5
       };
 
       const res = await submitReview({
         order_id: orderId,
-        module1: {
-          q1_settlement_match: module1.q1_settlement_match,
-          q2_informed: module1.q2_informed,
-          content: module1.content || undefined
-        },
-        module2: orderTier >= 3 ? {
-          materials: materialUrls,
-          q1_project_match: module2.q1_project_match,
-          q2_parts_match: module2.q2_parts_match,
-          q3_progress_synced: module2.q3_progress_synced
-        } : undefined,
+        force_submit: forceSubmit,
+        module2: orderTier >= 3 ? { materials: materialUrls } : undefined,
         module3: {
           settlement_list_image: settlementUrl,
           completion_images: completionUrls,
-          q1_shop_match: module3.q1_shop_match,
-          q2_settlement_match: module3.q2_settlement_match,
-          q3_fault_resolved: module3.q3_fault_resolved,
-          q4_warranty_informed: module3.q4_warranty_informed,
+          fault_evidence_images: faultEvidenceUrls,
+          q1_progress_synced: answers.q1_progress_synced,
+          q2_parts_shown: answers.q2_parts_shown,
+          q3_fault_resolved: answers.q3_fault_resolved,
           content: module3.content,
           ratings: ratingsForApi
         },
@@ -386,15 +371,31 @@ Page({
       });
 
       const amt = (res.reward && res.reward.amount) ?? 0;
+      const isInvalid = !!res.is_invalid;
       this.setData({
         submitting: false,
         submitted: true,
         rewardAmount: formatMoney(amt),
-        reviewId: res.review_id || ''
+        reviewId: res.review_id || '',
+        isInvalidReview: isInvalid
       });
     } catch (e) {
       this.setData({ submitting: false });
-      ui.showError(e.message || '提交失败');
+      const errMsg = e.message || '提交失败';
+      if (!forceSubmit && e.statusCode === 400) {
+        const reward = (rewardPreview && rewardPreview.total_reward) || '—';
+        wx.showModal({
+          title: '您的评价可改进',
+          content: `${errMsg}\n\n改进后可获得约 ¥${reward} 奖励金。\n\n优质评价若帮助其他车主，还可获得持续点赞奖励。`,
+          confirmText: '去改进',
+          cancelText: '仍要提交',
+          success: (res) => {
+            if (res.cancel) this.onSubmit(true);
+          }
+        });
+      } else {
+        ui.showError(errMsg);
+      }
     }
   },
 

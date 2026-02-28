@@ -76,5 +76,13 @@ Page({
 
   onShopTap() {
     wx.navigateTo({ url: '/pages/merchant/shop/profile/index' });
+  },
+
+  onMessageTap() {
+    wx.navigateTo({ url: '/pages/merchant/message/index' });
+  },
+
+  onAppealTap() {
+    wx.navigateTo({ url: '/pages/merchant/appeal/list/index' });
   }
 });
