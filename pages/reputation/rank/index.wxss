@@ -1,0 +1,110 @@
+/**
+ * 口碑榜单页 - 以《设计规范.md》为准
+ */
+.rank-page {
+  padding: var(--space-lg);
+  padding-bottom: var(--tab-bar-bottom-padding);
+}
+
+.rank-loading,
+.rank-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) 0;
+}
+
+.rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.rank-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.rank-card:active {
+  transform: scale(0.995);
+}
+
+.rank-badge {
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  margin-right: var(--space-xl);
+}
+
+.rank-badge.top3 {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.rank-logo {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.rank-logo-ph {
+  background: var(--bg-placeholder);
+}
+
+.rank-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: var(--space-xl);
+}
+
+.rank-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-rating {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
+.rank-star {
+  font-size: var(--fs-cap);
+  margin-right: var(--space-xs);
+  color: var(--text-secondary);
+}
+
+.rank-star.star-gold {
+  color: var(--accent);
+}
+
+.rank-star.star-orange {
+  color: var(--warning);
+}
+
+.rank-txt {
+  flex-shrink: 0;
+}
+
+.rank-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: var(--space-md);
+  flex-shrink: 0;
+  opacity: 0.5;
+}

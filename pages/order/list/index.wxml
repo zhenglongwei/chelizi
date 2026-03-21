@@ -17,8 +17,8 @@
       <view class="order-tab {{status === '' ? 'active' : ''}}" bindtap="onTabTap" data-status="">全部</view>
       <view class="order-tab {{status === '0' ? 'active' : ''}}" bindtap="onTabTap" data-status="0">待接单</view>
       <view class="order-tab {{status === '1' ? 'active' : ''}}" bindtap="onTabTap" data-status="1">维修中</view>
-      <view class="order-tab {{status === '2' ? 'active' : ''}}" bindtap="onTabTap" data-status="2">待评价</view>
-      <view class="order-tab {{status === '3' ? 'active' : ''}}" bindtap="onTabTap" data-status="3">已完成</view>
+      <view class="order-tab {{status === 'to_review' ? 'active' : ''}}" bindtap="onTabTap" data-status="to_review">待评价</view>
+      <view class="order-tab {{status === 'completed' ? 'active' : ''}}" bindtap="onTabTap" data-status="completed">已完成</view>
       <view class="order-tab {{status === '4' ? 'active' : ''}}" bindtap="onTabTap" data-status="4">已取消</view>
     </view>
     <view class="order-empty card" wx:if="{{list.length === 0}}">

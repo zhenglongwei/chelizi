@@ -1,5 +1,5 @@
 <!-- 消息页 - 12-消息页 -->
-<custom-nav-bar title="消息" />
+<custom-nav-bar title="消息" showBack="{{true}}" />
 <view class="page-root message-page" style="{{pageRootStyle}}">
   <block wx:if="{{!hasToken}}">
     <view class="message-empty card">

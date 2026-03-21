@@ -65,6 +65,24 @@
   height: 100%;
 }
 
+.detail-user-desc {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
+}
+
+.detail-user-desc-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.detail-user-desc-text {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .detail-vehicle-row,
 .detail-insurance-row,
 .detail-damages,
@@ -417,7 +435,29 @@
 }
 
 .quote-remark-row {
+  margin-bottom: var(--space-md);
+}
+
+.quote-validity-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   margin-bottom: var(--space-lg);
+}
+
+.quote-validity-label {
+  flex-shrink: 0;
+  width: 140rpx;
+}
+
+.quote-validity-picker {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--fs-body);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  color: var(--text-primary);
 }
 
 .quote-remark-input {
@@ -450,6 +490,7 @@
   font-weight: 500;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  padding: 0 0;
 }
 
 /* 已报价展示 */

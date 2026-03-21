@@ -1,0 +1,27 @@
+<!-- 服务商商品管理 -->
+<custom-nav-bar title="商品管理" showBack="{{true}}" />
+<view class="page-root merchant-product-list" style="{{pageRootStyle}}">
+  <view class="product-list" wx:if="{{list.length}}">
+    <view class="product-card card" wx:for="{{list}}" wx:key="product_id">
+      <view class="product-main">
+        <text class="product-name fs-body fw-bold">{{item.name}}</text>
+        <text class="product-category text-muted fs-cap">{{item.category}}</text>
+        <text class="product-price text-primary fs-body">¥{{item.price}}</text>
+        <view class="product-status product-status-{{item.status}} fs-cap">{{item.statusLabel}}</view>
+      </view>
+      <view class="product-actions">
+        <text class="product-action" wx:if="{{item.status === 'approved'}}" data-id="{{item.product_id}}" bindtap="onOffShelf">下架</text>
+        <text class="product-action" wx:if="{{item.status === 'pending' || item.status === 'rejected'}}" data-id="{{item.product_id}}" bindtap="onOffShelf">撤回</text>
+        <text class="product-action" wx:if="{{item.status === 'pending' || item.status === 'rejected'}}" data-id="{{item.product_id}}" bindtap="onEdit">编辑</text>
+      </view>
+    </view>
+  </view>
+  <view class="product-empty card" wx:else>
+    <text class="text-muted fs-body">暂无商品，点击下方按钮上架</text>
+  </view>
+  <view class="product-footer">
+    <view class="product-add-btn btn-primary" bindtap="onAdd">
+      <text class="fs-body fw-bold">+ 上架商品</text>
+    </view>
+  </view>
+</view>

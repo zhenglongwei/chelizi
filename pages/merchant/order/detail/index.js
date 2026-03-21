@@ -3,6 +3,7 @@ const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantOrder, acceptOrder, updateOrderStatus, merchantUploadImage, respondCancelRequest, updateRepairPlan } = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
+const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 
 const logger = getLogger('MerchantOrderDetail');
 
@@ -51,12 +52,17 @@ Page({
       const quote = res.quote || {};
       const planItems = (rp && rp.items && rp.items.length) ? rp.items : (quote.items || []);
       const planValueAdded = (rp && rp.value_added_services && rp.value_added_services.length) ? rp.value_added_services : (quote.value_added_services || []);
-      const canEditPlan = res.status === 1 && (res.repair_plan_status === 0 || res.repair_plan_status === undefined);
+      const materialAuditing = res.status === 1 && res.material_audit_status === 'pending';
+      const materialAuditRejected = res.status === 1 && res.material_audit_status === 'rejected';
+      const canEditPlan = !materialAuditing && res.status === 1 && (res.repair_plan_status === 0 || res.repair_plan_status === undefined);
       const planPendingConfirm = res.status === 1 && res.repair_plan_status === 1;
+      let statusText = STATUS_MAP[res.status] || '未知';
+      if (materialAuditing) statusText = '正在审核材料';
+      else if (materialAuditRejected) statusText = '审核未通过';
       this.setData({
         order: {
           ...res,
-          status_text: STATUS_MAP[res.status] || '未知',
+          status_text: statusText,
           commission_rate: crDisplay,
           displayAmount: (rp && rp.amount != null) ? rp.amount : res.quoted_amount,
           displayDuration: rp && rp.duration,
@@ -65,9 +71,13 @@ Page({
         planItems,
         planValueAdded,
         canEditPlan,
-        planPendingConfirm
+        planPendingConfirm,
+        materialAuditing,
+        materialAuditRejected,
+        materialAuditRejectReason: res.material_audit_reject_reason || ''
       });
       this._startDurationTimer();
+      if (res.repair_plan_status === 1) requestMerchantSubscribe('order_new');
     } catch (err) {
       logger.error('加载订单详情失败', err);
       ui.showError(err.message || '加载失败');
@@ -129,12 +139,15 @@ Page({
   },
 
   onChooseRepairPhoto() {
+    if (this.data.materialAuditing) return;
     this._chooseAndUpload('repair', 6 - this.data.repairPhotoUrls.length);
   },
   onChooseSettlementPhoto() {
+    if (this.data.materialAuditing) return;
     this._chooseAndUpload('settlement', 4 - this.data.settlementPhotoUrls.length);
   },
   onChooseMaterialPhoto() {
+    if (this.data.materialAuditing) return;
     this._chooseAndUpload('material', 4 - this.data.materialPhotoUrls.length);
   },
   async _chooseAndUpload(type, count) {
@@ -155,13 +168,14 @@ Page({
             this.setData({ [keyUrls]: urls, [keyPhotos]: imgs });
           } catch (e) {
             logger.error('上传失败', e);
-            ui.showError('上传失败');
+            ui.showError(e && e.message ? e.message : '上传失败');
           }
         }
       }
     });
   },
   onDelEvidencePhoto(e) {
+    if (this.data.materialAuditing) return;
     const { type, index } = e.currentTarget.dataset;
     const keyUrls = type === 'repair' ? 'repairPhotoUrls' : type === 'settlement' ? 'settlementPhotoUrls' : 'materialPhotoUrls';
     const keyPhotos = type === 'repair' ? 'repairPhotos' : type === 'settlement' ? 'settlementPhotos' : 'materialPhotos';
@@ -191,9 +205,10 @@ Page({
       content: '确认维修已完成并提交凭证？',
       success: async (res) => {
         if (!res.confirm) return;
+        requestMerchantSubscribe('material_audit');
         this.setData({ updating: true });
         try {
-          await updateOrderStatus(this.data.orderId, {
+          const res = await updateOrderStatus(this.data.orderId, {
             status: 2,
             completion_evidence: {
               repair_photos: repairPhotoUrls,
@@ -201,7 +216,8 @@ Page({
               material_photos: materialPhotoUrls
             }
           });
-          ui.showSuccess('已标记为待确认');
+          const isAuditing = res && res.status === 'auditing';
+          ui.showSuccess(isAuditing ? '正在审核材料，请稍后查看结果' : '已标记为待确认');
           this.setData({ repairPhotos: [], repairPhotoUrls: [], settlementPhotos: [], settlementPhotoUrls: [], materialPhotos: [], materialPhotoUrls: [] });
           this.loadOrder();
         } catch (err) {

@@ -65,9 +65,10 @@ async function callQwenVision(content, apiKey, systemPrompt) {
  * @param {Object} vehicleInfo - 车辆信息
  * @param {string} reportId - 报告 ID
  * @param {string} apiKey - API Key
+ * @param {string} [userDescription] - 用户文字描述（泡水、异响等无法通过照片体现的问题）
  * @returns {Promise<Object>} 定损分析结果
  */
-async function analyzeWithQwen(imageUrls, vehicleInfo, reportId, apiKey) {
+async function analyzeWithQwen(imageUrls, vehicleInfo, reportId, apiKey, userDescription) {
   if (!imageUrls || imageUrls.length === 0) {
     throw new Error('请提供事故照片');
   }
@@ -80,7 +81,7 @@ async function analyzeWithQwen(imageUrls, vehicleInfo, reportId, apiKey) {
   }
   if (content.length === 0) throw new Error('无有效图片 URL');
 
-  const prompt = buildDamagePrompt();
+  const prompt = buildDamagePrompt(userDescription);
 
   content.push({ type: 'text', text: prompt });
 
@@ -88,14 +89,23 @@ async function analyzeWithQwen(imageUrls, vehicleInfo, reportId, apiKey) {
   return mapQwenResponseToAnalysisResult(raw, reportId, vehicleInfo);
 }
 
-function buildDamagePrompt() {
+function buildDamagePrompt(userDescription) {
+  const descEscaped = userDescription
+    ? String(userDescription).replace(/\r\n/g, ' ').replace(/\n/g, ' ').trim().slice(0, 2000)
+    : '';
+  const descBlock = descEscaped
+    ? `\n## 用户补充描述（重要）\n用户描述了以下无法通过照片体现的情况，请结合照片与描述综合分析：\n「${descEscaped}」\n\n`
+    : '';
 
   return `你是一位熟悉国家与行业标准的车险理赔查勘定损专家。请分析以上事故照片中**所有可见车辆**（轿车、SUV、卡车等），为每辆车分别输出车辆信息与损伤情况。用户将从中选择需要定损的车辆。
+${descBlock}
 
 ## 必须完成
-1. **识别多张照片中的每一辆车**：用户通常会上传多张照片，每张可能包含一辆或多辆车的局部信息。请根据各照片中车辆的**外形、颜色、部位、损伤特征**等综合判断，将同一辆车在不同照片中的信息归并，确定每一辆独立车辆并编号（车辆1、车辆2…）。
-2. **每辆车必须输出**：车牌号（可见则识别，不可见或无法识别则为空字符串）、品牌/车型（能识别则填）、颜色、损伤部位列表、损伤类型、整体严重程度、本车维修建议摘要。
-3. **损伤与维修方案**须参考以下知识库规则，明确修/换判定：
+1. **结合用户描述与照片**：若用户提供了文字描述（如泡水、异响、故障灯等），照片中可能无法直接体现，请根据描述推断损伤部位、损伤类型与维修建议，与照片可见内容综合输出。
+2. **识别多张照片中的每一辆车**：用户通常会上传多张照片，每张可能包含一辆或多辆车的局部信息。请根据各照片中车辆的**外形、颜色、部位、损伤特征**等综合判断，将同一辆车在不同照片中的信息归并，确定每一辆独立车辆并编号（车辆1、车辆2…）。
+3. **每辆车必须输出**：车牌号（可见则识别，不可见或无法识别则为空字符串）、品牌/车型（能识别则填）、颜色、损伤部位列表、损伤类型、整体严重程度、本车维修建议摘要。
+4. **车型价格档次**：根据 brand/model 推断该车官方指导价档次，用于奖励金车价系数。输出 vehicle_price_tier：low（10万及以下）、mid（10-30万）、high（30万以上）；同时输出 vehicle_price_range：该车型官方指导价区间（万元），如 [35, 45] 表示 35-45 万，取上限用于精确查表。常见品牌参考：沃尔沃 XC60 约 35-45 万、宝马 3 系约 30-40 万、丰田凯美瑞约 18-25 万。
+4. **损伤与维修方案**须参考以下知识库规则，明确修/换判定：
 
 ${KNOWLEDGE_PROMPT_TEXT}
 
@@ -108,6 +118,8 @@ ${KNOWLEDGE_PROMPT_TEXT}
       "brand": "品牌或null",
       "model": "车型或null",
       "color": "颜色或null",
+      "vehicle_price_tier": "low|mid|high（根据品牌车型推断，用于奖励金车价系数）",
+      "vehicle_price_range": [35, 45]（官方指导价区间，单位万元，取上限用于奖励金车价系数查表）,
       "damagedParts": ["前保险杠", "引擎盖"],
       "damageTypes": ["碰撞变形", "撞击凹陷"],
       "overallSeverity": "轻微|中等|严重",
@@ -129,7 +141,8 @@ ${KNOWLEDGE_PROMPT_TEXT}
 - brand 为品牌（如宝马、特斯拉），model 为具体车型（如3系、Model Y），勿填 SUV 等通用类型。
 - overallSeverity 只能是：轻微、中等、严重。
 - damageSummary 须具体可执行，禁止「根据AI分析建议」等空泛用语。
-- repair_suggestions 的 item 仅描述维修项目与工艺，禁止包含任何价格、费用内容。`;
+- repair_suggestions 的 item 仅描述维修项目与工艺，禁止包含任何价格、费用内容。
+- vehicle_price_range 为 [min, max] 数组，单位万元，如沃尔沃 XC60 填 [35, 45]、丰田凯美瑞填 [18, 25]，无法推断时可为 null。`;
 }
 
 /** 按车辆 ID 汇总维修建议费用（item 格式：车辆1-xxx 或 车辆1：xxx） */
@@ -182,12 +195,21 @@ function mapQwenResponseToAnalysisResult(raw, reportId, vehicleInfo) {
     const hasDamage = vehicleDamages.length > 0;
     const sev = v.overallSeverity ?? '中等';
     const damageLevel = !hasDamage ? '无伤' : (sev === '轻微' ? '一级' : sev === '严重' ? '三级' : '二级');
+    const tier = (v.vehicle_price_tier || '').toLowerCase();
+    const priceTier = ['low', 'mid', 'high'].includes(tier) ? tier : null;
+    const priceRange = Array.isArray(v.vehicle_price_range) && v.vehicle_price_range.length >= 2
+      ? v.vehicle_price_range
+      : null;
+    const priceMaxWan = priceRange ? Math.max(parseFloat(priceRange[0]) || 0, parseFloat(priceRange[1]) || 0) : null;
+    const vehiclePriceMax = priceMaxWan != null && priceMaxWan > 0 ? Math.round(priceMaxWan * 10000) : null;
     return {
       vehicleId: vid,
       plate_number: v.plateNumber ?? v.plate_number ?? '',
       brand: v.brand ?? v.brand_name ?? '',
       model: v.model ?? v.model_name ?? '',
       color: v.color ?? '',
+      vehicle_price_tier: priceTier,
+      vehicle_price_max: vehiclePriceMax,
       damagedParts: Array.isArray(v.damagedParts) ? v.damagedParts : [],
       damageTypes: Array.isArray(v.damageTypes) ? v.damageTypes : [],
       overallSeverity: sev,
@@ -415,7 +437,7 @@ async function analyzeQualificationCertificateWithQwen(imgUrl, apiKey) {
 
 // ===================== 评价 AI 审核 =====================
 
-const REVIEW_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的评价审核助手，负责评价合规校验与内容质量分级。
+const REVIEW_AUDIT_SYSTEM_PROMPT = `你是经验丰富的评价审核专员，负责评价合规校验与内容质量分级。
 
 ## 职责
 - 校验内容合规（无广告、低俗、辱骂、虚假宣传）
@@ -555,7 +577,11 @@ function mapReviewAuditResponse(raw) {
 
 // ========== 材料审核（维修完成凭证） ==========
 
-const MATERIAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的维修完成材料审核专家。根据订单维修方案、报价金额，审核服务商上传的维修完成凭证（修复后照片、结算单、物料照片），判断材料是否真实、与订单匹配、合规。`;
+const MATERIAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的维修完成材料审核专家。根据订单维修方案、报价金额、车辆信息，审核服务商上传的维修完成凭证（修复后照片、结算单、物料照片），判断材料是否真实、与订单匹配、合规。
+
+审核原则：
+1. 车辆一致性：照片中的车辆必须与订单车辆一致（车牌、品牌、车型、颜色）。若订单有车牌且照片中可见车牌，必须一致；否则判不通过，防止上传其他车辆照片冒充。
+2. 外观判定：若车辆外观完好、无明显损伤，应视为维修已完成。专业维修后外观恢复如新属正常情况，不得以「未见修复痕迹」「无法确认施工效果」等为由不通过。`;
 
 function buildMaterialAuditUserPrompt(order, evidenceDesc) {
   const repairItems = (order.repair_plan?.items || []).map((i) => {
@@ -564,8 +590,15 @@ function buildMaterialAuditUserPrompt(order, evidenceDesc) {
     return `- ${part}：${type}`;
   }).join('\n');
   const quotedAmount = order.quoted_amount != null ? Number(order.quoted_amount) : null;
+  const vi = order.vehicle_info || {};
+  const plate = (vi.plate_number || vi.plateNumber || '').trim();
+  const brand = (vi.brand || '').trim();
+  const model = (vi.model || '').trim();
+  const color = (vi.color || '').trim();
+  const vehicleDesc = [plate && `车牌 ${plate}`, brand && `品牌 ${brand}`, model && `车型 ${model}`, color && `颜色 ${color}`].filter(Boolean).join('；') || '（无）';
   return `## 订单信息
 - 报价金额：${quotedAmount != null ? `¥${quotedAmount}` : '未知'}
+- 本单车辆：${vehicleDesc}
 - 维修项目：
 ${repairItems || '（无明细）'}
 
@@ -574,20 +607,28 @@ ${evidenceDesc}
 
 ## 审核要求
 1. **结算单**：是否为维修/定损结算单，是否含商户名或公章，金额是否与报价接近（±20% 内可接受）
-2. **施工图**：修复后照片是否与维修项目匹配（可见维修部位、施工效果）
-3. **物料照片**：是否展示配件/材料，与维修项目是否相关
+2. **车辆一致性**：修复后照片中的车辆必须与本单车辆一致。
+   - 若订单有车牌号：照片中车牌需与订单一致，否则不通过（防止上传其他车辆照片）。
+   - 若照片中车牌不可见：可结合品牌、车型、颜色等综合判断是否为同一辆车；若明显不符则不通过。
+3. **施工图（修复后照片）**：
+   - 通过：车辆一致 + 照片覆盖维修项目涉及部位 + 车辆外观正常、无明显损伤。
+   - 不通过：车辆不一致；或车辆仍有明显损伤（凹陷、破损、未喷漆等）；或照片与订单车型/部位明显不符。
+   - 重要：若车辆外观完好、无明显损伤，应视为维修已完成，不得以「未见修复痕迹」「无法确认施工效果」等为由不通过。专业维修后外观恢复如新属正常情况。
+4. **物料照片**：是否展示配件/材料，与维修项目是否相关
 
 ## 返回格式（严格 JSON，不要输出其他内容）
 {
   "pass": true 或 false,
-  "rejectReason": "不通过时给服务商的提示，通过时为 null",
+  "rejectReason": "不通过时给服务商的提示，通过时为 null。若有多个不通过项，必须一次性列出所有原因，格式如：1. 定损单/结算单：xxx；2. 车辆照片：xxx；3. 物料照片：xxx",
   "details": {
-    "settlementCheck": { "valid": true/false, "note": "简要说明" },
-    "constructionCheck": { "matchesProject": true/false, "note": "简要说明" },
-    "materialCheck": { "valid": true/false, "note": "简要说明" }
+    "settlementCheck": { "valid": true/false, "note": "定损单/结算单不通过时的具体原因" },
+    "vehicleMatchCheck": { "matches": true/false, "plateVisible": true/false, "note": "车辆一致性不通过时的具体原因" },
+    "constructionCheck": { "matchesProject": true/false, "vehicleAppearanceNormal": true/false, "note": "修复后照片不通过时的具体原因" },
+    "materialCheck": { "valid": true/false, "note": "物料照片不通过时的具体原因" }
   }
 }
 
+重要：不通过时 rejectReason 必须涵盖 details 中所有 valid=false 或 matches=false 的项，一次性输出全部失败原因。
 请直接输出 JSON，不要输出其他文字。`;
 }
 
@@ -647,11 +688,35 @@ function mapMaterialAuditResponse(raw) {
     }
   } catch (_) {}
   const pass = parsed.pass === true;
-  const rejectReason = pass ? null : (String(parsed.rejectReason || '').trim() || '材料未通过 AI 审核');
+  const details = parsed.details || {};
+  let rejectReason = null;
+  if (!pass) {
+    // 从不通过的 details 中汇总所有失败原因，一次性输出
+    const reasons = [];
+    const labels = {
+      settlementCheck: '定损单/结算单',
+      vehicleMatchCheck: '车辆照片',
+      constructionCheck: '修复后照片',
+      materialCheck: '物料照片'
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      const d = details[key];
+      if (!d || typeof d !== 'object') continue;
+      const failed = key === 'vehicleMatchCheck' ? d.matches === false
+        : key === 'constructionCheck' ? (d.matchesProject === false || d.vehicleAppearanceNormal === false)
+        : d.valid === false;
+      if (failed && d.note && String(d.note).trim()) {
+        const note = String(d.note).trim().replace(/[。；]+$/, '');
+        if (note) reasons.push(`${label}：${note}`);
+      }
+    }
+    const combined = reasons.length > 0 ? reasons.join('；') : null;
+    rejectReason = (combined || String(parsed.rejectReason || '').trim() || '材料未通过 AI 审核');
+  }
   return {
     pass,
     rejectReason: pass ? null : rejectReason,
-    details: parsed.details || {}
+    details
   };
 }
 

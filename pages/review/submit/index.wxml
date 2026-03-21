@@ -120,7 +120,7 @@
         </view>
         <view class="review-upload-row">
           <text class="fs-body">维修过程材料（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料为服务商义务，您可补充上传</text>
+          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料为服务商义务，您可补充上传。材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
           <view class="review-upload-grid">
             <view class="review-upload-item" wx:for="{{module2.materialDisplayList}}" wx:key="index">
               <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
@@ -135,7 +135,7 @@
         </view>
         <view class="review-upload-row">
           <text class="fs-body">完工实拍图（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">与维修项目匹配的完工实拍，材料为服务商义务</text>
+          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">与维修项目匹配的完工实拍，材料为服务商义务。材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
           <view class="review-upload-grid">
             <view class="review-upload-item" wx:for="{{module3.completionDisplayList}}" wx:key="index">
               <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
@@ -150,11 +150,30 @@
         </view>
       </view>
 
-      <!-- 三、自主评价 -->
-      <view class="review-section card">
+      <!-- 三、自主评价（模块 5：核心操作区） -->
+      <view class="review-section card review-self-section {{inputFocused ? 'review-input-focused' : ''}}">
         <view class="review-section-title fs-body fw-bold">自主评价（必填）</view>
-        <textarea class="review-textarea" placeholder="请至少写 1 句与维修项目相关的描述，如避坑提示、价格对比、服务细节等，便于其他车主参考" value="{{module3.content}}" bindinput="onM3Content" maxlength="500"/>
-        <view class="review-section-title fs-body" style="margin-top: var(--space-md);">选填星级（不影响奖励）</view>
+        <!-- 极简指引：仅当未聚焦且非老用户时展示完整；聚焦时仅保留悬浮小贴士 -->
+        <view class="review-guide-simple" wx:if="{{!inputFocused && !guideCollapsedByDefault}}">
+          <text class="review-guide-simple-title">💡 优质奖励解锁</text>
+          <text class="review-guide-simple-desc">写清价格、服务、效果、避坑建议任意 1 点，即可解锁优质奖励金（基础奖励 + 50%～100% 浮动）</text>
+          <view class="review-guide-simple-btn" bindtap="onShowDetailGuide">查看详细指引</view>
+        </view>
+        <!-- 老用户：仅保留核心激励短句 -->
+        <view class="review-guide-mini" wx:elif="{{!inputFocused && guideCollapsedByDefault}}">
+          <text class="review-guide-mini-text">💡 真实细节越多，奖励越高，好评差评都有奖</text>
+          <view class="review-guide-simple-btn review-guide-simple-btn-sm" bindtap="onShowDetailGuide">查看详细指引</view>
+        </view>
+        <!-- 输入聚焦时：悬浮小贴士 -->
+        <view class="review-guide-float" wx:if="{{inputFocused}}">
+          <text class="review-guide-float-text">💡 小贴士：真实细节越多，奖励越高，好评差评都有奖</text>
+        </view>
+        <!-- 输入框 + 字数统计 -->
+        <view class="review-textarea-wrap">
+          <text class="review-word-count">{{contentLength}}/500</text>
+          <textarea class="review-textarea" placeholder="请写下您的真实维修体验，拒绝「不错、很好」这类空泛内容～例：报价和最终结算完全一致，没有隐形消费，师傅全程同步维修进度，还给免费测了胎压，同车型车友可以放心来" value="{{module3.content}}" bindinput="onM3Content" bindfocus="onContentFocus" bindblur="onContentBlur" placeholder-class="review-textarea-placeholder"/>
+        </view>
+        <view class="review-section-title fs-body" style="margin-top: var(--space-md);">必选星级</view>
         <view class="review-sub-row" wx:for="{{ratingItems}}" wx:key="key">
           <text class="fs-sm">{{item.label}}</text>
           <view class="review-stars review-stars-sm">
@@ -187,6 +206,51 @@
       <button class="btn-primary review-submit-btn" bindtap="onSubmit" disabled="{{submitting}}">
         {{submitting ? '提交中...' : '提交评价 (' + progressText + ')'}}
       </button>
+    </view>
+
+    <!-- 侧边栏：详细指引（点击「查看详细指引」展开） -->
+    <view class="review-detail-guide-mask {{detailGuideVisible ? 'review-detail-guide-mask-show' : ''}}" bindtap="onHideDetailGuide" catchtouchmove="onPreventMove"/>
+    <view class="review-detail-guide-drawer {{detailGuideVisible ? 'review-detail-guide-drawer-show' : ''}}">
+      <view class="review-detail-guide-header">
+        <text class="review-detail-guide-title">评价详细指引</text>
+        <view class="review-detail-guide-close" bindtap="onHideDetailGuide">×</view>
+      </view>
+      <scroll-view class="review-detail-guide-body" scroll-y>
+        <view class="review-detail-guide-part">
+          <text class="review-detail-guide-part-title">第一部分：优质内容怎么写？照着填就对了</text>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-check">✅</text>
+            <text class="review-detail-guide-check-text">价格情况：有无中途加价、隐形消费，与报价是否一致</text>
+          </view>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-check">✅</text>
+            <text class="review-detail-guide-check-text">服务细节：师傅技术、维修效率、沟通体验怎么样</text>
+          </view>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-check">✅</text>
+            <text class="review-detail-guide-check-text">维修效果：修完后车辆使用感受，问题是否彻底解决</text>
+          </view>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-check">✅</text>
+            <text class="review-detail-guide-check-text">车主建议：给同车型车友的避坑提醒、选择建议（高价值爆款内容）</text>
+          </view>
+        </view>
+        <view class="review-detail-guide-part">
+          <text class="review-detail-guide-part-title">第二部分：实打实的现金收益</text>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-dot">▫️</text>
+            <text class="review-detail-guide-check-text">基础奖励：完成必答项 + 有效内容，按维修复杂度拿 30-300 元</text>
+          </view>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-dot">▫️</text>
+            <text class="review-detail-guide-check-text">优质奖励金：基础有效无浮动；优质高价值 +50%；爆款标杆 +100%</text>
+          </view>
+          <view class="review-detail-guide-item">
+            <text class="review-detail-guide-dot">▫️</text>
+            <text class="review-detail-guide-check-text">长效收益：评价被点赞、帮其他车主成交，持续拿追加奖金，上不封顶</text>
+          </view>
+        </view>
+      </scroll-view>
     </view>
   </block>
 </view>

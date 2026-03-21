@@ -1,8 +1,9 @@
 // 消息页 - 12-消息页（系统/竞价/订单/评价消息）
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
-const { getToken, getUserMessages, markMessagesRead, getUnreadCount } = require('../../utils/api');
-const { getNavBarHeight, formatRelativeTime } = require('../../utils/util');
+const { getToken, getUserMessages, markMessagesRead } = require('../../utils/api');
+const { fetchAndApplyUnreadBadge } = require('../../utils/message-badge');
+const { getNavBarHeight, getSystemInfo, formatRelativeTime } = require('../../utils/util');
 
 const logger = getLogger('Message');
 
@@ -31,7 +32,7 @@ Page({
 
   onLoad() {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({
       pageRootStyle: 'padding-top: ' + navH + 'px',
       scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px'
@@ -46,7 +47,7 @@ Page({
       this.updateTabBarBadge();
     }
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 3 });
+      this.getTabBar().setData({ selected: 4 });
     }
   },
 
@@ -90,16 +91,7 @@ Page({
   },
 
   async updateTabBarBadge() {
-    if (!getToken()) return;
-    try {
-      const res = await getUnreadCount();
-      const n = parseInt(res?.count ?? res?.unread_count ?? res ?? 0, 10) || 0;
-      const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
-      if (tabBar) tabBar.setData({ unreadCount: n });
-    } catch {
-      const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
-      if (tabBar) tabBar.setData({ unreadCount: 0 });
-    }
+    await fetchAndApplyUnreadBadge();
   },
 
   async onItemTap(e) {

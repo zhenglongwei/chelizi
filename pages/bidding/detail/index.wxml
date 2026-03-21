@@ -23,8 +23,16 @@
       <!-- 竞价状态 -->
       <view class="bid-status card">
         <view class="bid-status-row">
-          <text class="text-muted fs-cap">剩余时间</text>
-          <text class="fs-body fw-bold {{countdownExpired ? 'text-error' : 'text-primary'}}">{{countdownText}}</text>
+          <text class="text-muted fs-cap">竞价截止</text>
+          <text class="fs-body fw-bold {{countdownExpired ? 'text-muted' : 'text-primary'}}">{{countdownText}}</text>
+        </view>
+        <view class="bid-status-row" wx:if="{{countdownExpired}}">
+          <text class="text-muted fs-cap">说明</text>
+          <text class="fs-cap text-muted">竞价截止后已报价仍有效，可随时选择</text>
+        </view>
+        <view class="bid-status-row" wx:if="{{bidding.invited_count > 0}}">
+          <text class="text-muted fs-cap">已通知</text>
+          <text class="fs-body">{{notifiedCount}}家服务商报价</text>
         </view>
         <view class="bid-status-row">
           <text class="text-muted fs-cap">已报价</text>
@@ -58,25 +66,47 @@
         <text class="bid-sort-value fs-body fw-medium">{{bidding.insurance_info && bidding.insurance_info.is_insurance ? '保险支付' : '自费'}}</text>
       </view>
 
+      <!-- 排序方式（07 文档：用户可选） -->
+      <view class="bid-sort card" wx:if="{{quotes.length > 0}}">
+        <text class="bid-sort-label text-muted fs-cap">排序</text>
+        <picker mode="selector" range="{{sortOptions}}" range-key="label" value="{{sortIndex}}" bindchange="onSortChange">
+          <view class="bid-sort-picker">
+            <text class="bid-sort-value fs-body fw-medium">{{sortOptions[sortIndex].label}}</text>
+            <image class="bid-sort-arrow" src="/images/icon/arrow-down.png" mode="aspectFit"/>
+          </view>
+        </picker>
+      </view>
+
+      <!-- 报价较少或邀请数不足3家时扩大范围提示 -->
+      <view class="bid-expand-hint-wrap card" wx:if="{{quotes.length > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">
+        <text class="text-muted fs-cap">选定范围内服务商较少，若需更多报价可扩大搜索范围后重新发起</text>
+      </view>
+
       <!-- 报价列表 -->
       <view class="bid-list" wx:if="{{quotes.length > 0}}">
         <view class="bid-disclaimer text-muted fs-cap">此报价仅供参考，以实际维修时为准</view>
-        <view class="bid-quote card" wx:for="{{quotes}}" wx:key="quote_id">
+        <view class="bid-quote card" wx:for="{{quotes}}" wx:key="quote_id" bindlongpress="onQuoteLongPress" data-index="{{index}}">
           <view class="bid-quote-main">
             <image class="bid-quote-logo" src="{{item.logo || '/images/logo/logo_white.png'}}" mode="aspectFill"/>
             <view class="bid-quote-info">
+              <view class="bid-quote-top">
+                <text class="bid-quote-amount fs-h3 fw-bold text-gold">¥{{item.amountText}}</text>
+                <view class="bid-quote-rating-wrap">
+                  <text class="bid-quote-stars {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                  <text class="bid-quote-good-rate text-success fs-cap" wx:if="{{item.goodRateText}}">{{item.goodRateText}}</text>
+                </view>
+              </view>
               <text class="bid-quote-name fs-body fw-bold">{{item.shop_name}}</text>
               <view class="bid-quote-meta">
-                <text class="text-muted fs-sm">{{item.starsFull}}{{item.starsEmpty}} {{item.rating}}分</text>
-                <text class="text-muted fs-sm" wx:if="{{item.distance != null}}"> · {{item.distance}}km</text>
+                <text class="text-muted fs-sm" wx:if="{{item.distance != null}}">{{item.distance}}km</text>
               </view>
-              <view class="bid-quote-price">
-                <text class="bid-quote-amount fs-h3 fw-bold text-gold">¥{{item.amountText}}</text>
+              <view class="bid-quote-price bid-quote-price-sub">
                 <text class="bid-quote-save text-success fs-cap" wx:if="{{item.saveText}}">{{item.saveText}}</text>
               </view>
               <view class="bid-quote-extra text-muted fs-cap">
                 <text>工期 {{item.duration}}天</text>
                 <text wx:if="{{item.warranty}}"> · 质保{{item.warranty}}月</text>
+                <text wx:if="{{item.validityText}}" class="{{item.is_expired ? 'text-error' : ''}}"> · {{item.validityText}}</text>
               </view>
               <view class="bid-quote-items-wrap" wx:if="{{(item.items && item.items.length > 0) || (item.value_added_services && item.value_added_services.length > 0)}}">
                 <view class="bid-quote-items-btn" bindtap="onToggleQuoteItems" data-quote-id="{{item.quote_id}}">
@@ -98,25 +128,36 @@
             </view>
           </view>
           <button
-            class="bid-quote-btn btn-primary"
-            disabled="{{countdownExpired || bidding.status !== 0 || selecting}}"
+            class="bid-quote-btn btn-primary {{item.is_expired ? 'bid-quote-btn-disabled' : ''}}"
+            disabled="{{item.is_expired || bidding.status !== 0 || selecting}}"
             loading="{{selecting && selectedShopId === item.shop_id}}"
             bindtap="onSelectTap"
             data-index="{{index}}"
-          >选择</button>
+          >{{item.is_expired ? '已过期' : '选择'}}</button>
         </view>
       </view>
 
       <!-- 无报价 -->
       <view class="bid-empty card" wx:elif="{{!loading && quotes.length === 0}}">
-        <text class="text-muted fs-body">暂无报价，请等待维修厂报价或扩大范围</text>
-        <view class="bid-dev-seed" bindtap="onSeedDevQuotes">
-          <text class="brand-light fs-cap">生成测试报价（开发用）</text>
-        </view>
+        <text class="text-muted fs-body" wx:if="{{bidding.invited_count > 0}}">已通知 {{notifiedCount}} 家服务商报价，请等待</text>
+        <text class="text-muted fs-body" wx:elif="{{bidding.range_km > 0 && bidding.range_km < 100}}">您选择的范围内暂无服务商，建议扩大搜索范围（如选择全市）后重新发起竞价</text>
+        <text class="text-muted fs-body" wx:else>暂无报价，请等待维修厂报价</text>
+        <text class="text-muted fs-cap bid-expand-hint" wx:if="{{bidding.invited_count > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">选定范围内服务商较少，建议扩大搜索范围后重新发起以获得更多报价</text>
+        
       </view>
 
       <view class="bid-bottom-pad"></view>
     </scroll-view>
+
+    <!-- 长按差评提示弹窗 -->
+    <view class="bid-modal-mask" wx:if="{{showBadReviewPopup}}" bindtap="onCloseBadReviewPopup"></view>
+    <view class="bid-modal card bid-bad-review-modal" wx:if="{{showBadReviewPopup}}">
+      <view class="bid-modal-title fs-body fw-bold">近 30 天差评 TOP1</view>
+      <text class="bid-bad-review-text text-muted fs-body">{{badReviewPopupText}}</text>
+      <view class="bid-modal-actions" style="margin-top: var(--space-lg);">
+        <view class="btn-secondary bid-modal-cancel" bindtap="onCloseBadReviewPopup">关闭</view>
+      </view>
+    </view>
 
     <!-- 选择确认弹窗 -->
     <view class="bid-modal-mask" wx:if="{{showConfirm}}" bindtap="onCloseConfirm"></view>
@@ -140,6 +181,7 @@
           </view>
         </view>
         <text class="bid-modal-disclaimer text-muted fs-cap">此报价仅供参考，以实际维修时为准</text>
+        <text class="bid-modal-subscribe-hint text-muted fs-cap">确认后将申请订阅消息，以便接收维修方案更新等通知</text>
       </view>
       <view class="bid-modal-actions">
         <view class="btn-secondary bid-modal-cancel" bindtap="onCloseConfirm">取消</view>

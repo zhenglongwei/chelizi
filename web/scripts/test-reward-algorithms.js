@@ -38,11 +38,12 @@ function testRewardCalculator() {
   assert.strictEqual(rewardCalculator.calcPremiumFloatReward(100, false, true), 100, '爆款100%');
   console.log('  calcPremiumFloatReward: OK');
 
-  // 复杂度系数
-  assert.strictEqual(rewardCalculator.getComplexityCoeff(false, false), 1.0, '基础1.0');
-  assert.strictEqual(rewardCalculator.getComplexityCoeff(false, true), 1.5, '高难度1.5');
-  assert.strictEqual(rewardCalculator.getComplexityCoeff(true, false), 2.0, '保险事故2.0');
-  console.log('  getComplexityCoeff: OK');
+  // 基础固定奖励（方案A：已去掉维修复杂度校准系数）
+  assert.strictEqual(rewardCalculator.BASE_REWARD.L1, 10, 'L1普通10');
+  assert.strictEqual(rewardCalculator.BASE_REWARD.L3, 150, 'L3普通150');
+  assert.strictEqual(rewardCalculator.BASE_REWARD_INSURANCE.L2, 60, 'L2保险事故60');
+  assert.strictEqual(rewardCalculator.BASE_REWARD_INSURANCE.L4, 900, 'L4保险事故900');
+  console.log('  BASE_REWARD/BASE_REWARD_INSURANCE: OK');
 
   // 订单分级封顶
   assert.strictEqual(rewardCalculator.ORDER_TIER_CAP[1], 30, '1级封顶30');

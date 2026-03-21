@@ -1,0 +1,151 @@
+<!-- 评价聚合页 - 全平台评价流 -->
+<custom-nav-bar title="评价" showBack="{{false}}" />
+<view class="page-root feed-page" style="{{pageRootStyle}}">
+  <view class="feed-sort-bar">
+    <view
+      class="feed-sort-item {{sort === 'quality' ? 'active' : ''}}"
+      data-sort="quality"
+      bindtap="onSortChange"
+    >质量优先</view>
+    <view
+      class="feed-sort-item {{sort === 'time' ? 'active' : ''}}"
+      data-sort="time"
+      bindtap="onSortChange"
+    >最新</view>
+    <view
+      class="feed-sort-item {{sort === 'distance' ? 'active' : ''}}"
+      data-sort="distance"
+      bindtap="onSortChange"
+    >距离</view>
+  </view>
+
+  <block wx:if="{{loading && reviews.length === 0}}">
+    <view class="feed-loading text-muted fs-body">加载中...</view>
+  </block>
+
+  <scroll-view
+    wx:else
+    class="feed-scroll"
+    scroll-y
+    style="{{scrollStyle}}"
+    bindscrolltolower="loadMore"
+  >
+    <view class="feed-list" wx:if="{{reviews.length}}">
+      <view
+        class="feed-card card"
+        wx:for="{{reviews}}"
+        wx:key="review_id"
+        id="feed-review-{{item.review_id}}"
+        data-review-id="{{item.review_id}}"
+      >
+        <!-- 店铺信息（可点击跳转） -->
+        <navigator
+          class="feed-shop-row"
+          url="/pages/shop/detail/index?id={{item.shop.shop_id}}"
+          open-type="navigate"
+        >
+          <image class="feed-shop-logo" src="{{item.shop.logo || '/images/logo/logo_white.png'}}" mode="aspectFill"/>
+          <view class="feed-shop-info">
+            <text class="feed-shop-name text-primary fs-body fw-bold">{{item.shop.name}}</text>
+            <text class="feed-shop-addr text-muted fs-cap">{{item.shop.district || item.shop.address || ''}}</text>
+          </view>
+          <image class="feed-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+        </navigator>
+
+        <!-- 用户与等级 -->
+        <view class="feed-review-head">
+          <text class="feed-user text-primary fs-body">{{item.user.nickname}}</text>
+          <text class="feed-level text-weak fs-sm" wx:if="{{item.user.level_name}}">{{item.user.level_name}}</text>
+          <text class="feed-date text-weak fs-cap">{{item.dateText}}</text>
+        </view>
+
+        <!-- 维修项目、金额 -->
+        <view class="feed-review-meta" wx:if="{{item.repair_items && item.repair_items.length}}">
+          <text class="feed-meta-label text-muted fs-cap">维修项目：</text>
+          <text class="feed-meta-val fs-cap">{{item.repair_items.join('、')}}</text>
+        </view>
+        <view class="feed-review-meta" wx:if="{{item.amountText}}">
+          <text class="feed-meta-label text-muted fs-cap">金额：</text>
+          <text class="feed-meta-val fs-cap">¥{{item.amountText}}</text>
+        </view>
+
+        <view class="feed-stars text-star fs-cap" wx:if="{{item.rating}}">{{item.ratingText}}</view>
+
+        <!-- 客观题 -->
+        <view class="feed-objectives" wx:if="{{item.objective_answers && (item.objective_answers.q1_progress_synced != null || item.objective_answers.q2_parts_shown != null || item.objective_answers.q3_fault_resolved != null)}}">
+          <view class="feed-obj" wx:if="{{item.objective_answers.q1_progress_synced != null}}">
+            <text class="text-muted fs-cap">维修进度同步</text>
+            <text class="fs-cap">{{item.objective_answers.q1_progress_synced ? '是' : '否'}}</text>
+          </view>
+          <view class="feed-obj" wx:if="{{item.objective_answers.q2_parts_shown != null}}">
+            <text class="text-muted fs-cap">展示新旧配件</text>
+            <text class="fs-cap">{{item.objective_answers.q2_parts_shown ? '是' : '否'}}</text>
+          </view>
+          <view class="feed-obj" wx:if="{{item.objective_answers.q3_fault_resolved != null}}">
+            <text class="text-muted fs-cap">故障已解决</text>
+            <text class="fs-cap">{{item.objective_answers.q3_fault_resolved ? '是' : '否'}}</text>
+          </view>
+        </view>
+
+        <!-- 评价内容 -->
+        <view class="feed-content-wrap">
+          <text class="feed-content text-muted fs-body {{item.expanded ? '' : 'feed-content-collapsed'}}" wx:if="{{item.content}}">{{item.expanded ? item.content : item.contentPreview}}</text>
+          <text class="feed-expand-btn text-primary fs-sm" wx:if="{{item.content && !item.expanded && item.content.length > 60}}" bindtap="onExpandReview" data-index="{{index}}">展开</text>
+        </view>
+
+        <!-- 图片 -->
+        <view class="feed-images-wrap" wx:if="{{(item.before_images && item.before_images.length) || (item.after_images && item.after_images.length) || (item.completion_images && item.completion_images.length)}}">
+          <view class="feed-img-group" wx:if="{{item.before_images && item.before_images.length}}">
+            <text class="feed-img-label text-muted fs-cap">维修前</text>
+            <view class="feed-images">
+              <image class="feed-img" wx:for="{{item.before_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            </view>
+          </view>
+          <view class="feed-img-group" wx:if="{{item.after_images && item.after_images.length}}">
+            <text class="feed-img-label text-muted fs-cap">维修后</text>
+            <view class="feed-images">
+              <image class="feed-img" wx:for="{{item.after_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            </view>
+          </view>
+          <view class="feed-img-group" wx:elif="{{item.completion_images && item.completion_images.length}}">
+            <text class="feed-img-label text-muted fs-cap">完工实拍</text>
+            <view class="feed-images">
+              <image class="feed-img" wx:for="{{item.completion_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            </view>
+          </view>
+        </view>
+
+        <view class="feed-badge text-weak fs-sm" wx:if="{{item.isLowRating}}">该用户已完成全部评价要求，全额领取对应奖励</view>
+        <view class="feed-appeal" wx:if="{{item.is_my_review && item.order_id}}" bindtap="onAppealTap" data-order-id="{{item.order_id}}">
+          <text class="text-primary fs-sm">对维修有异议？发起申诉</text>
+        </view>
+        <view class="feed-owner-verify text-danger fs-sm" wx:if="{{item.has_owner_verify_badge}}">车主验证・真实避坑</view>
+
+        <!-- 点赞/踩 -->
+        <view class="feed-actions">
+          <view class="feed-like" wx:if="{{!item.is_my_review}}" bindtap="onLikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
+            <image class="feed-like-icon" src="{{item.liked ? '/images/icon/liked.png' : '/images/icon/like.png'}}" mode="aspectFit"/>
+            <text class="text-muted fs-cap">{{item.like_count || 0}} 点赞</text>
+            <text class="text-weak fs-sm" wx:if="{{item.post_verify_count > 0}}"> · {{item.post_verify_count}}位车主验证有用</text>
+          </view>
+          <view class="feed-like text-weak fs-cap" wx:else>
+            <text>{{item.like_count || 0}} 点赞</text>
+          </view>
+          <view class="feed-dislike {{item.disliked ? 'disliked' : ''}}" wx:if="{{!item.is_my_review && !item.liked}}" bindtap="onDislikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
+            <text class="feed-dislike-icon">👎</text>
+            <text class="text-muted fs-cap">{{item.dislike_count || 0}} 踩</text>
+          </view>
+          <view class="feed-dislike disliked" wx:elif="{{!item.is_my_review && item.disliked}}">
+            <text class="feed-dislike-icon">👎</text>
+            <text class="text-weak fs-cap">{{item.dislike_count || 0}} 踩</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="feed-more text-muted fs-cap" wx:if="{{loadingMore}}">加载更多...</view>
+    <view class="feed-more text-muted fs-cap" wx:elif="{{!hasMore && reviews.length > 0}}">— 没有更多了 —</view>
+    <view class="feed-empty text-muted fs-body" wx:elif="{{!loading && reviews.length === 0}}">暂无评价</view>
+    <view class="feed-bottom-pad"></view>
+  </scroll-view>
+</view>

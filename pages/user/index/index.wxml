@@ -37,6 +37,23 @@
     </navigator>
   </view>
 
+  <!-- 消息入口（需登录，从 TabBar 迁移）；未读数引导查看 -->
+  <navigator class="user-section card user-message-entry" wx:if="{{hasToken}}" url="/pages/message/index">
+    <view class="user-section-header user-message-header">
+      <view class="user-message-title-block">
+        <text class="fs-body fw-bold">消息</text>
+        <view class="user-message-unread-row" wx:if="{{messageUnreadCount > 0}}">
+          <text class="user-message-badge-num">{{messageUnreadCount > 99 ? '99+' : messageUnreadCount}}</text>
+          <text class="user-message-unread-tip text-muted fs-cap">条未读</text>
+        </view>
+      </view>
+      <view class="user-section-more user-message-more">
+        <text wx:if="{{messageUnreadCount > 0}}" class="user-message-cta fs-cap">去查看</text>
+        <text wx:else>全部</text>
+      </view>
+    </view>
+  </navigator>
+
   <!-- 我的钱包（需登录） -->
   <navigator class="user-wallet card" wx:if="{{hasToken}}" url="/pages/user/balance/index">
     <view class="user-wallet-title fs-body fw-bold">我的钱包</view>
@@ -63,8 +80,8 @@
     </view>
     <view class="user-section-tabs">
       <view class="user-tab" >全部</view>
-      <navigator class="user-tab" url="/pages/order/list/index?status=2">待评价</navigator>
-      <navigator class="user-tab" url="/pages/order/list/index?status=3">已完成</navigator>
+      <navigator class="user-tab" url="/pages/order/list/index?status=to_review">待评价</navigator>
+      <navigator class="user-tab" url="/pages/order/list/index?status=completed">已完成</navigator>
     </view>
   </navigator>
 

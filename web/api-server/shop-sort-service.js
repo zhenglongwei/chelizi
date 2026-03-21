@@ -102,6 +102,39 @@ function calcSortScore(shop, opts = {}) {
 }
 
 /**
+ * 批量获取店铺近 30 天平均报价响应时长（分钟）
+ * 06 文档：竞价创建 → 店铺首次报价提交
+ * @returns {Promise<Map<string,number>>} shop_id -> avg_response_minutes
+ */
+async function getAvgResponseMinutesByShopIds(pool, shopIds) {
+  if (!shopIds || shopIds.length === 0) return new Map();
+  const placeholders = shopIds.map(() => '?').join(',');
+  try {
+    const [rows] = await pool.execute(
+      `SELECT q.shop_id, AVG(TIMESTAMPDIFF(MINUTE, b.created_at, q.first_at)) AS avg_min
+       FROM biddings b
+       INNER JOIN (
+         SELECT bidding_id, shop_id, MIN(created_at) AS first_at
+         FROM quotes
+         WHERE shop_id IN (${placeholders})
+         GROUP BY bidding_id, shop_id
+       ) q ON b.bidding_id = q.bidding_id
+       WHERE b.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+       GROUP BY q.shop_id`,
+      [...shopIds]
+    );
+    const map = new Map();
+    for (const r of rows || []) {
+      if (r.shop_id && r.avg_min != null) map.set(r.shop_id, parseFloat(r.avg_min));
+    }
+    return map;
+  } catch (err) {
+    console.error('[shop-sort] getAvgResponseMinutesByShopIds error:', err?.message);
+    return new Map();
+  }
+}
+
+/**
  * 对店铺列表按综合排序分排序
  * @param {object} pool - 数据库连接池
  * @param {Array} shops - 店铺列表（含 distance 等）
@@ -113,6 +146,9 @@ async function sortShopsByScore(pool, shops, opts = {}) {
   const maxKm = opts.maxKm ?? 50;
   const scene = opts.scene || 'L1L2';
 
+  const shopIds = [...new Set(shops.map((s) => s.shop_id).filter(Boolean))];
+  const responseMap = await getAvgResponseMinutesByShopIds(pool, shopIds);
+
   const scored = [];
   for (const s of shops) {
     const distanceKm = s.distance != null ? parseFloat(s.distance) : null;
@@ -120,12 +156,33 @@ async function sortShopsByScore(pool, shops, opts = {}) {
       distanceKm,
       maxKm,
       scene,
-      avgResponseMinutes: s.avg_response_minutes,
+      avgResponseMinutes: s.avg_response_minutes ?? responseMap.get(s.shop_id),
     });
     scored.push({ ...s, _sort_score: score });
   }
 
-  scored.sort((a, b) => (b._sort_score || 0) - (a._sort_score || 0));
+  scored.sort((a, b) => {
+    const diff = (b._sort_score || 0) - (a._sort_score || 0);
+    if (diff !== 0) return diff;
+    // 06 文档：4S 店/品牌授权同分优先
+    const prio = (s) => {
+      const ql = (s.qualification_level || '').toString();
+      if (ql.includes('一类') || ql.includes('4S') || ql.includes('主机厂')) return 2;
+      if (ql.includes('二类')) return 1;
+      let certs;
+      try {
+        certs = typeof s.certifications === 'string' ? JSON.parse(s.certifications || '[]') : s.certifications || [];
+      } catch {
+        return 0;
+      }
+      for (const c of certs) {
+        if ((c.type || '').toString() === 'oem_4s' || (c.name || '').includes('4S')) return 2;
+        if ((c.type || '').toString() === 'parts_brand') return 1;
+      }
+      return 0;
+    };
+    return prio(b) - prio(a);
+  });
   return scored;
 }
 
@@ -150,6 +207,7 @@ module.exports = {
   calcDistanceScore,
   calcPriceReasonablenessScore,
   calcResponseScore,
+  getAvgResponseMinutesByShopIds,
   calcSortScore,
   sortShopsByScore,
   ensureShopScores,

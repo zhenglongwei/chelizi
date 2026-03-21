@@ -41,6 +41,25 @@
   border-radius: var(--radius-md);
 }
 
+/* 审核未通过提示：从订阅消息进入时避免误解为提交失败 */
+.material-audit-rejected .reject-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.material-audit-rejected .reject-title {
+  color: var(--danger);
+}
+.material-audit-rejected .reject-desc {
+  color: var(--text-secondary);
+}
+.material-audit-rejected .reject-reason {
+  padding: var(--space-md);
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
 .link {
   color: var(--primary);
   margin-left: var(--space-sm);

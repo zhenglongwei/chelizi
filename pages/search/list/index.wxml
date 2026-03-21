@@ -1,4 +1,5 @@
 <!-- 维修厂搜索列表页 - 10-维修厂搜索列表页 -->
+<custom-nav-bar title="" showBack="{{true}}" />
 <view class="page-root search-page" style="{{pageRootStyle}}">
   <!-- 搜索栏 -->
   <view class="search-header">
@@ -72,10 +73,10 @@
             <view class="search-card-info">
               <text class="search-card-name text-primary fs-body fw-bold">{{item.name}}</text>
               <view class="search-card-rating">
-                <text class="star-full text-star">{{item.starsFull}}</text>
-                <text class="star-empty text-weak">{{item.starsEmpty}}</text>
+                <text class="star-full text-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
                 <text class="rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
               </view>
+              <text class="search-card-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
               <view class="search-card-foot">
                 <view class="badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
                   <text class="fs-cap">{{item.badgeText}}</text>

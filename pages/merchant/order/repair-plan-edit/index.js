@@ -1,8 +1,8 @@
 // 修改维修方案 - M07
-const { getLogger } = require('../../../../../utils/logger');
-const ui = require('../../../../../utils/ui');
-const { getMerchantToken, getMerchantOrder, updateRepairPlan } = require('../../../../../utils/api');
-const { getNavBarHeight } = require('../../../../../utils/util');
+const { getLogger } = require('../../../../utils/logger')
+const ui = require('../../../../utils/ui');
+const { getMerchantToken, getMerchantOrder, updateRepairPlan } = require('../../../../utils/api');
+const { getNavBarHeight } = require('../../../../utils/util');
 
 const logger = getLogger('RepairPlanEdit');
 

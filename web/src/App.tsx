@@ -8,7 +8,6 @@ import AdminLogin from './admin/pages/Login';
 import Dashboard from './admin/pages/Dashboard';
 import MerchantManagement from './admin/pages/MerchantManagement';
 import OrderManagement from './admin/pages/OrderManagement';
-import RuleConfig from './admin/pages/RuleConfig';
 import SettlementManagement from './admin/pages/SettlementManagement';
 import DisputeManagement from './admin/pages/DisputeManagement';
 import DataStatistics from './admin/pages/DataStatistics';
@@ -19,6 +18,7 @@ import AppealReviewManagement from './admin/pages/AppealReviewManagement';
 import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
 import OrderCancelRequests from './admin/pages/OrderCancelRequests';
+import ShopProductAudit from './admin/pages/ShopProductAudit';
 import { useAuth } from './admin/hooks/useAuth';
 
 function App() {
@@ -44,7 +44,6 @@ function App() {
         <Route path="merchants" element={<MerchantManagement />} />
         <Route path="orders" element={<OrderManagement />} />
         <Route path="order-cancel-requests" element={<OrderCancelRequests />} />
-        <Route path="rules" element={<RuleConfig />} />
         <Route path="settlement" element={<SettlementManagement />} />
         <Route path="disputes" element={<DisputeManagement />} />
         <Route path="statistics" element={<DataStatistics />} />
@@ -54,6 +53,7 @@ function App() {
         <Route path="appeal-reviews" element={<AppealReviewManagement />} />
         <Route path="complexity-upgrade" element={<ComplexityUpgrade />} />
         <Route path="antifraud" element={<AntiFraudManagement />} />
+        <Route path="shop-products" element={<ShopProductAudit />} />
       </Route>
     </Routes>
   );

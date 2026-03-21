@@ -6,17 +6,27 @@
 export function getDefaultRewardRulesConfig(): { rewardRules: Record<string, any> } {
   return {
     rewardRules: {
-      // 模块 1：复杂度等级
+      // 模块 1：复杂度等级（level + project_type 关键词 + fixed_reward/float_ratio/cap_amount）
       complexityLevels: [
-        { id: 'L1', name: '极低复杂度', projectTypes: '标准化换件、补胎、基础车辆检测等', fixedReward: 10, floatRatio: 1, capAmount: 30 },
-        { id: 'L2', name: '低复杂度', projectTypes: '常规小保养、钣金喷漆、易损件更换等', fixedReward: 20, floatRatio: 2, capAmount: 150 },
-        { id: 'L3', name: '中复杂度', projectTypes: '常规故障维修、底盘整备、发动机局部维修等', fixedReward: 50, floatRatio: 3, capAmount: 800 },
-        { id: 'L4', name: '高复杂度', projectTypes: '疑难故障排查、发动机/变速箱大修、事故车整车修复等', fixedReward: 100, floatRatio: 4, capAmount: 2000 },
+        { level: 'L1', project_type: '洗车', fixed_reward: 10, float_ratio: 0, cap_amount: 50 },
+        { level: 'L2', project_type: '钣金|喷漆|翼子板|车门', fixed_reward: 30, float_ratio: 0, cap_amount: 200 },
+        { level: 'L3', project_type: '发动机|变速箱', fixed_reward: 150, float_ratio: 0, cap_amount: 800 },
+        { level: 'L4', project_type: '事故车|整车修复|大修', fixed_reward: 450, float_ratio: 0, cap_amount: 2000 },
       ],
+      baseReward: { L1: 10, L2: 30, L3: 150, L4: 450 },
+      baseRewardInsurance: { L1: 20, L2: 60, L3: 300, L4: 900 },
       // 模块 2：车价分级
       vehicleTierLowMax: 100000,
       vehicleTierMediumMax: 300000,
       vehicleTierLowCapUp: 20,
+      // 车价校准系数 5 档（单位万元，max 为区间上限，coeff 为系数）
+      vehicleCoeff: [
+        { max: 10, coeff: 1.0 },
+        { max: 20, coeff: 1.2 },
+        { max: 30, coeff: 1.5 },
+        { max: 50, coeff: 2.0 },
+        { max: 9999, coeff: 3.0 },
+      ],
       lowEndL4Amplify: 2.5,
       floatCalibration: {
         low: { L1: 0.5, L2: 0.5, L3: 0.8, L4: 1 },

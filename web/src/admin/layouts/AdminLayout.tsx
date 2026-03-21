@@ -33,6 +33,11 @@ const menuItems = [
     label: '服务商管理',
   },
   {
+    key: '/admin/shop-products',
+    icon: <AuditOutlined />,
+    label: '商品审核',
+  },
+  {
     key: '/admin/orders',
     icon: <FileTextOutlined />,
     label: '订单管理',
@@ -41,11 +46,6 @@ const menuItems = [
     key: '/admin/order-cancel-requests',
     icon: <RollbackOutlined />,
     label: '撤单申请',
-  },
-  {
-    key: '/admin/rules',
-    icon: <SettingOutlined />,
-    label: '推荐规则配置',
   },
   {
     key: '/admin/settlement',

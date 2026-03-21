@@ -19,6 +19,12 @@ App({
 
   onShow(options) {
     logger.debug('小程序显示', options);
+    try {
+      const { scheduleFetchUnreadBadge } = require('./utils/message-badge');
+      scheduleFetchUnreadBadge();
+    } catch (e) {
+      logger.warn('同步消息角标失败', e);
+    }
   },
 
   onHide() {
@@ -39,7 +45,8 @@ App({
   // 初始化系统信息
   initSystemInfo() {
     try {
-      const systemInfo = wx.getSystemInfoSync();
+      const { getSystemInfo } = require('./utils/util');
+      const systemInfo = getSystemInfo();
       this.globalData.systemInfo = systemInfo;
       logger.info('系统信息', {
         brand: systemInfo.brand,

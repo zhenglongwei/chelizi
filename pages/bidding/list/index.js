@@ -1,6 +1,6 @@
 // 我的竞价列表 - 09-我的竞价列表页
 const { getToken, getUserBiddings, endBidding } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 
@@ -41,7 +41,7 @@ Page({
 
   onLoad(options) {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px', scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px' });
     const status = (options.status ?? '').toString();
     this.setData({ status });

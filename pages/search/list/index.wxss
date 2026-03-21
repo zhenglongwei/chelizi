@@ -112,7 +112,7 @@
 
 .search-content {
   padding: var(--space-lg) var(--page-padding-x);
-  padding-bottom: 120rpx;
+  padding-bottom: var(--tab-bar-bottom-padding);
 }
 
 .search-loading,
@@ -179,6 +179,9 @@
   margin-top: var(--space-sm);
 }
 
+.star-full.star-gold { color: var(--accent); }
+.star-full.star-orange { color: var(--warning); }
+
 .star-full {
   font-size: var(--fs-cap);
   margin-right: var(--space-xs);
@@ -191,6 +194,14 @@
 
 .rating-txt {
   flex-shrink: 0;
+}
+
+.search-card-review-summary {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-card-foot {

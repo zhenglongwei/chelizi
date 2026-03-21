@@ -1,7 +1,7 @@
 // 定损历史记录
 const { getToken, getDamageReports, getUserProfile } = require('../../../utils/api');
 const ui = require('../../../utils/ui');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 function formatDate(str) {
   if (!str) return '';
@@ -32,7 +32,7 @@ Page({
   },
 
   onLoad() {
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     const navH = getNavBarHeight();
     const winH = sys.windowHeight || 600;
     const locCardH = 120;

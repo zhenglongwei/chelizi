@@ -13,11 +13,12 @@ const LOG_PREFIX = '[material-audit]';
  * @param {Object} pool - 数据库连接池
  * @param {string} shopId - 店铺 ID
  * @param {string} type - 消息类型
- * @param {string} title - 标题
- * @param {string} content - 内容
+ * @param {string} title - 标题（thing1，直接结果如审核通过/失败/异常）
+ * @param {string} content - 站内消息完整内容
  * @param {string} [relatedId] - 关联 ID（如 order_id）
+ * @param {string} [subscribeContent] - 订阅消息 thing2，简短操作指引（≤20字），缺省用 content
  */
-async function sendMerchantMessage(pool, shopId, type, title, content, relatedId) {
+async function sendMerchantMessage(pool, shopId, type, title, content, relatedId, subscribeContent) {
   const [rows] = await pool.execute(
     'SELECT merchant_id FROM merchant_users WHERE shop_id = ? AND status = 1 LIMIT 1',
     [shopId]
@@ -36,8 +37,17 @@ async function sendMerchantMessage(pool, shopId, type, title, content, relatedId
       console.warn(`${LOG_PREFIX} sendMerchantMessage error:`, err.message);
     }
   }
-  // 预留公众号推送
-  // await sendMerchantNotification('wechat', shopId, { type, title, content, relatedId });
+  const subMsg = require('./subscribe-message-service');
+  subMsg.sendToMerchant(
+    pool,
+    merchantId,
+    'merchant_material_audit',
+    { title, content: subscribeContent || content, relatedId },
+    process.env.WX_APPID,
+    process.env.WX_SECRET
+  ).catch((e) => {
+    console.warn(`${LOG_PREFIX} 订阅消息发送异常:`, e && e.message);
+  });
 }
 
 /**
@@ -69,7 +79,10 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
   } catch (_) {}
 
   const [orders] = await pool.execute(
-    `SELECT order_id, repair_plan, quoted_amount FROM orders WHERE order_id = ?`,
+    `SELECT o.order_id, o.repair_plan, o.quoted_amount, o.bidding_id, b.vehicle_info
+     FROM orders o
+     LEFT JOIN biddings b ON o.bidding_id = b.bidding_id
+     WHERE o.order_id = ?`,
     [task.order_id]
   );
   if (orders.length === 0) {
@@ -82,15 +95,22 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
 
   const order = orders[0];
   let repairPlan = null;
+  let vehicleInfo = {};
   try {
     repairPlan = typeof order.repair_plan === 'string'
       ? JSON.parse(order.repair_plan || '{}')
       : (order.repair_plan || {});
   } catch (_) {}
+  try {
+    vehicleInfo = typeof order.vehicle_info === 'string'
+      ? JSON.parse(order.vehicle_info || '{}')
+      : (order.vehicle_info || {});
+  } catch (_) {}
 
   const orderForAi = {
     repair_plan: repairPlan,
-    quoted_amount: order.quoted_amount
+    quoted_amount: order.quoted_amount,
+    vehicle_info: vehicleInfo
   };
 
   let result;
@@ -109,9 +129,10 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
     );
     await sendMerchantMessage(
       pool, task.shop_id, 'material_audit',
-      '材料审核异常',
+      '审核异常',
       '材料审核服务暂时异常，请稍后重新提交维修完成。',
-      task.order_id
+      task.order_id,
+      '请稍后重试'
     );
     return;
   }
@@ -130,6 +151,29 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
       `UPDATE material_audit_tasks SET status = 'passed', ai_details = ?, completed_at = NOW() WHERE task_id = ?`,
       [detailsJson, taskId]
     );
+    await sendMerchantMessage(
+      pool, task.shop_id, 'material_audit',
+      '审核通过',
+      '订单已进入待确认，请通知车主验收。',
+      task.order_id,
+      '请通知车主验收'
+    );
+    try {
+      const [orderRows] = await pool.execute('SELECT user_id FROM orders WHERE order_id = ?', [task.order_id]);
+      if (orderRows.length > 0) {
+        const subMsg = require('./subscribe-message-service');
+        subMsg.sendToUser(
+          pool,
+          orderRows[0].user_id,
+          'user_order_update',
+          { title: '待验收', content: '维修完成，请验收', relatedId: task.order_id },
+          process.env.WX_APPID,
+          process.env.WX_SECRET
+        ).catch((e) => console.warn(`${LOG_PREFIX} 车主订阅消息发送异常:`, e && e.message));
+      }
+    } catch (userMsgErr) {
+      console.warn(`${LOG_PREFIX} 车主订阅消息失败:`, userMsgErr && userMsgErr.message);
+    }
   } else {
     await pool.execute(
       `UPDATE material_audit_tasks SET status = 'rejected', reject_reason = ?, ai_details = ?, completed_at = NOW() WHERE task_id = ?`,
@@ -137,9 +181,10 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
     );
     await sendMerchantMessage(
       pool, task.shop_id, 'material_audit',
-      '材料审核未通过',
+      '审核失败',
       (result.rejectReason || '材料未通过审核') + '，请修改后重新提交维修完成。',
-      task.order_id
+      task.order_id,
+      '请修改后重交'
     );
   }
 }

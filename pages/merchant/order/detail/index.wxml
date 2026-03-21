@@ -108,10 +108,19 @@
     </view>
   </view>
 
-  <!-- 维修完成凭证（status=1 时必填） -->
+  <!-- 审核未通过提示（从订阅消息进入时避免误解为提交失败） -->
+  <view class="detail-section card material-audit-rejected" wx:if="{{order && order.status === 1 && materialAuditRejected}}">
+    <view class="reject-banner">
+      <text class="reject-title fs-body fw-bold">材料审核未通过</text>
+      <text class="reject-desc fs-cap">您之前提交的凭证未通过审核，请根据以下原因重新上传。</text>
+      <text class="reject-reason fs-body">{{materialAuditRejectReason}}</text>
+    </view>
+  </view>
+
+  <!-- 维修完成凭证（status=1 时必填；审核中时只读） -->
   <view class="detail-section card" wx:if="{{order && order.status === 1}}">
     <view class="section-head">
-      <view class="section-title fs-body fw-medium">维修完成凭证<text class="text-error">*</text></view>
+      <view class="section-title fs-body fw-medium">维修完成凭证<text class="text-error" wx:if="{{!materialAuditing}}">*</text></view>
     </view>
     <view class="evidence-upload">
       <view class="evidence-item">
@@ -119,9 +128,9 @@
         <view class="evidence-grid">
           <view class="evidence-thumb" wx:for="{{repairPhotoUrls}}" wx:key="index">
             <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" data-type="repair" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
+            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="repair" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
           </view>
-          <view class="evidence-add" wx:if="{{repairPhotoUrls.length < 6}}" bindtap="onChooseRepairPhoto">+</view>
+          <view class="evidence-add" wx:if="{{!materialAuditing && repairPhotoUrls.length < 6}}" bindtap="onChooseRepairPhoto">+</view>
         </view>
       </view>
       <view class="evidence-item">
@@ -129,9 +138,9 @@
         <view class="evidence-grid">
           <view class="evidence-thumb" wx:for="{{settlementPhotoUrls}}" wx:key="index">
             <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" data-type="settlement" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
+            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="settlement" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
           </view>
-          <view class="evidence-add" wx:if="{{settlementPhotoUrls.length < 4}}" bindtap="onChooseSettlementPhoto">+</view>
+          <view class="evidence-add" wx:if="{{!materialAuditing && settlementPhotoUrls.length < 4}}" bindtap="onChooseSettlementPhoto">+</view>
         </view>
       </view>
       <view class="evidence-item">
@@ -139,17 +148,19 @@
         <view class="evidence-grid">
           <view class="evidence-thumb" wx:for="{{materialPhotoUrls}}" wx:key="index">
             <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" data-type="material" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
+            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="material" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
           </view>
-          <view class="evidence-add" wx:if="{{materialPhotoUrls.length < 4}}" bindtap="onChooseMaterialPhoto">+</view>
+          <view class="evidence-add" wx:if="{{!materialAuditing && materialPhotoUrls.length < 4}}" bindtap="onChooseMaterialPhoto">+</view>
         </view>
       </view>
     </view>
+    <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-sm);">建议 JPG 格式；PNG 将自动转为 JPG 后上传，单张不超过 5MB</text>
+    <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
   </view>
 
   <!-- 底部固定操作区 -->
   <view class="action-btns action-btns-fixed safe-area-bottom" wx:if="{{order && (order.status === 0 || order.status === 1)}}">
     <button class="btn-primary" wx:if="{{order.status === 0}}" disabled="{{accepting}}" bindtap="onAccept">{{accepting ? '处理中...' : '接单'}}</button>
-    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating || planPendingConfirm}}" bindtap="onMarkComplete">{{planPendingConfirm ? '请等待车主确认维修方案' : (updating ? '处理中...' : '维修完成')}}</button>
+    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating || planPendingConfirm || materialAuditing}}" bindtap="onMarkComplete">{{materialAuditing ? '正在审核材料' : (planPendingConfirm ? '请等待车主确认维修方案' : (updating ? '处理中...' : '维修完成'))}}</button>
   </view>
 </view>

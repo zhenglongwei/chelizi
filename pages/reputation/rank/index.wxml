@@ -1,0 +1,27 @@
+<!-- 口碑榜单页 -->
+<custom-nav-bar title="{{title}}" showBack="{{true}}" />
+<view class="page-root rank-page" style="{{pageRootStyle}}">
+  <view class="rank-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
+  <view class="rank-empty text-muted fs-body" wx:elif="{{!loading && list.length === 0}}">暂无榜单数据</view>
+  <view class="rank-list" wx:else>
+    <view
+      class="rank-card card"
+      wx:for="{{list}}"
+      wx:key="shop_id"
+      bindtap="goToShopDetail"
+      data-id="{{item.shop_id}}"
+    >
+      <view class="rank-badge {{item.rank <= 3 ? 'top3' : ''}}">{{item.rank}}</view>
+      <image class="rank-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
+      <view class="rank-logo rank-logo-ph" wx:else></view>
+      <view class="rank-info">
+        <text class="rank-name text-primary fs-body fw-bold">{{item.name}}</text>
+        <view class="rank-rating">
+          <text class="rank-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+          <text class="rank-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+        </view>
+      </view>
+      <image class="rank-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,29 @@
+<!-- 服务商上架/编辑商品 -->
+<custom-nav-bar title="{{productId ? '编辑商品' : '上架商品'}}" showBack="{{true}}" />
+<view class="page-root merchant-product-edit" style="{{pageRootStyle}}">
+  <view class="edit-form card">
+    <view class="edit-item">
+      <text class="edit-label fs-body">商品名称<text class="text-error">*</text></text>
+      <input class="edit-input" placeholder="如：小保养套餐" value="{{name}}" bindinput="onNameInput"/>
+    </view>
+    <view class="edit-item">
+      <text class="edit-label fs-body">服务分类<text class="text-error">*</text></text>
+      <picker mode="selector" range="{{categoryOptions}}" range-key="label" value="{{categoryIndex}}" bindchange="onCategoryChange">
+        <view class="edit-picker">{{categoryLabel || '请选择'}}</view>
+      </picker>
+    </view>
+    <view class="edit-item">
+      <text class="edit-label fs-body">价格（元）<text class="text-error">*</text></text>
+      <input class="edit-input" type="digit" placeholder="如：299" value="{{price}}" bindinput="onPriceInput"/>
+    </view>
+    <view class="edit-item">
+      <text class="edit-label fs-body">描述</text>
+      <textarea class="edit-textarea" placeholder="选填，如：含机油、机滤、工时" value="{{description}}" bindinput="onDescInput"/>
+    </view>
+  </view>
+  <view class="edit-footer">
+    <view class="edit-submit btn-primary {{submitting ? 'disabled' : ''}}" bindtap="onSubmit">
+      <text class="fs-body fw-bold">{{submitting ? '提交中...' : (productId ? '保存并重新提交审核' : '提交审核')}}</text>
+    </view>
+  </view>
+</view>

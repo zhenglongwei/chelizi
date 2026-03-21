@@ -94,6 +94,28 @@
         </view>
       </view>
     </view>
+    <view class="merchant-form-item">
+      <text class="merchant-form-label fs-body">品牌授权</text>
+      <text class="text-muted fs-cap">4S 店需上传主机厂品牌授权书；有配件品牌授权的可上传，可提升店铺得分</text>
+      <view class="brand-cert-row">
+        <view class="brand-cert-item">
+          <text class="fs-cap text-muted">主机厂 4S 授权书</text>
+          <view class="qualification-cert-preview" wx:if="{{oem4sCertImage}}">
+            <image src="{{oem4sCertImage}}" mode="aspectFill"/>
+            <view class="qualification-cert-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelOem4sCert">×</view>
+          </view>
+          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:else bindtap="onOem4sCertUpload">上传</text>
+        </view>
+        <view class="brand-cert-item">
+          <text class="fs-cap text-muted">配件品牌授权</text>
+          <view class="qualification-cert-preview" wx:if="{{partsBrandCertImage}}">
+            <image src="{{partsBrandCertImage}}" mode="aspectFill"/>
+            <view class="qualification-cert-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelPartsBrandCert">×</view>
+          </view>
+          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:else bindtap="onPartsBrandCertUpload">上传</text>
+        </view>
+      </view>
+    </view>
     <button class="btn-primary merchant-register-btn" disabled="{{saving || (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn)}}" bindtap="onSave">{{saving ? '保存中...' : (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? '审核中不可保存' : '保存'}}</button>
   </view>
 </view>

@@ -1,0 +1,297 @@
+/**
+ * 口碑首页 - 以《设计规范.md》为准
+ * 页边距：主内容区使用 var(--page-padding-x)（32rpx）
+ */
+.rep-page {
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--page-padding-x);
+  padding-right: var(--page-padding-x);
+  box-sizing: border-box;
+}
+
+.rep-scroll {
+  padding-top: var(--space-lg);
+  padding-bottom: var(--tab-bar-bottom-padding);
+}
+
+/* 搜索栏 */
+.rep-search-wrap {
+  margin-bottom: var(--space-lg);
+}
+
+.rep-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl) var(--space-2xl);
+  min-height: 72rpx;
+  box-shadow: var(--shadow-sm);
+}
+
+.rep-search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: var(--space-lg);
+}
+
+.rep-search-ph {
+  flex: 1;
+  font-size: var(--fs-h3);
+}
+
+/* 区块 */
+.rep-section {
+  margin-bottom: var(--space-2xl);
+}
+
+.rep-section-head {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+}
+
+.rep-section-title {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rep-section-more {
+  flex-shrink: 0;
+}
+
+.rep-loading,
+.rep-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) 0;
+}
+
+/* 口碑好店列表 */
+.rep-shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.rep-shop-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  box-shadow: var(--shadow-card);
+}
+
+.rep-shop-card:active {
+  transform: scale(0.995);
+}
+
+.rep-shop-logo {
+  flex-shrink: 0;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+}
+
+.rep-shop-logo-ph {
+  background: var(--bg-placeholder);
+}
+
+.rep-shop-info-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.rep-shop-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  margin-left: var(--space-xl);
+}
+
+.rep-shop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rep-shop-rating {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
+.rep-star {
+  font-size: var(--fs-body);
+  margin-right: var(--space-xs);
+  color: var(--text-secondary);
+}
+
+.rep-star.star-gold {
+  color: var(--accent);
+}
+
+.rep-star.star-orange {
+  color: var(--warning);
+}
+
+.rep-rating-txt {
+  flex-shrink: 0;
+}
+
+.rep-shop-review-summary {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rep-shop-foot {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: var(--space-md);
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.rep-badge {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.rep-badge.badge-nearest {
+  background: rgba(234, 179, 8, 0.12);
+  color: var(--accent);
+  border: 1rpx solid rgba(234, 179, 8, 0.35);
+}
+
+.rep-badge.badge-distance {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+  border: 1rpx solid var(--border);
+}
+
+.rep-badge.badge-cert {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border: 1rpx solid rgba(37, 99, 235, 0.25);
+}
+
+.rep-shop-addr {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.rep-addr-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.rep-shop-addr-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rep-shop-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: var(--space-md);
+  align-self: center;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+/* 评价榜单卡片 */
+.rep-rank-cards {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-lg);
+}
+
+.rep-rank-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.rep-rank-card:active {
+  transform: scale(0.995);
+}
+
+.rep-rank-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rep-rank-desc {
+  margin-top: var(--space-xs);
+}
+
+/* 我的评价入口 */
+.rep-my-entry {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.rep-my-entry:active {
+  transform: scale(0.995);
+}
+
+.rep-my-icon {
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: var(--space-xl);
+}
+
+.rep-my-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rep-my-title {
+  color: var(--text-primary);
+}
+
+.rep-my-desc {
+  margin-top: var(--space-xs);
+}
+
+.rep-my-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+  opacity: 0.5;
+}

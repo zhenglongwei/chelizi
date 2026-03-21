@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const complexityService = require('./complexity-service');
 const shopScore = require('../shop-score');
+const shopSortService = require('../shop-sort-service');
 
 const LOG_PREFIX = '[BiddingDistribution]';
 
@@ -14,14 +15,12 @@ const DEFAULT_CONFIG = {
   filterComplianceMin: 80,
   filterViolationDays: 30,
   filterCapacityCheck: false,
-  fallbackDistanceExpandRate: 0.2,
-  fallbackMinShops: 3,
   tier1MatchScoreMin: 80,
   tier1ComplianceMin: 95,
   tier2MatchScoreMin: 60,
   tier2MatchScoreMax: 79,
   tier2ComplianceMin: 85,
-  tier1ExclusiveMinutes: 15,
+  tier1ExclusiveMinutes: 10,
   tier3MaxShops: 2,
   distributeL1L2Max: 10,
   distributeL1L2ValidStop: 5,
@@ -77,36 +76,28 @@ async function parseBiddingItemsWithComplexity(pool, analysisResult) {
 
   if (items.length === 0) return [{ name: '维修', level: 'L2' }];
 
-  try {
-    const [rows] = await pool.execute(
-      "SELECT `level`, project_type FROM repair_complexity_levels WHERE `level` IN ('L1','L2','L3','L4')"
-    );
-    if (!rows || rows.length === 0) {
-      return items.map((i) => ({ ...i, level: 'L2' }));
-    }
+  const rewardRulesLoader = require('./reward-rules-loader');
+  const rows = await rewardRulesLoader.getComplexityLevels(pool);
 
-    const result = [];
-    for (const item of items) {
-      const text = (item.name || '').toLowerCase();
-      let matchedLevel = 'L2';
-      for (const r of rows) {
-        const L = (r.level || '').toUpperCase();
-        if (!LEVEL_ORDER[L]) continue;
-        const keywords = String(r.project_type || '').split(/[|,，]/).map((k) => k.trim().toLowerCase()).filter(Boolean);
-        for (const kw of keywords) {
-          if (kw && text.includes(kw)) {
-            if (LEVEL_ORDER[L] > LEVEL_ORDER[matchedLevel]) matchedLevel = L;
-            break;
-          }
+  const result = [];
+  for (const item of items) {
+    const text = (item.name || '').toLowerCase();
+    let matchedLevel = 'L2';
+    for (const r of rows) {
+      const L = (r.level || '').toUpperCase();
+      if (!LEVEL_ORDER[L]) continue;
+      const projectType = r.project_type || r.projectType || '';
+      const keywords = String(projectType).split(/[|,，]/).map((k) => k.trim().toLowerCase()).filter(Boolean);
+      for (const kw of keywords) {
+        if (kw && text.includes(kw)) {
+          if (LEVEL_ORDER[L] > LEVEL_ORDER[matchedLevel]) matchedLevel = L;
+          break;
         }
       }
-      result.push({ name: item.name, level: matchedLevel });
     }
-    return result;
-  } catch (err) {
-    console.warn(`${LOG_PREFIX} parseBiddingItemsWithComplexity error:`, err.message);
-    return items.map((i) => ({ ...i, level: 'L2' }));
+    result.push({ name: item.name, level: matchedLevel });
   }
+  return result;
 }
 
 /**
@@ -133,7 +124,7 @@ async function checkShopQualificationForBidding(pool, shopId, biddingId) {
   const { level: maxLevel } = await complexityService.resolveComplexityFromItems(pool, items);
 
   const [shopRows] = await pool.execute(
-    `SELECT qualification_status, qualification_level, categories, technician_certs
+    `SELECT qualification_status, qualification_level, qualification_ai_recognized, categories, technician_certs
      FROM shops WHERE shop_id = ?`,
     [shopId]
   );
@@ -142,7 +133,8 @@ async function checkShopQualificationForBidding(pool, shopId, biddingId) {
 
   if (shop.qualification_status !== 1 && shop.qualification_status !== '1') return false;
 
-  const ql = (shop.qualification_level || '').toString();
+  // 优先用 qualification_level，为空时回退到 qualification_ai_recognized（审核通过但未同步等级时）
+  const ql = (shop.qualification_level || shop.qualification_ai_recognized || '').toString();
   const hasYilei = /一类|1类/i.test(ql);
   const hasErlei = /二类|2类/i.test(ql);
   const hasSanlei = /三类|3类/i.test(ql);
@@ -306,13 +298,16 @@ async function calcMerchantMatchScore(pool, shop, bidding, opts = {}) {
     ? (config.sameProjectScorePriority || 15)
     : (config.sameProjectScoreFallback || 5);
 
-  const responseScore = 5;
+  // 06 文档：近 30 天平均报价响应时长，5 分钟内满分；无数据默认 50 分（折 10 分）
+  const responseRaw = shopSortService.calcResponseScore(opts.avgResponseMinutes);
+  const responseScore = Math.round((responseRaw / 100) * 20 * 10) / 10; // 0-100 映射到 0-20
 
   return Math.round((baseScore + deviationScore + sameProjectScore + responseScore) * 10) / 10;
 }
 
 /**
- * 硬门槛过滤 + 兜底扩大距离
+ * 硬门槛过滤（严格按用户选择的距离，不自动扩大）
+ * 限定距离内按综合得分排序分批推荐，不足优质服务商时推荐资质稍差的，但不代替用户扩大范围
  * @returns {Promise<Array<{shop_id, ...}>>}
  */
 async function filterShopsForBidding(pool, biddingId, userId) {
@@ -330,68 +325,58 @@ async function filterShopsForBidding(pool, biddingId, userId) {
   const bidding = biddingRows[0];
   if (!bidding.user_lat || !bidding.user_lng) return [];
 
-  let rangeKm = parseFloat(bidding.range_km) || 5;
-  const fallbackMin = config.fallbackMinShops || 3;
-  const expandRate = config.fallbackDistanceExpandRate || 0.2;
-
+  const rangeKm = parseFloat(bidding.range_km) || 5;
   const acosArg = 'cos(radians(?)) * cos(radians(s.latitude)) * cos(radians(s.longitude) - radians(?)) + sin(radians(?)) * sin(radians(s.latitude))';
 
-  let shops = [];
-  let currentRange = rangeKm;
+  const [rows] = await pool.execute(
+    `SELECT s.shop_id, s.name, s.latitude, s.longitude, s.qualification_status, s.qualification_level,
+            s.categories, s.technician_certs, s.compliance_rate, s.deviation_rate, s.total_orders,
+            s.shop_score, s.rating, s.created_at,
+            (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) as distance_km
+     FROM shops s
+     WHERE s.status = 1 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+       AND (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) <= ?
+       AND (s.qualification_status = 1 OR s.qualification_status = '1')`,
+    [bidding.user_lat, bidding.user_lng, bidding.user_lat, bidding.user_lat, bidding.user_lng, bidding.user_lat, rangeKm]
+  );
 
-  while (shops.length < fallbackMin && currentRange <= 200) {
-    const [rows] = await pool.execute(
-      `SELECT s.shop_id, s.name, s.latitude, s.longitude, s.qualification_status, s.qualification_level,
-              s.categories, s.technician_certs, s.compliance_rate, s.deviation_rate, s.total_orders,
-              s.shop_score, s.rating, s.created_at,
-              (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) as distance_km
-       FROM shops s
-       WHERE s.status = 1 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-         AND (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) <= ?
-         AND (s.qualification_status = 1 OR s.qualification_status = '1')`,
-      [bidding.user_lat, bidding.user_lng, bidding.user_lat, bidding.user_lat, bidding.user_lng, bidding.user_lat, currentRange]
-    );
+  // 07 文档：近 30 天无重大违规，统一使用 shop_violations penalty=50（与 05 文档一致）
+  const [violationRows] = await pool.execute(
+    `SELECT shop_id FROM shop_violations
+     WHERE penalty = 50
+       AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+    [config.filterViolationDays || 30]
+  );
+  const violatedShopIds = new Set((violationRows || []).map((r) => r.shop_id));
 
-    const [violationRows] = await pool.execute(
-      `SELECT target_id FROM violation_records
-       WHERE target_type = 'shop' AND violation_level = 4
-         AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
-      [config.filterViolationDays || 30]
-    );
-    const violatedShopIds = new Set((violationRows || []).map((r) => r.target_id));
+  const newShopDays = config.newShopDays || 90;
+  const complianceMin = config.filterComplianceMin || 80;
 
-    const newShopDays = config.newShopDays || 90;
-    const complianceMin = config.filterComplianceMin || 80;
+  const biddingItems = await parseBiddingItemsWithComplexity(
+    pool,
+    typeof bidding.analysis_result === 'string' ? JSON.parse(bidding.analysis_result || '{}') : (bidding.analysis_result || {})
+  );
 
-    const biddingItems = await parseBiddingItemsWithComplexity(
-      pool,
-      typeof bidding.analysis_result === 'string' ? JSON.parse(bidding.analysis_result || '{}') : (bidding.analysis_result || {})
-    );
+  const shops = [];
+  for (const row of rows || []) {
+    if (violatedShopIds.has(row.shop_id)) continue;
 
-    shops = [];
-    for (const row of rows || []) {
-      if (violatedShopIds.has(row.shop_id)) continue;
+    const created = row.created_at ? new Date(row.created_at) : null;
+    const isNewShop = created && (Date.now() - created) / (24 * 60 * 60 * 1000) <= newShopDays;
 
-      const created = row.created_at ? new Date(row.created_at) : null;
-      const isNewShop = created && (Date.now() - created) / (24 * 60 * 60 * 1000) <= newShopDays;
+    const compliance = row.compliance_rate != null ? parseFloat(row.compliance_rate) : null;
+    if (!isNewShop && compliance != null && compliance < complianceMin) continue;
 
-      const compliance = row.compliance_rate != null ? parseFloat(row.compliance_rate) : null;
-      if (!isNewShop && compliance != null && compliance < complianceMin) continue;
+    const qualOk = await checkShopQualificationForBidding(pool, row.shop_id, biddingId);
+    if (!qualOk) continue;
 
-      const qualOk = await checkShopQualificationForBidding(pool, row.shop_id, biddingId);
-      if (!qualOk) continue;
+    const sameProject = await hasSameProjectCompletion(pool, row.shop_id, biddingId, config, isNewShop);
+    if (!sameProject.passed) continue;
 
-      const sameProject = await hasSameProjectCompletion(pool, row.shop_id, biddingId, config, isNewShop);
-      if (!sameProject.passed) continue;
-
-      row.sameProjectResult = sameProject;
-      row.isNewShop = isNewShop;
-      row.biddingItems = biddingItems;
-      shops.push(row);
-    }
-
-    if (shops.length >= fallbackMin) break;
-    currentRange = Math.round(currentRange * (1 + expandRate) * 10) / 10;
+    row.sameProjectResult = sameProject;
+    row.isNewShop = isNewShop;
+    row.biddingItems = biddingItems;
+    shops.push(row);
   }
 
   return shops;
@@ -409,12 +394,16 @@ async function assignTiers(pool, shops, biddingId, config) {
     ? new Date(biddingRows[0].tier1_window_ends_at)
     : null;
 
+  const shopIds = shops.map((s) => s.shop_id).filter(Boolean);
+  const responseMap = await shopSortService.getAvgResponseMinutesByShopIds(pool, shopIds);
+
   const scored = [];
   for (const shop of shops) {
     const score = await calcMerchantMatchScore(pool, shop, { shop_id: shop.shop_id }, {
       config,
       biddingItems: shop.biddingItems || [],
       sameProjectResult: shop.sameProjectResult || {},
+      avgResponseMinutes: responseMap.get(shop.shop_id),
     });
     const compliance = shop.compliance_rate != null ? parseFloat(shop.compliance_rate) : null;
     const isNewShop = shop.isNewShop;
@@ -471,7 +460,7 @@ async function sendBiddingMessagesToShops(pool, shopIds, biddingId, title = '新
       await pool.execute(
         `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
          VALUES (?, ?, 'bidding', ?, ?, ?, 0)`,
-        [msgId, merchantId, title, `您有新的竞价需求待报价，点击查看。`, biddingId]
+        [msgId, merchantId, title, '您有新的竞价需求待报价，请尽快报价。', biddingId]
       );
     } catch (err) {
       if (!String(err.message || '').includes('Duplicate')) {
@@ -480,8 +469,15 @@ async function sendBiddingMessagesToShops(pool, shopIds, biddingId, title = '新
     }
   }
 
-  // 预留公众号推送
-  // await reserveWechatBiddingPush(shopIds, biddingId);
+  const subMsg = require('./subscribe-message-service');
+  subMsg.sendToMerchantsByShopIds(
+    pool,
+    shopIds,
+    'merchant_bidding_new',
+    { title: '新竞价待报价', content: '请尽快报价', relatedId: biddingId },
+    process.env.WX_APPID,
+    process.env.WX_SECRET
+  ).catch(() => {});
 }
 
 /**
@@ -491,24 +487,35 @@ async function runBiddingDistribution(pool, biddingId) {
   const config = await getBiddingDistributionConfig(pool);
 
   const [biddingRows] = await pool.execute(
-    `SELECT b.user_id, b.report_id FROM biddings b WHERE b.bidding_id = ?`,
+    `SELECT b.user_id, b.report_id, b.range_km, u.latitude as user_lat, u.longitude as user_lng
+     FROM biddings b
+     INNER JOIN users u ON b.user_id = u.user_id
+     WHERE b.bidding_id = ?`,
     [biddingId]
   );
   if (biddingRows.length === 0) return { success: false, error: '竞价不存在' };
 
   const userId = biddingRows[0].user_id;
+  const bidding = biddingRows[0];
 
   const shops = await filterShopsForBidding(pool, biddingId, userId);
   if (shops.length === 0) {
-    console.log(`${LOG_PREFIX} no shops passed filter for bidding ${biddingId}`);
+    console.log(`${LOG_PREFIX} [${biddingId}] 无店铺通过过滤（距离/资质/合规/同项目完单）`);
     return { success: true, tier1Shops: [], tier2Shops: [], tier3Shops: [] };
   }
+
+  console.log(`${LOG_PREFIX} [${biddingId}] 过滤通过 ${shops.length} 家店铺: ${shops.map((s) => `${s.name}(${s.shop_id})`).join(', ')}`);
 
   const scored = await assignTiers(pool, shops, biddingId, config);
 
   const tier1 = scored.filter((s) => s._tier === 1);
   const tier2 = scored.filter((s) => s._tier === 2);
   const tier3 = scored.filter((s) => s._tier === 3);
+
+  console.log(`${LOG_PREFIX} [${biddingId}] 梯队划分: 一梯队 ${tier1.length} 家, 二梯队 ${tier2.length} 家, 三梯队 ${tier3.length} 家`);
+  tier1.forEach((s) => console.log(`  [一梯队] ${s.name}(${s.shop_id}) 匹配分=${s._matchScore} 合规=${s.compliance_rate ?? 'N/A'}`));
+  tier2.forEach((s) => console.log(`  [二梯队] ${s.name}(${s.shop_id}) 匹配分=${s._matchScore} 合规=${s.compliance_rate ?? 'N/A'}`));
+  tier3.forEach((s) => console.log(`  [三梯队] ${s.name}(${s.shop_id}) 匹配分=${s._matchScore} 新店=${s.isNewShop}`));
 
   const [reportRows] = await pool.execute(
     `SELECT dr.analysis_result FROM biddings b
@@ -526,10 +533,21 @@ async function runBiddingDistribution(pool, biddingId) {
 
   const isL1L2 = maxLevel === 'L1' || maxLevel === 'L2';
   const maxDistribute = isL1L2 ? (config.distributeL1L2Max || 10) : (config.distributeL3L4Max || 15);
+  const tier3Max = config.tier3MaxShops || 2;
 
   const tier1Ids = tier1.slice(0, maxDistribute).map((s) => s.shop_id);
   const tier2Ids = tier2.slice(0, Math.max(0, maxDistribute - tier1Ids.length)).map((s) => s.shop_id);
-  const tier3Ids = tier3.slice(0, config.tier3MaxShops || 2).map((s) => s.shop_id);
+  const tier3Ids = tier3.slice(0, tier3Max).map((s) => s.shop_id);
+
+  const invited = [...tier1Ids, ...tier2Ids, ...tier3Ids];
+  const excluded = scored.filter((s) => !invited.includes(s.shop_id)).map((s) => ({ shop_id: s.shop_id, name: s.name, tier: s._tier, score: s._matchScore }));
+
+  console.log(`${LOG_PREFIX} [${biddingId}] 分发名额: L${maxLevel === 'L1' || maxLevel === 'L2' ? '1-L2' : '3-L4'} 最多 ${maxDistribute} 家, 三梯队最多 ${tier3Max} 家`);
+  console.log(`${LOG_PREFIX} [${biddingId}] 实际邀请: 一梯队 ${tier1Ids.length} 家, 二梯队 ${tier2Ids.length} 家, 三梯队 ${tier3Ids.length} 家`);
+  console.log(`${LOG_PREFIX} [${biddingId}] 邀请名单: ${invited.join(', ')}`);
+  if (excluded.length > 0) {
+    console.log(`${LOG_PREFIX} [${biddingId}] 未邀请（名额不足）: ${excluded.map((e) => `${e.name}(${e.shop_id}) 梯队${e.tier} 分${e.score}`).join('; ')}`);
+  }
 
   await pool.execute('DELETE FROM bidding_distribution WHERE bidding_id = ?', [biddingId]);
   const toInsert = [];
@@ -543,7 +561,18 @@ async function runBiddingDistribution(pool, biddingId) {
     );
   }
 
-  await sendBiddingMessagesToShops(pool, tier1Ids, biddingId, '新竞价待报价（第一梯队）');
+  // 保证报价效率：无第一梯队时自动下发第二梯队，无第二梯队时下发第三梯队
+  if (tier1Ids.length > 0) {
+    await sendBiddingMessagesToShops(pool, tier1Ids, biddingId, '新竞价待报价（第一梯队）');
+  } else if (tier2Ids.length > 0) {
+    await pool.execute('UPDATE biddings SET tier1_window_ends_at = NULL WHERE bidding_id = ?', [biddingId]);
+    await sendBiddingMessagesToShops(pool, tier2Ids, biddingId, '新竞价待报价（第二梯队）');
+    console.log(`${LOG_PREFIX} [${biddingId}] 无第一梯队，已直接下发第二梯队 ${tier2Ids.length} 家`);
+  } else if (tier3Ids.length > 0) {
+    await pool.execute('UPDATE biddings SET tier1_window_ends_at = NULL WHERE bidding_id = ?', [biddingId]);
+    await sendBiddingMessagesToShops(pool, tier3Ids, biddingId, '新竞价待报价（第三梯队）');
+    console.log(`${LOG_PREFIX} [${biddingId}] 无一、二梯队，已直接下发第三梯队 ${tier3Ids.length} 家`);
+  }
 
   return {
     success: true,
@@ -551,6 +580,143 @@ async function runBiddingDistribution(pool, biddingId) {
     tier2Shops: tier2Ids,
     tier3Shops: tier3Ids,
     allFilteredShops: scored.map((s) => s.shop_id),
+  };
+}
+
+/**
+ * 获取竞价分发详情（供 admin 查询）
+ */
+async function getBiddingDistributionDetail(pool, biddingId) {
+  const config = await getBiddingDistributionConfig(pool);
+
+  const [biddingRows] = await pool.execute(
+    `SELECT b.bidding_id, b.user_id, b.report_id, b.range_km, b.tier1_window_ends_at, b.status,
+            u.latitude as user_lat, u.longitude as user_lng
+     FROM biddings b
+     INNER JOIN users u ON b.user_id = u.user_id
+     WHERE b.bidding_id = ?`,
+    [biddingId]
+  );
+  if (biddingRows.length === 0) return { success: false, error: '竞价不存在' };
+
+  const bidding = biddingRows[0];
+  const userId = bidding.user_id;
+
+  const [reportRows] = await pool.execute(
+    `SELECT dr.analysis_result FROM damage_reports dr WHERE dr.report_id = ?`,
+    [bidding.report_id]
+  );
+  let analysisResult = {};
+  if (reportRows.length > 0 && reportRows[0].analysis_result) {
+    try {
+      analysisResult = typeof reportRows[0].analysis_result === 'string'
+        ? JSON.parse(reportRows[0].analysis_result || '{}')
+        : reportRows[0].analysis_result;
+    } catch (_) {}
+  }
+  const items = complexityService.normalizeRepairItems([], analysisResult);
+  const { level: maxLevel } = await complexityService.resolveComplexityFromItems(pool, items);
+
+  const shops = await filterShopsForBidding(pool, biddingId, userId);
+  const scored = shops.length > 0 ? await assignTiers(pool, shops, biddingId, config) : [];
+
+  let diagnostic = null;
+  if (shops.length === 0) {
+    const hasUserLoc = bidding.user_lat != null && bidding.user_lng != null;
+    let shopsInRange = null;
+    if (hasUserLoc) {
+      const [inRangeCount] = await pool.execute(
+        `SELECT COUNT(*) as c FROM shops s
+         WHERE s.status = 1 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+           AND (s.qualification_status = 1 OR s.qualification_status = '1')
+           AND (6371 * acos(LEAST(1, GREATEST(-1,
+             cos(radians(?)) * cos(radians(s.latitude)) * cos(radians(s.longitude) - radians(?))
+             + sin(radians(?)) * sin(radians(s.latitude))))) <= ?`,
+        [bidding.user_lat, bidding.user_lng, bidding.user_lat, parseFloat(bidding.range_km) || 10]
+      );
+      shopsInRange = inRangeCount[0]?.c ?? 0;
+    }
+    diagnostic = {
+      user_has_location: hasUserLoc,
+      shops_in_range_with_qualification: shopsInRange,
+      hint: !hasUserLoc
+        ? '用户未设置坐标，竞价创建时需传入 latitude、longitude'
+        : shopsInRange === 0
+          ? '范围内无已通过资质审核的店铺'
+          : '店铺可能因合规率、违规、资质匹配或同项目完单被过滤',
+    };
+  }
+
+  const [distRows] = await pool.execute(
+    `SELECT bd.shop_id, bd.tier, bd.match_score, s.name, s.compliance_rate, s.qualification_level
+     FROM bidding_distribution bd
+     LEFT JOIN shops s ON bd.shop_id = s.shop_id
+     WHERE bd.bidding_id = ?
+     ORDER BY bd.tier, bd.match_score DESC`,
+    [biddingId]
+  );
+
+  const [quoteRows] = await pool.execute(
+    `SELECT q.shop_id, q.amount, q.quote_status FROM quotes q WHERE q.bidding_id = ?`,
+    [biddingId]
+  );
+  const quotesByShop = {};
+  for (const r of quoteRows || []) {
+    quotesByShop[r.shop_id] = { amount: r.amount, status: r.quote_status };
+  }
+
+  const invited = (distRows || []).map((r) => ({
+    shop_id: r.shop_id,
+    name: r.name,
+    tier: r.tier,
+    tierName: r.tier === 1 ? '第一梯队' : r.tier === 2 ? '第二梯队' : '第三梯队',
+    match_score: r.match_score,
+    compliance_rate: r.compliance_rate,
+    qualification_level: r.qualification_level,
+    quoted: !!quotesByShop[r.shop_id],
+    quote_amount: quotesByShop[r.shop_id]?.amount,
+  }));
+
+  const filteredNotInvited = scored.filter((s) => !distRows.some((d) => d.shop_id === s.shop_id)).map((s) => ({
+    shop_id: s.shop_id,
+    name: s.name,
+    tier: s._tier,
+    tierName: s._tier === 1 ? '第一梯队' : s._tier === 2 ? '第二梯队' : '第三梯队',
+    match_score: s._matchScore,
+    compliance_rate: s.compliance_rate,
+    is_new_shop: s.isNewShop,
+    reason: '名额不足未邀请',
+  }));
+
+  return {
+    success: true,
+    data: {
+      bidding_id: biddingId,
+      user_id: userId,
+      range_km: bidding.range_km,
+      user_lat: bidding.user_lat,
+      user_lng: bidding.user_lng,
+      complexity_level: maxLevel,
+      tier1_window_ends_at: bidding.tier1_window_ends_at,
+      config: {
+        filterComplianceMin: config.filterComplianceMin,
+        tier1MatchScoreMin: config.tier1MatchScoreMin,
+        tier1ComplianceMin: config.tier1ComplianceMin,
+        tier2MatchScoreMin: config.tier2MatchScoreMin,
+        tier2MatchScoreMax: config.tier2MatchScoreMax,
+        tier2ComplianceMin: config.tier2ComplianceMin,
+        tier3MaxShops: config.tier3MaxShops,
+        distributeL1L2Max: config.distributeL1L2Max,
+        distributeL3L4Max: config.distributeL3L4Max,
+      },
+      filter_logic: '距离≤range_km, 资质匹配, 合规率≥80%(新店豁免), 近30天无重大违规, 近90天同项目完单(新店豁免)',
+      tier_logic: '一梯队:分≥80且合规≥95%; 二梯队:60≤分≤79且合规≥85%; 三梯队:其余',
+      invited,
+      filtered_not_invited: filteredNotInvited,
+      total_filtered: scored.length,
+      total_invited: invited.length,
+      diagnostic,
+    },
   };
 }
 
@@ -618,10 +784,31 @@ async function hasReceivedBiddingMessage(pool, shopId, biddingId) {
 }
 
 /**
+ * 获取竞价的「有效报价满 N 家停止」阈值（07 文档：L1-L2 满 5 家，L3-L4 满 8 家）
+ */
+async function getValidStopThreshold(pool, biddingId, config) {
+  const [rows] = await pool.execute(
+    'SELECT dr.analysis_result FROM biddings b INNER JOIN damage_reports dr ON b.report_id = dr.report_id WHERE b.bidding_id = ?',
+    [biddingId]
+  );
+  if (rows.length === 0) return config.distributeL1L2ValidStop ?? 5;
+  let parsed = {};
+  try {
+    parsed = typeof rows[0].analysis_result === 'string' ? JSON.parse(rows[0].analysis_result || '{}') : (rows[0].analysis_result || {});
+  } catch (_) {}
+  const items = complexityService.normalizeRepairItems([], parsed);
+  const { level } = await complexityService.resolveComplexityFromItems(pool, items);
+  const isL1L2 = level === 'L1' || level === 'L2';
+  return isL1L2 ? (config.distributeL1L2ValidStop ?? 5) : (config.distributeL3L4ValidStop ?? 8);
+}
+
+/**
  * 为指定店铺补发第二、第三梯队竞价消息（首次请求时调用）
  * 当服务商打开待报价列表时，检查是否有已开放但未推送的竞价，补发消息
+ * 07 文档：有效报价满 N 家后不再推送（已收到推送的仍可报价）
  */
 async function sendDelayedBiddingMessagesForShop(pool, shopId) {
+  const config = await getBiddingDistributionConfig(pool);
   const now = new Date();
   const [biddings] = await pool.execute(
     `SELECT b.bidding_id, bd.tier,
@@ -637,6 +824,8 @@ async function sendDelayedBiddingMessagesForShop(pool, shopId) {
   const toSend = [];
   for (const row of biddings || []) {
     if (row.tier === 3 && (row.valid_quotes || 0) >= 3) continue;
+    const validStop = await getValidStopThreshold(pool, row.bidding_id, config);
+    if ((row.valid_quotes || 0) >= validStop) continue; // 有效报价已满，不再推送
     const alreadySent = await hasReceivedBiddingMessage(pool, shopId, row.bidding_id);
     if (!alreadySent) toSend.push({ bidding_id: row.bidding_id, tier: row.tier });
   }
@@ -651,8 +840,10 @@ async function sendDelayedBiddingMessagesForShop(pool, shopId) {
 /**
  * 全量补发第二、第三梯队消息（定时任务调用）
  * 遍历所有进行中的竞价，向已开放但未推送的店铺补发
+ * 07 文档：有效报价满 N 家后不再推送
  */
 async function sendAllDelayedBiddingMessages(pool) {
+  const config = await getBiddingDistributionConfig(pool);
   const now = new Date();
   const [biddings] = await pool.execute(
     `SELECT b.bidding_id, b.tier1_window_ends_at,
@@ -665,6 +856,8 @@ async function sendAllDelayedBiddingMessages(pool) {
 
   let sentCount = 0;
   for (const row of biddings || []) {
+    const validStop = await getValidStopThreshold(pool, row.bidding_id, config);
+    if ((row.valid_quotes || 0) >= validStop) continue; // 有效报价已满，不再推送
     const [distRows] = await pool.execute(
       'SELECT shop_id, tier FROM bidding_distribution WHERE bidding_id = ? AND tier IN (2, 3)',
       [row.bidding_id]
@@ -692,6 +885,7 @@ module.exports = {
   assignTiers,
   sendBiddingMessagesToShops,
   runBiddingDistribution,
+  getBiddingDistributionDetail,
   isShopVisibleForBidding,
   sendDelayedBiddingMessagesForShop,
   sendAllDelayedBiddingMessages,

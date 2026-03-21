@@ -61,7 +61,10 @@
       </view>
       <view class="followup-section">
         <view class="followup-section-title fs-body fw-bold">使用体验描述</view>
-        <textarea class="followup-textarea" placeholder="{{stage === '3m' ? '至少 20 字' : '至少 10 字'}}" value="{{content}}" bindinput="onContentInput" maxlength="500"/>
+        <view class="followup-guide">
+          <text class="followup-guide-text">💡 写具体更有参考价值：故障是否复发、配件用着如何、售后响应快不快、有无新问题等</text>
+        </view>
+        <textarea class="followup-textarea" placeholder="{{stage === '3m' ? '例如：用了 3 个月，故障没复发，配件正常。中间有个小问题联系了师傅，回复很快，态度也好。' : '例如：开了 1 个月，目前一切正常，没有复发。'}}" value="{{content}}" bindinput="onContentInput" maxlength="500"/>
       </view>
       <view class="followup-section" wx:if="{{images.length < 6}}">
         <view class="followup-upload-grid">

@@ -36,13 +36,42 @@ function formatAmount(amount, showUnit = true) {
 }
 
 /**
+ * 获取系统/窗口信息（替代已废弃的 wx.getSystemInfoSync）
+ * 使用 wx.getWindowInfo / getDeviceInfo / getAppBaseInfo
+ */
+function getSystemInfo() {
+  try {
+    if (wx.getWindowInfo) {
+      const win = wx.getWindowInfo();
+      const info = { statusBarHeight: win.statusBarHeight || 20, windowWidth: win.windowWidth || 375, windowHeight: win.windowHeight || 667 };
+      if (wx.getDeviceInfo) {
+        const dev = wx.getDeviceInfo();
+        info.brand = dev.brand;
+        info.model = dev.model;
+        info.system = dev.system;
+      }
+      if (wx.getAppBaseInfo) {
+        const app = wx.getAppBaseInfo();
+        info.SDKVersion = app.SDKVersion;
+      }
+      return info;
+    }
+  } catch (_) {}
+  try {
+    return wx.getSystemInfoSync();
+  } catch (e) {
+    return { statusBarHeight: 20, windowWidth: 375, windowHeight: 667 };
+  }
+}
+
+/**
  * 获取自定义导航栏高度（px）
  * 用于 navigationStyle: custom 时页面内容区的 padding-top
  * 公式：statusBarHeight + (capsuleTop - statusBarHeight) * 2 + capsuleHeight
  */
 function getNavBarHeight() {
   try {
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     const menu = wx.getMenuButtonBoundingClientRect();
     const statusBarHeight = sys.statusBarHeight || 20;
     const navContentHeight = (menu.top - statusBarHeight) * 2 + menu.height;
@@ -100,6 +129,7 @@ module.exports = {
   formatDate,
   formatRelativeTime,
   formatAmount,
+  getSystemInfo,
   getNavBarHeight,
   compressImageForUpload
 };

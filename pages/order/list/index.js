@@ -1,6 +1,6 @@
 // 我的订单列表
 const { getToken, getUserOrders } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认', 3: '已完成', 4: '已取消' };
 
@@ -26,7 +26,7 @@ Page({
 
   onLoad(options) {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px', scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px' });
     const status = options.status || '';
     this.setData({ status });
@@ -56,7 +56,7 @@ Page({
       const res = await getUserOrders(params);
       const list = (res.list || []).map((item) => ({
         ...item,
-        statusText: STATUS_MAP[item.status] || '未知',
+        statusText: this.data.status === 'to_review' ? '待评价' : (this.data.status === 'completed' && item.status === 3 ? '已评价' : (STATUS_MAP[item.status] || '未知')),
         created_at: formatDate(item.created_at)
       }));
       const prevList = refresh ? [] : this.data.list;

@@ -18,8 +18,8 @@
           <view class="detail-main">
             <text class="detail-name text-primary fs-h3 fw-bold">{{shop.name}}</text>
             <view class="detail-rating">
-              <text class="detail-stars text-star fs-cap">{{shop.starsFull}}{{shop.starsEmpty}}</text>
-              <text class="detail-rating-txt text-muted fs-cap">{{shop.avgRating}}分 · {{shop.totalReviews}}条 · {{shop.total_orders}}单</text>
+              <text class="detail-stars text-star fs-cap">{{shop.starsDisplay}}</text>
+              <text class="detail-rating-txt text-muted fs-cap">{{shop.avgRating}} · {{shop.totalReviews}}条 · {{shop.total_orders}}单</text>
             </view>
             <view class="detail-tags" wx:if="{{shop.categories.length}}">
               <text class="detail-tag fs-cap" wx:for="{{shop.categories}}" wx:key="*this">{{item}}</text>
@@ -48,6 +48,19 @@
         </view>
       </view>
 
+      <!-- 用户评价（评价为核心：置顶，紧接店铺信息） -->
+      <view class="detail-section card">
+        <view class="detail-section-title fs-body fw-bold">用户评价</view>
+        <view class="detail-review-summary" wx:if="{{shop.totalReviews > 0}}">
+          <view class="detail-review-score">
+            <text class="detail-score-num text-primary">{{shop.avgRating}}</text>
+            <text class="text-muted fs-cap"> · {{shop.totalReviews}}条真实评价</text>
+          </view>
+          <text class="detail-review-summary-hint text-weak fs-sm" wx:if="{{shop.totalReviews >= 5}}">按内容质量、发布时间排序</text>
+        </view>
+        <view class="detail-no-review text-muted fs-body" wx:else>暂无评价</view>
+      </view>
+
       <!-- 历史偏差率 -->
       <view class="detail-section card" wx:if="{{shop.deviation_rate != null}}">
         <view class="detail-section-title fs-body fw-bold">报价偏差率</view>
@@ -57,33 +70,16 @@
         </view>
       </view>
 
-      <!-- 服务项目 -->
-      <view class="detail-section card" wx:if="{{shop.services && shop.services.length}}">
-        <view class="detail-section-title fs-body fw-bold">服务项目</view>
-        <view class="detail-services">
-          <view class="detail-service" wx:for="{{shop.services}}" wx:key="name">
-            <text class="fs-body">{{item.name}}</text>
-            <text class="text-muted fs-cap" wx:if="{{item.min_price || item.max_price}}">{{item.min_price || 0}}-{{item.max_price || 0}}元</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 评价汇总（与好评率脱钩，强调评价数量） -->
-      <view class="detail-section card">
-        <view class="detail-section-title fs-body fw-bold">用户评价</view>
-        <view class="detail-review-summary" wx:if="{{shop.totalReviews > 0}}">
-          <view class="detail-review-score">
-            <text class="detail-score-num text-primary">{{shop.totalReviews}}</text>
-            <text class="text-muted fs-cap">条评价</text>
-          </view>
-          <text class="text-weak fs-sm">按内容完整度、发布时间排序，与好评率脱钩</text>
-        </view>
-        <view class="detail-no-review text-muted fs-body" wx:else>暂无评价</view>
-      </view>
-
       <!-- 评价列表 -->
-      <view class="detail-section card" wx:if="{{reviews.length}}">
-        <view class="detail-review-list">
+      <view class="detail-section card">
+        <view class="detail-review-filter" wx:if="{{repairProjectKeys.length > 0}}">
+          <text class="detail-filter-label fs-cap text-muted">按维修项目</text>
+          <view class="detail-filter-chips">
+            <view class="detail-filter-chip {{!repairProjectKey ? 'active' : ''}}" bindtap="onRepairProjectFilter" data-key="">全部</view>
+            <view class="detail-filter-chip {{repairProjectKey === item ? 'active' : ''}}" wx:for="{{repairProjectKeys}}" wx:key="*this" bindtap="onRepairProjectFilter" data-key="{{item}}">{{item}}</view>
+          </view>
+        </view>
+        <view class="detail-review-list" wx:if="{{reviews.length}}">
           <view
             class="detail-review-item {{item.expanded ? 'detail-review-item-expanded' : ''}}"
             wx:for="{{reviews}}"
@@ -95,28 +91,92 @@
               <text class="detail-review-user text-primary fs-body">{{item.user.nickname}}</text>
               <text class="detail-review-date text-weak fs-cap">{{item.dateText}}</text>
             </view>
+            <view class="detail-review-meta" wx:if="{{item.repair_items && item.repair_items.length}}">
+              <text class="detail-review-meta-label text-muted fs-cap">维修项目：</text>
+              <text class="detail-review-meta-val fs-cap">{{item.repair_items.join('、')}}</text>
+            </view>
+            <view class="detail-review-meta" wx:if="{{item.amountText}}">
+              <text class="detail-review-meta-label text-muted fs-cap">金额：</text>
+              <text class="detail-review-meta-val fs-cap">¥{{item.amountText}}</text>
+            </view>
             <view class="detail-review-stars text-star fs-cap" wx:if="{{item.rating}}">{{item.ratingText}}</view>
+            <view class="detail-review-objectives" wx:if="{{item.objective_answers && (item.objective_answers.q1_progress_synced != null || item.objective_answers.q2_parts_shown != null || item.objective_answers.q3_fault_resolved != null)}}">
+              <view class="detail-review-obj" wx:if="{{item.objective_answers.q1_progress_synced != null}}">
+                <text class="text-muted fs-cap">维修进度同步</text>
+                <text class="fs-cap">{{item.objective_answers.q1_progress_synced ? '是' : '否'}}</text>
+              </view>
+              <view class="detail-review-obj" wx:if="{{item.objective_answers.q2_parts_shown != null}}">
+                <text class="text-muted fs-cap">展示新旧配件</text>
+                <text class="fs-cap">{{item.objective_answers.q2_parts_shown ? '是' : '否'}}</text>
+              </view>
+              <view class="detail-review-obj" wx:if="{{item.objective_answers.q3_fault_resolved != null}}">
+                <text class="text-muted fs-cap">故障已解决</text>
+                <text class="fs-cap">{{item.objective_answers.q3_fault_resolved ? '是' : '否'}}</text>
+              </view>
+            </view>
             <view class="detail-review-content-wrap">
               <text class="detail-review-content text-muted fs-body {{item.expanded ? '' : 'detail-review-content-collapsed'}}" wx:if="{{item.content}}">{{item.expanded ? item.content : item.contentPreview}}</text>
               <text class="detail-review-expand-btn text-primary fs-sm" wx:if="{{item.content && !item.expanded && item.content.length > 60}}" bindtap="onExpandReview" data-index="{{index}}">展开</text>
             </view>
-            <view class="detail-review-images" wx:if="{{item.after_images && item.after_images.length}}">
-              <image class="detail-review-img" wx:for="{{item.after_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            <view class="detail-review-images-wrap" wx:if="{{(item.before_images && item.before_images.length) || (item.after_images && item.after_images.length) || (item.completion_images && item.completion_images.length)}}">
+              <view class="detail-review-img-group" wx:if="{{item.before_images && item.before_images.length}}">
+                <text class="detail-review-img-label text-muted fs-cap">维修前</text>
+                <view class="detail-review-images">
+                  <image class="detail-review-img" wx:for="{{item.before_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+                </view>
+              </view>
+              <view class="detail-review-img-group" wx:if="{{item.after_images && item.after_images.length}}">
+                <text class="detail-review-img-label text-muted fs-cap">维修后</text>
+                <view class="detail-review-images">
+                  <image class="detail-review-img" wx:for="{{item.after_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+                </view>
+              </view>
+              <view class="detail-review-img-group" wx:elif="{{item.completion_images && item.completion_images.length}}">
+                <text class="detail-review-img-label text-muted fs-cap">完工实拍</text>
+                <view class="detail-review-images">
+                  <image class="detail-review-img" wx:for="{{item.completion_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+                </view>
+              </view>
             </view>
             <view class="detail-review-badge text-weak fs-sm" wx:if="{{item.isLowRating}}">该用户已完成全部评价要求，全额领取对应奖励</view>
+            <view class="detail-review-appeal" wx:if="{{item.is_my_review && item.order_id}}" bindtap="onAppealTap" data-order-id="{{item.order_id}}">
+              <text class="text-primary fs-sm">对维修有异议？发起申诉</text>
+            </view>
             <view class="detail-review-owner-verify text-danger fs-sm" wx:if="{{item.has_owner_verify_badge}}">车主验证・真实避坑</view>
             <view class="detail-review-actions">
-              <view class="detail-review-like" bindtap="onLikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
-                <!-- 点赞图标：like.png 未点赞，liked.png 已点赞；若不存在需补充 -->
+              <view class="detail-review-like" wx:if="{{!item.is_my_review}}" bindtap="onLikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
                 <image class="detail-review-like-icon" src="{{item.liked ? '/images/icon/liked.png' : '/images/icon/like.png'}}" mode="aspectFit"/>
                 <text class="text-muted fs-cap">{{item.like_count || 0}} 点赞</text>
                 <text class="text-weak fs-sm" wx:if="{{item.post_verify_count > 0}}"> · {{item.post_verify_count}}位车主验证有用</text>
+              </view>
+              <view class="detail-review-like text-weak fs-cap" wx:else>
+                <text>{{item.like_count || 0}} 点赞</text>
+              </view>
+              <view class="detail-review-dislike {{item.disliked ? 'disliked' : ''}}" wx:if="{{!item.is_my_review && !item.liked}}" bindtap="onDislikeReview" data-index="{{index}}" data-review-id="{{item.review_id}}">
+                <text class="detail-review-dislike-icon">👎</text>
+                <text class="text-muted fs-cap">{{item.dislike_count || 0}} 踩</text>
+              </view>
+              <view class="detail-review-dislike disliked" wx:elif="{{!item.is_my_review && item.disliked}}">
+                <text class="detail-review-dislike-icon">👎</text>
+                <text class="text-weak fs-cap">{{item.dislike_count || 0}} 踩</text>
               </view>
             </view>
           </view>
         </view>
         <view class="detail-more text-muted fs-cap" wx:if="{{loadingReviews}}">加载更多...</view>
-        <view class="detail-more text-muted fs-cap" wx:elif="{{!hasMoreReviews}}">— 没有更多了 —</view>
+        <view class="detail-more text-muted fs-cap" wx:elif="{{!hasMoreReviews && reviews.length > 0}}">— 没有更多了 —</view>
+        <view class="detail-no-review text-muted fs-body" wx:elif="{{!loadingReviews && reviews.length === 0}}">暂无评价</view>
+      </view>
+
+      <!-- 服务项目 -->
+      <view class="detail-section card" wx:if="{{shop.services && shop.services.length}}">
+        <view class="detail-section-title fs-body fw-bold">服务项目</view>
+        <view class="detail-services">
+          <view class="detail-service" wx:for="{{shop.services}}" wx:key="name">
+            <text class="fs-body">{{item.name}}</text>
+            <text class="text-muted fs-cap" wx:if="{{item.min_price || item.max_price}}">{{item.min_price || 0}}-{{item.max_price || 0}}元</text>
+          </view>
+        </view>
       </view>
 
       <view class="detail-bottom-pad"></view>

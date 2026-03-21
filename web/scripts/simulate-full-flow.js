@@ -7,7 +7,7 @@
  *   node scripts/simulate-full-flow.js
  *
  * 环境变量：
- *   API_BASE   API 地址，默认 http://localhost:3000
+ *   API_BASE   API 地址，默认 https://simplewin.cn（服务器）；本地用 API_BASE=http://localhost:3000
  *   USER_ID    测试用户 ID，默认 USER001
  *   MERCHANT_PHONE  服务商手机号，默认 18658823459
  *   MERCHANT_PASSWORD  服务商密码，默认 123456（仅 test-token 用）
@@ -21,7 +21,7 @@
 const http = require('http');
 const https = require('https');
 
-const API_BASE = process.env.API_BASE || 'https://simplewin.cn:3000';
+const API_BASE = process.env.API_BASE || 'https://simplewin.cn';
 const USER_ID = process.env.USER_ID || 'USER001';
 const MERCHANT_PHONE = process.env.MERCHANT_PHONE || '18658823459';
 const MERCHANT_PASSWORD = process.env.MERCHANT_PASSWORD || '123456';

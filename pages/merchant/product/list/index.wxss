@@ -1,0 +1,91 @@
+.merchant-product-list {
+  min-height: 100vh;
+  padding-bottom: 120rpx;
+  background: var(--bg-page);
+}
+
+.product-list {
+  padding: var(--space-lg) var(--page-padding-x);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.product-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-lg);
+}
+
+.product-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.product-name {
+  color: var(--text-primary);
+}
+
+.product-price {
+  font-weight: 600;
+}
+
+.product-status {
+  padding: 4rpx 12rpx;
+  border-radius: var(--radius-sm);
+  align-self: flex-start;
+}
+
+.product-status-pending {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.product-status-approved {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.product-status-rejected {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+.product-status-off_shelf {
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+.product-actions {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.product-action {
+  color: var(--primary);
+  font-size: var(--fs-cap);
+}
+
+.product-empty {
+  margin: var(--space-2xl) var(--page-padding-x);
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.product-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  background: var(--bg-page);
+}
+
+.product-add-btn {
+  padding: var(--space-lg);
+  text-align: center;
+  border-radius: var(--radius-md);
+  padding: 0 0;
+}

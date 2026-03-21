@@ -2,7 +2,7 @@
 const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantAppeals } = require('../../../../utils/api');
-const { getNavBarHeight } = require('../../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../../utils/util');
 
 const logger = getLogger('MerchantAppealList');
 
@@ -18,7 +18,7 @@ Page({
 
   onLoad() {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({
       pageRootStyle: 'padding-top: ' + navH + 'px',
       scrollStyle: 'height: ' + (sys.windowHeight - navH - 100) + 'px'

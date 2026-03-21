@@ -3,7 +3,8 @@ const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota, getUserVehicles } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
+const { fetchAndApplyUnreadBadge } = require('../../../utils/message-badge');
 
 const logger = getLogger('DamageUpload');
 
@@ -34,6 +35,7 @@ Page({
     images: [],
     imageUrls: [],
     vehicleInfo: { plate_number: '', brand: '', model: '' },
+    userDescription: '',
     analyzing: false,
     analyzeProgress: 0,
     progressStyle: 'width: 0%',
@@ -65,7 +67,7 @@ Page({
   onLoad(options) {
     const navH = getNavBarHeight();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px' });
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     const h = sys.windowHeight - navH - 140;
     this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
     this.checkToken();
@@ -81,6 +83,7 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2 });
     }
+    fetchAndApplyUnreadBadge();
     // 返回页面时重置提交状态，避免从竞价详情返回后仍显示「提交中」
     if (this.data.step === 2 && this.data.submitting) {
       this.setData({ submitting: false });
@@ -146,6 +149,9 @@ Page({
     this.setData({ images, imageUrls });
   },
 
+  onDescInput(e) {
+    this.setData({ userDescription: (e.detail.value || '').trim() });
+  },
   onPlateInput(e) {
     this.setData({ 'vehicleInfo.plate_number': (e.detail.value || '').trim() });
   },
@@ -171,8 +177,8 @@ Page({
       ui.showWarning('请上传事故照片');
       return;
     }
-    if (images.length < 2) {
-      ui.showWarning('请至少上传 2 张照片');
+    if (images.length < 1) {
+      ui.showWarning('请至少上传 1 张照片');
       return;
     }
     if (analyzing) return;
@@ -199,6 +205,7 @@ Page({
       const result = await analyzeDamage({
         user_id: getUserId(),
         images: imageUrls,
+        user_description: (this.data.userDescription || '').trim() || undefined,
         vehicle_info: {
           plate_number: vehicleInfo.plate_number || undefined,
           brand: vehicleInfo.brand || undefined,
@@ -334,6 +341,8 @@ Page({
           brand: v.brand ?? '',
           model: v.model ?? '',
           color: v.color ?? '',
+          vehicle_price_tier: v.vehicle_price_tier ?? null,
+          vehicle_price_max: v.vehicle_price_max ?? null,
           damagedParts: v.damagedParts || [],
           damageTypes: v.damageTypes || [],
           overallSeverity: sev,
@@ -360,6 +369,8 @@ Page({
           brand: v.brand ?? '',
           model: v.model ?? '',
           color: v.color ?? '',
+          vehicle_price_tier: v.vehicle_price_tier ?? null,
+          vehicle_price_max: v.vehicle_price_max ?? null,
           damagedParts: v.damagedParts || [],
           damageTypes: v.damageTypes || [],
           overallSeverity: sev,
@@ -621,7 +632,9 @@ Page({
     const bidVehicleInfo = {
       plate_number: (edits.plate_number !== undefined ? edits.plate_number : (v?.plateNumber || vehicleInfo.plate_number || '')).trim(),
       brand: edits.brand !== undefined ? edits.brand : (v?.brand || ''),
-      model: edits.model !== undefined ? edits.model : (v?.model || vehicleInfo.model || '')
+      model: edits.model !== undefined ? edits.model : (v?.model || vehicleInfo.model || ''),
+      vehicle_price_tier: v?.vehicle_price_tier ?? undefined,
+      vehicle_price_max: v?.vehicle_price_max ?? undefined
     };
 
     if (!bidVehicleInfo.plate_number) {
@@ -665,14 +678,17 @@ Page({
           }
         : { is_insurance: false };
 
+      const rangeToSend = rangeKm === 0 ? 999 : (rangeKm || 5);
       const res = await createBidding({
         report_id: reportId,
-        range: rangeKm === 0 ? 999 : (rangeKm || 5),
+        range: rangeToSend,
         insurance_info,
         vehicle_info: {
           plate_number: bidVehicleInfo.plate_number || undefined,
           brand: bidVehicleInfo.brand || undefined,
-          model: bidVehicleInfo.model || undefined
+          model: bidVehicleInfo.model || undefined,
+          vehicle_price_tier: bidVehicleInfo.vehicle_price_tier,
+          vehicle_price_max: bidVehicleInfo.vehicle_price_max
         },
         latitude,
         longitude

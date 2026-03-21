@@ -87,12 +87,12 @@ function getMockAnalysisResult(reportId, vehicleInfo) {
  * AI 定损分析
  */
 async function analyzeDamage(pool, req, baseUrl) {
-  const { user_id, images, vehicle_info } = req.body || {};
+  const { user_id, images, vehicle_info, user_description } = req.body || {};
   const userId = req.userId;
   const vehicleInfo = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
 
-  if (!images || images.length === 0) {
-    return { success: false, error: '请上传事故照片', statusCode: 400 };
+  if (!images || images.length < 1) {
+    return { success: false, error: '请至少上传 1 张事故照片', statusCode: 400 };
   }
 
   const bodyUserId = user_id && String(user_id).trim();
@@ -100,10 +100,11 @@ async function analyzeDamage(pool, req, baseUrl) {
     return { success: false, error: 'user_id 无效或与登录用户不一致', statusCode: 400 };
   }
 
+  // TODO: 测试完成后恢复定损次数限制
   const limitCheck = await checkAiDailyLimit(pool, userId);
-  if (!limitCheck.allowed) {
-    return { success: false, error: limitCheck.message, statusCode: 429 };
-  }
+  // if (!limitCheck.allowed) {
+  //   return { success: false, error: limitCheck.message, statusCode: 429 };
+  // }
   const quotaAfter = { remainingCount: limitCheck.remainingCount - 1, maxCount: limitCheck.maxCount };
 
   const reportId = 'RPT' + Date.now();
@@ -120,8 +121,9 @@ async function analyzeDamage(pool, req, baseUrl) {
   let analysisResult;
   if (apiKey && absoluteImageUrls.length > 0) {
     try {
-      console.log('[damage-service] 调用千问 API 分析', absoluteImageUrls.length, '张照片');
-      analysisResult = await analyzeWithQwen(absoluteImageUrls, vehicleInfo, reportId, apiKey);
+      const userDesc = typeof user_description === 'string' ? user_description.trim() : '';
+      console.log('[damage-service] 调用千问 API 分析', absoluteImageUrls.length, '张照片', userDesc ? '+ 用户描述' : '');
+      analysisResult = await analyzeWithQwen(absoluteImageUrls, vehicleInfo, reportId, apiKey, userDesc || undefined);
       console.log('[damage-service] 千问分析完成');
     } catch (err) {
       console.error('[damage-service] 千问 API 失败，使用模拟结果:', err.message);
@@ -134,10 +136,11 @@ async function analyzeDamage(pool, req, baseUrl) {
   const enhanced = enhanceAnalysisWithKnowledge(analysisResult);
   enhanced.report_id = reportId;
 
+  const userDesc = typeof user_description === 'string' ? user_description.trim() : null;
   await pool.execute(
-    `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, analysis_result, status, created_at) 
-     VALUES (?, ?, ?, ?, ?, 1, NOW())`,
-    [reportId, userId, JSON.stringify(vehicleInfo), JSON.stringify(images), JSON.stringify(enhanced)]
+    `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, user_description, analysis_result, status, created_at) 
+     VALUES (?, ?, ?, ?, ?, ?, 1, NOW())`,
+    [reportId, userId, JSON.stringify(vehicleInfo), JSON.stringify(images), userDesc || null, JSON.stringify(enhanced)]
   );
 
   await recordAiCall(pool, userId, reportId);

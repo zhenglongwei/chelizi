@@ -20,7 +20,7 @@
 
       <!-- 照片上传 -->
       <view class="damage-section card">
-        <view class="damage-section-title fs-body fw-bold">事故照片</view>
+        <view class="damage-section-title fs-body fw-bold">事故照片<text class="text-error">*</text></view>
         <view class="damage-upload-grid">
           <view
             class="damage-upload-item"
@@ -39,7 +39,13 @@
             </view>
           </block>
         </view>
-        <text class="damage-upload-hint text-weak fs-sm">{{images.length}}/8 张，单张不超过 5MB</text>
+        <text class="damage-upload-hint text-weak fs-sm">{{images.length}}/8 张，至少 1 张，单张不超过 5MB</text>
+      </view>
+
+      <!-- 情况描述（选填，用于泡水、异响等无法通过照片体现的问题） -->
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">情况描述（选填）</view>
+        <textarea class="damage-desc-input" placeholder="如：地库泡水、车内进水约10cm；或发动机异响、故障灯亮等无法通过照片体现的问题" value="{{userDescription}}" bindinput="onDescInput" maxlength="-1"/>
       </view>
 
       <!-- 车辆信息 -->

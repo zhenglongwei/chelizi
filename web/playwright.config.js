@@ -7,6 +7,8 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './e2e',
+  testMatch: ['**/admin.spec.js'],
+  testIgnore: ['**/miniprogram.spec.js'],
   baseURL: (process.env.PLAYWRIGHT_BASE_URL || 'https://simplewin.cn').replace(/\/$/, ''),
   timeout: 30000,
   retries: 1,

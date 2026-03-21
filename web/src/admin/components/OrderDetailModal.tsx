@@ -63,7 +63,7 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
     );
   }
 
-  const { order, ownerInfo, quotes, repairOrder, selectedMerchantInfo, refunds, complaints, review, settlementProofs } = orderDetail;
+  const { order, ownerInfo, quotes, repairOrder, selectedMerchantInfo, refunds, complaints, review, reviewList, settlementProofs } = orderDetail;
   const vi = order.vehicleInfo || {};
 
   // 报价表格列
@@ -213,7 +213,9 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
       render: (type: string) => {
         const typeMap: any = {
           'order': '订单奖励金',
-          'referral': '裂变奖励金'
+          'referral': '裂变奖励金',
+          'upgrade_diff': '评价升级差额',
+          'like_bonus': '点赞追加奖金'
         };
         return typeMap[type] || type;
       }
@@ -261,9 +263,11 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
     },
     {
       title: '支付时间',
-      dataIndex: 'payTime',
       key: 'payTime',
-      render: (time: Date) => time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-',
+      render: (_: any, record: any) => {
+        const t = record.payTime || record.createTime;
+        return t ? dayjs(t).format('YYYY-MM-DD HH:mm:ss') : '-';
+      },
     },
     {
       title: '创建时间',
@@ -357,8 +361,10 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
             <Descriptions.Item label="复杂度等级">
               {order.complexityLevel || '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="奖励金预估">
-              {order.rewardPreview != null ? `¥${order.rewardPreview}` : '-'}
+            <Descriptions.Item label={order.status === 3 && order.actualReward != null ? '奖励金实际' : '奖励金预估'}>
+              {order.status === 3 && order.actualReward != null
+                ? `¥${order.actualReward}`
+                : (order.rewardPreview != null ? `¥${order.rewardPreview}` : '-')}
             </Descriptions.Item>
             <Descriptions.Item label="佣金比例">
               {order.commissionRate != null ? `${Number(order.commissionRate)}%` : '-'}
@@ -421,6 +427,32 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
                 {repairOrder.finalSettlement?.settlementTime ?
                   dayjs(repairOrder.finalSettlement.settlementTime).format('YYYY-MM-DD HH:mm:ss') : '-'}
               </Descriptions.Item>
+              {repairOrder.completion_evidence && (
+                <Descriptions.Item label="维修完成凭证" span={2}>
+                  <div>
+                    {(repairOrder.completion_evidence.repair_photos || []).length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div>维修照片：</div>
+                        <Image.PreviewGroup>
+                          {(repairOrder.completion_evidence.repair_photos || []).map((url: string, i: number) => (
+                            <Image key={i} width={80} height={80} src={url} style={{ marginRight: 8, marginTop: 4 }} />
+                          ))}
+                        </Image.PreviewGroup>
+                      </div>
+                    )}
+                    {(repairOrder.completion_evidence.settlement_photos || []).length > 0 && (
+                      <div>
+                        <div>结算清单：</div>
+                        <Image.PreviewGroup>
+                          {(repairOrder.completion_evidence.settlement_photos || []).map((url: string, i: number) => (
+                            <Image key={i} width={80} height={80} src={url} style={{ marginRight: 8, marginTop: 4 }} />
+                          ))}
+                        </Image.PreviewGroup>
+                      </div>
+                    )}
+                  </div>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="维修进度" span={2}>
                 <Timeline>
                   {(repairOrder.progress?.steps || []).map((step: any, index: number) => (
@@ -461,7 +493,7 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
           <Table
             columns={refundColumns}
             dataSource={refunds || []}
-            rowKey="_id"
+            rowKey={(r) => r._id || r.transaction_id || String(Math.random())}
             pagination={false}
             size="small"
           />
@@ -477,23 +509,28 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
             pagination={false}
             size="small"
           />
-          {(!complaints || complaints.length === 0) && <div style={{ textAlign: 'center', padding: 20 }}>暂无投诉记录</div>}
+          {(!complaints || complaints.length === 0) && <div style={{ textAlign: 'center', padding: 20 }}>暂无投诉记录（投诉功能待接入）</div>}
         </TabPane>
 
         {/* 评价信息 */}
         <TabPane tab="评价信息" key="review">
-          {review ? (
-            <Descriptions column={2} bordered>
-              <Descriptions.Item label="评分">
-                {review.rating || '-'} 星
-              </Descriptions.Item>
-              <Descriptions.Item label="评价时间">
-                {dayjs(review.createTime).format('YYYY-MM-DD HH:mm:ss')}
-              </Descriptions.Item>
-              <Descriptions.Item label="评价内容" span={2}>
-                {review.content || '-'}
-              </Descriptions.Item>
-            </Descriptions>
+          {(reviewList && reviewList.length > 0) ? (
+            <div>
+              {reviewList.map((r: any, idx: number) => (
+                <Descriptions key={r.review_id || idx} column={2} bordered style={{ marginBottom: idx < reviewList.length - 1 ? 16 : 0 }}>
+                  <Descriptions.Item label="类型">
+                    {r.type === 1 ? '主评价' : r.type === 2 ? '追评' : r.review_stage ? { main: '主评价', '1m': '1个月追评', '3m': '3个月追评' }[r.review_stage] || '追评' : '评价'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="评分">{r.rating != null ? `${r.rating} 星` : '-'}</Descriptions.Item>
+                  <Descriptions.Item label="评价时间">
+                    {dayjs(r.createTime || r.created_at).format('YYYY-MM-DD HH:mm:ss')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="评价内容" span={2}>
+                    {r.content || '-'}
+                  </Descriptions.Item>
+                </Descriptions>
+              ))}
+            </div>
           ) : (
             <div style={{ textAlign: 'center', padding: 20 }}>暂无评价</div>
           )}

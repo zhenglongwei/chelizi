@@ -69,7 +69,7 @@
       </view>
 
       <view class="section-head" wx:if="{{planItems.length}}">
-        <view class="section-title fs-body fw-medium">维修方案</view>
+        <view class="section-title fs-body fw-medium">维修方案{{order.repair_plan_status === 1 ? '（原方案）' : ''}}</view>
       </view>
       <view class="repair-items" wx:if="{{planItems.length}}">
         <view class="repair-item" wx:for="{{planItems}}" wx:key="index">
@@ -79,7 +79,7 @@
       </view>
 
       <view class="section-head" wx:if="{{planValueAdded.length}}">
-        <view class="section-title fs-body fw-medium">增值服务</view>
+        <view class="section-title fs-body fw-medium">增值服务{{order.repair_plan_status === 1 ? '（原方案）' : ''}}</view>
       </view>
       <view class="value-added-list" wx:if="{{planValueAdded.length}}">
         <view class="value-added-item fs-body" wx:for="{{planValueAdded}}" wx:key="index">{{item.name || item}}</view>
@@ -92,10 +92,32 @@
       <view class="shop-address text-muted fs-cap" wx:if="{{order.address}}">{{order.address}}</view>
     </view>
 
-    <!-- 维修方案待确认 -->
+    <!-- 维修方案待确认：下方展示新方案（含维修项+增值服务及变更标注） -->
     <view class="order-repair-plan-pending card" wx:if="{{order.repair_plan_status === 1}}">
       <view class="repair-plan-pending-title fs-body fw-bold">维修方案已更新，请确认</view>
-      <view class="repair-plan-pending-items" wx:if="{{planItems.length}}">
+      <view class="repair-plan-new-wrap" wx:if="{{planDiff}}">
+        <text class="repair-plan-new-label fs-cap text-muted">新方案（待确认）</text>
+        <view class="repair-plan-new-items">
+          <view class="repair-plan-compare-item" wx:for="{{planDiff.newPlanItems}}" wx:key="index">
+            <text class="fs-body">{{item.text}}</text>
+            <text class="repair-plan-diff-tag added" wx:if="{{item.change === 'added'}}">新增</text>
+            <text class="repair-plan-diff-tag modified" wx:elif="{{item.change === 'modified'}}">修改</text>
+          </view>
+        </view>
+        <view class="repair-plan-new-value-added" wx:if="{{(planDiff.newValueAddedItems && planDiff.newValueAddedItems.length) || (planDiff.oldValueAddedItems && planDiff.oldValueAddedItems.length)}}">
+          <text class="repair-plan-value-added-label fs-cap text-muted">增值服务</text>
+          <view class="repair-plan-compare-item" wx:for="{{planDiff.newValueAddedItems}}" wx:key="index">
+            <text class="fs-body">{{item.text}}</text>
+            <text class="repair-plan-diff-tag added" wx:if="{{item.change === 'added'}}">新增</text>
+          </view>
+          <view class="repair-plan-compare-item" wx:for="{{planDiff.oldValueAddedItems}}" wx:key="index" wx:if="{{item.change === 'removed'}}">
+            <text class="fs-body text-muted">{{item.text}}</text>
+            <text class="repair-plan-diff-tag removed">已移除</text>
+          </view>
+        </view>
+        <view class="repair-plan-compare-meta text-muted fs-cap" wx:if="{{planDiff.newAmount != null || planDiff.newDuration != null || planDiff.newWarranty != null}}">金额 ¥{{planDiff.newAmount || '-'}} · 工期{{planDiff.newDuration || '-'}}天 · 质保{{planDiff.newWarranty || '-'}}月</view>
+      </view>
+      <view class="repair-plan-pending-items" wx:elif="{{planItems.length}}">
         <view class="repair-plan-item" wx:for="{{planItems}}" wx:key="index">
           <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
           <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}</text>
@@ -104,6 +126,39 @@
       <view class="repair-plan-pending-actions">
         <button class="btn-primary" disabled="{{approving}}" bindtap="onApprovePlan" data-approve="{{true}}">{{approving ? '处理中...' : '同意'}}</button>
         <button class="btn-secondary" disabled="{{approving}}" bindtap="onApprovePlan" data-approve="{{false}}">不同意</button>
+      </view>
+    </view>
+
+    <!-- 待确认时展示服务商上传的维修凭证照片（供车主查看确认） -->
+    <view class="detail-section card completion-evidence" wx:if="{{order && order.status === 2 && (completionEvidence.repair_photos.length || completionEvidence.settlement_photos.length || completionEvidence.material_photos.length)}}">
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">维修完成凭证</view>
+      </view>
+      <view class="evidence-view">
+        <view class="evidence-item" wx:if="{{completionEvidence.repair_photos.length}}">
+          <text class="evidence-label fs-body">修复后照片</text>
+          <view class="evidence-grid">
+            <view class="evidence-thumb" wx:for="{{completionEvidence.repair_photos}}" wx:key="index" bindtap="onPreviewEvidence" data-urls="{{completionEvidence.repair_photos}}" data-current="{{item}}">
+              <image src="{{item}}" mode="aspectFill"/>
+            </view>
+          </view>
+        </view>
+        <view class="evidence-item" wx:if="{{completionEvidence.settlement_photos.length}}">
+          <text class="evidence-label fs-body">定损单/结算单</text>
+          <view class="evidence-grid">
+            <view class="evidence-thumb" wx:for="{{completionEvidence.settlement_photos}}" wx:key="index" bindtap="onPreviewEvidence" data-urls="{{completionEvidence.settlement_photos}}" data-current="{{item}}">
+              <image src="{{item}}" mode="aspectFill"/>
+            </view>
+          </view>
+        </view>
+        <view class="evidence-item" wx:if="{{completionEvidence.material_photos.length}}">
+          <text class="evidence-label fs-body">物料照片</text>
+          <view class="evidence-grid">
+            <view class="evidence-thumb" wx:for="{{completionEvidence.material_photos}}" wx:key="index" bindtap="onPreviewEvidence" data-urls="{{completionEvidence.material_photos}}" data-current="{{item}}">
+              <image src="{{item}}" mode="aspectFill"/>
+            </view>
+          </view>
+        </view>
       </view>
     </view>
 

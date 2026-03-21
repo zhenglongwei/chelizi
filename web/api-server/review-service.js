@@ -257,10 +257,10 @@ async function submitReview(pool, req, opts = {}) {
   }
 
   // 优质浮动奖励：先不叠加，等 AI 审核后由 AI contentQuality 或规则 premium 决定
-  // 用户等级体系 6.3：2级80% 3级90% 4级100% 封顶；1级及以下沿用50%/70%
+  // 评价奖励金取消用户等级系数：满足领取条件即全额，佣金封顶按 70% 红线（reward-calculator 已算）
   const eligibility = await antifraud.getRewardEligibility(pool, userId);
   const level = eligibility.level;
-  const commissionCapRatio = level >= 4 ? 1.0 : level >= 3 ? 0.9 : level >= 2 ? 0.8 : 0.7;
+  const commissionCapRatio = 1.0;
   const maxByCommission = (rewardResult.commission_amount || 0) * commissionCapRatio;
   if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
 
@@ -374,10 +374,13 @@ async function submitReview(pool, req, opts = {}) {
   totalReward += premiumFloat;
   if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
 
-  const immediatePercent = orderTier <= 2 ? 1 : 0.5;
+  const immediatePercent = 1;
   let rewardAmount = totalReward * immediatePercent;
 
-  // 用户等级：0级不发、1级50%、2级及以上全额（eligibility 已在上方获取）
+  // L1 订单不发现金奖励（评价为核心定位优化：仅保留评价入库、权重计算）
+  if (complexityLevel === 'L1') rewardAmount = 0;
+
+  // 用户等级：0级不发；1级及以上满足条件即全额（取消用户等级系数）
   const [userRow] = await pool.execute(
     'SELECT level_demoted_by_violation FROM users WHERE user_id = ?',
     [userId]
@@ -386,8 +389,6 @@ async function submitReview(pool, req, opts = {}) {
 
   if (!eligibility.canReceive) {
     rewardAmount = 0;
-  } else if (eligibility.multiplier < 1) {
-    rewardAmount = Math.round(rewardAmount * eligibility.multiplier * 100) / 100;
   }
 
   // L1 每月奖励金封顶
@@ -417,9 +418,9 @@ async function submitReview(pool, req, opts = {}) {
 
   const reviewId = 'REV' + Date.now();
 
-  // 0级因未实名/车辆暂扣：记录待回溯奖励，完成认证后可补发（违规降级的不补发）
+  // 0级因未实名/车辆暂扣：记录待回溯奖励，完成认证后可补发（违规降级的不补发）。L1 订单不发奖励，不参与暂扣。
   let shouldWithhold = false;
-  if (eligibility.level === 0 && rewardAmount === 0 && !demotedByViolation) {
+  if (eligibility.level === 0 && rewardAmount === 0 && !demotedByViolation && complexityLevel !== 'L1') {
     const trust = await antifraud.getUserTrustLevel(pool, userId);
     shouldWithhold = trust.needsVerification === true;
   }
@@ -441,7 +442,7 @@ async function submitReview(pool, req, opts = {}) {
       const cap = afConfig.l1MonthlyCap;
       withholdAmount = currentMonthL1 >= cap ? 0 : Math.min(withholdAmount, cap - currentMonthL1);
     }
-    withholdAmount = Math.round(withholdAmount * 0.5 * 100) / 100; // 1级50%
+    withholdAmount = Math.round(withholdAmount * 100) / 100; // 满足条件即全额
     const withholdTax = withholdAmount > 800 ? Math.round((withholdAmount - 800) * 0.2 * 100) / 100 : 0;
     const withholdReceives = Math.round((withholdAmount - withholdTax) * 100) / 100;
     if (withholdReceives > 0) {
@@ -482,46 +483,47 @@ async function submitReview(pool, req, opts = {}) {
   const contentVal = m3.content || content || '';
 
   if (!order.complexity_level) {
-    await pool.execute('UPDATE orders SET complexity_level = ?, order_tier = ? WHERE order_id = ?', [complexityLevel, orderTier, order_id]);
+    await pool.execute('UPDATE orders SET complexity_level = ?, order_tier = ? WHERE order_id = ?', [complexityLevel ?? null, orderTier ?? null, order_id]);
   }
   const aiAnalysisJson = usedAiAudit && aiResult?.details ? JSON.stringify(aiResult.details) : null;
   const faultEvidenceJson = JSON.stringify(faultEvidenceImages);
-  const insertParams = [
-    reviewId, order_id, order.shop_id, userId, ratingVal,
-    ratingsObj?.quality, ratingsObj?.price, ratingsObj?.service, ratingsObj?.speed, ratingsObj?.parts,
-    settlementImage,
+  const toNull = (v) => (v === undefined ? null : v);
+  const hasFaultCol = await hasColumn(pool, 'reviews', 'fault_evidence_images');
+  const hasWeightCol = await hasColumn(pool, 'reviews', 'weight');
+  const hasContentQualityCol = await hasColumn(pool, 'reviews', 'content_quality');
+  let cols = `review_id, order_id, shop_id, user_id, type, review_stage, rating,
+       ratings_quality, ratings_price, ratings_service, ratings_speed, ratings_parts,
+       settlement_list_image, completion_images`;
+  if (hasFaultCol) cols += `, fault_evidence_images`;
+  cols += `, objective_answers, content, before_images, after_images, is_anonymous, rebate_amount, reward_amount, tax_deducted, rebate_rate, status`;
+  if (hasWeightCol) cols += `, weight`;
+  if (hasContentQualityCol) cols += `, content_quality`;
+  cols += `, content_quality_level, vehicle_model_key, repair_project_key, ai_analysis, created_at`;
+  let vals = `?, ?, ?, ?, 1, 'main', ?, ?, ?, ?, ?, ?, ?, ?`;
+  if (hasFaultCol) vals += `, ?`;
+  vals += `, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1`;
+  if (hasWeightCol) vals += `, NULL`;
+  if (hasContentQualityCol) vals += `, NULL`;
+  vals += `, ?, ?, ?, ?, NOW()`;
+  let params = [
+    reviewId, order_id, order.shop_id, userId, toNull(ratingVal),
+    toNull(ratingsObj?.quality), toNull(ratingsObj?.price), toNull(ratingsObj?.service), toNull(ratingsObj?.speed), toNull(ratingsObj?.parts),
+    toNull(settlementImage),
     JSON.stringify(Array.isArray(completionImages) ? completionImages : []),
-    faultEvidenceJson,
+  ];
+  if (hasFaultCol) params.push(faultEvidenceJson);
+  params = params.concat([
     JSON.stringify(objectiveAnswers || {}),
     contentVal,
     JSON.stringify(beforeImages),
     JSON.stringify(Array.isArray(completionImages) ? completionImages : after_images || []),
     is_anonymous || false, userReceives, rewardAmount, taxDeducted,
-    contentQuality, contentQualityLevel, vehicleModelKey, repairProjectKey, aiAnalysisJson,
-  ];
+    toNull(contentQualityLevel), toNull(vehicleModelKey), toNull(repairProjectKey), toNull(aiAnalysisJson),
+  ]);
   try {
-    await pool.execute(
-      `INSERT INTO reviews (review_id, order_id, shop_id, user_id, type, review_stage, rating,
-       ratings_quality, ratings_price, ratings_service, ratings_speed, ratings_parts,
-       settlement_list_image, completion_images, fault_evidence_images, objective_answers,
-       content, before_images, after_images, is_anonymous, rebate_amount, reward_amount, tax_deducted, rebate_rate, status, weight, content_quality, content_quality_level, vehicle_model_key, repair_project_key, ai_analysis, created_at)
-       VALUES (?, ?, ?, ?, 1, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, ?, ?, ?, ?, ?, NOW())`,
-      insertParams
-    );
+    await pool.execute(`INSERT INTO reviews (${cols}) VALUES (${vals})`, params);
   } catch (insertErr) {
-    if (String(insertErr.message || '').includes('fault_evidence_images')) {
-      insertParams.splice(11, 1);
-      await pool.execute(
-        `INSERT INTO reviews (review_id, order_id, shop_id, user_id, type, review_stage, rating,
-         ratings_quality, ratings_price, ratings_service, ratings_speed, ratings_parts,
-         settlement_list_image, completion_images, objective_answers,
-         content, before_images, after_images, is_anonymous, rebate_amount, reward_amount, tax_deducted, rebate_rate, status, weight, content_quality, content_quality_level, vehicle_model_key, repair_project_key, ai_analysis, created_at)
-         VALUES (?, ?, ?, ?, 1, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, ?, ?, ?, ?, ?, NOW())`,
-        insertParams
-      );
-    } else {
-      throw insertErr;
-    }
+    throw insertErr;
   }
 
   try {
@@ -563,9 +565,10 @@ async function submitReview(pool, req, opts = {}) {
             : `车主在评价中选择了「否」：${item.label}。请在 48 小时内提交申诉材料（如竣工检验、检测报告等）。`;
           await materialAudit.sendMerchantMessage(
             pool, order.shop_id, 'evidence_request',
-            '需对评价中的项目申诉',
+            '评价待申诉',
             msg,
-            order_id
+            order_id,
+            '48小时内提交申诉'
           );
         }
       }
@@ -582,7 +585,7 @@ async function submitReview(pool, req, opts = {}) {
     await pool.execute(
       `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
        VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
-      ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier, taxDeducted]
+      ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
     );
   }
 

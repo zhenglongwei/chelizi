@@ -155,8 +155,8 @@ async function getUserTrustLevel(pool, userId) {
 
     let level = 1;
 
-    // 2 级：注册≥7天、≥2笔交易、≥2条有效评价、合规、违规上限
-    if (createdAt <= sevenDaysAgo && validOrders >= 2 && validReviews >= 2) {
+    // 2 级：注册≥7天、≥1笔交易、≥1条有效评价、合规、违规上限
+    if (createdAt <= sevenDaysAgo && validOrders >= 1 && validReviews >= 1) {
       level = 2;
     }
 
@@ -259,10 +259,10 @@ async function getUserLevelDetail(pool, userId) {
   };
   const RETENTION = {
     0: '完成实名+车辆绑定可升至 1 级',
-    1: '实名+车辆有效，无重度及以上违规',
-    2: '近 3 月≥1 笔有效交易，月度合规率≥80%',
-    3: '近 3 月≥2 笔有效交易，月度合规率≥90%',
-    4: '近 3 月≥3 笔有效交易，月度合规率 100%',
+    1: '无保级任务，仅违规降级',
+    2: '无保级任务，仅违规降级',
+    3: '无保级任务，仅违规降级',
+    4: '无保级任务，仅违规降级',
   };
 
   const [userRows] = await pool.execute('SELECT created_at FROM users WHERE user_id = ?', [userId]);
@@ -302,8 +302,8 @@ async function getUserLevelDetail(pool, userId) {
     } else if (next_level === 2) {
       requirements = [
         { key: '注册天数', met: daysRegistered >= 7, current: daysRegistered, required: 7 },
-        { key: '有效交易', met: validOrders >= 2, current: validOrders, required: 2 },
-        { key: '有效评价', met: validReviews >= 2, current: validReviews, required: 2 },
+        { key: '有效交易', met: validOrders >= 1, current: validOrders, required: 1 },
+        { key: '有效评价', met: validReviews >= 1, current: validReviews, required: 1 },
       ];
     } else if (next_level === 3) {
       requirements = [

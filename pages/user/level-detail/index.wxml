@@ -19,7 +19,7 @@
     </view>
 
     <view class="level-section card" wx:if="{{detail.retention}}">
-      <view class="level-section-title fs-body fw-bold">保级条件</view>
+      <view class="level-section-title fs-body fw-bold">等级维持</view>
       <text class="level-retention fs-sm text-muted">{{detail.retention}}</text>
     </view>
 

@@ -99,6 +99,8 @@
 /* 维修资质证明预览 */
 .qualification-cert-preview {
   margin-bottom: var(--space-sm);
+  position: relative;
+  display: inline-block;
 }
 
 .qualification-cert-preview image {
@@ -107,6 +109,38 @@
   height: 140rpx;
   border-radius: var(--radius-md);
   object-fit: cover;
+}
+
+.qualification-cert-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: var(--fs-h2);
+  border-radius: 0 var(--radius-md) 0 0;
+}
+
+.qualification-cert-del.disabled {
+  pointer-events: none;
+}
+
+/* 品牌授权 */
+.brand-cert-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xl);
+  margin-top: var(--space-sm);
+}
+
+.brand-cert-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
 }
 
 .qualification-cert-preview text {

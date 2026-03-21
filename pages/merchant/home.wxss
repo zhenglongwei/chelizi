@@ -164,6 +164,27 @@
   height: 48rpx;
 }
 
+.merchant-action-icon-wrap {
+  position: relative;
+}
+
+.merchant-action-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .merchant-action-text {
   flex: 1;
   display: flex;

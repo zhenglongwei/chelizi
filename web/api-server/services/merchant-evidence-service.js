@@ -472,5 +472,6 @@ module.exports = {
   submitAppealRequest,
   runAppealReviewAsync,
   listAppealReviewsForAdmin,
-  resolveAppealReview
+  resolveAppealReview,
+  computeShopComplianceRate
 };

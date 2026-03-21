@@ -1,6 +1,7 @@
 // pages/user/index/index.js
 const ui = require('../../../utils/ui');
 const { getToken, getMerchantToken, getUserProfile, updateUserProfile, uploadImage } = require('../../../utils/api');
+const { fetchAndApplyUnreadBadge, applyUnreadToTabBar } = require('../../../utils/message-badge');
 const { getNavBarHeight } = require('../../../utils/util');
 
 function formatMoney(v) {
@@ -29,16 +30,31 @@ Page({
     this.checkToken();
     if (this.data.hasToken) {
       this.loadProfile();
+      this.updateMessageBadge();
     }
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 4 });
     }
   },
 
+  async updateMessageBadge() {
+    if (!getToken()) {
+      this.setData({ messageUnreadCount: 0 });
+      applyUnreadToTabBar(0);
+      return;
+    }
+    const n = await fetchAndApplyUnreadBadge();
+    this.setData({ messageUnreadCount: n });
+  },
+
   checkToken() {
     const hasToken = !!getToken();
     const hasMerchantToken = !!getMerchantToken();
     this.setData({ hasToken, hasMerchantToken });
+    if (!hasToken) {
+      this.setData({ messageUnreadCount: 0 });
+      applyUnreadToTabBar(0);
+    }
   },
 
   async loadProfile() {

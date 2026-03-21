@@ -8,10 +8,14 @@
     </view>
     <view class="withdraw-input-wrap">
       <text class="text-muted fs-body">提现金额</text>
-      <input class="withdraw-input" type="digit" placeholder="最低10元" value="{{amount}}" bindinput="onAmountInput"/>
+      <input class="withdraw-input" type="digit" placeholder="输入金额" value="{{amount}}" bindinput="onAmountInput"/>
       <view class="withdraw-all" bindtap="onWithdrawAll">全部提现</view>
     </view>
-    <view class="withdraw-tip text-muted fs-sm">1-3个工作日到账至微信零钱</view>
-    <button class="btn-primary withdraw-submit" disabled="{{loading}}" bindtap="onSubmit">确认提现</button>
+    <view class="withdraw-input-wrap" wx:if="{{showRealName}}">
+      <text class="text-muted fs-body">真实姓名（单笔≥¥2000 必填）</text>
+      <input class="withdraw-input" value="{{realName}}" placeholder="须与微信钱包实名一致" bindinput="onRealNameInput"/>
+    </view>
+    <view class="withdraw-tip text-muted fs-sm">微信提现将跳转官方确认页；若有未完成的上一笔，会先让你继续确认，不会重复扣款。未满¥2000一般无需填姓名；≥¥2000 需填与微信实名一致的姓名。已填过的姓名会自动带出。</view>
+    <button class="btn-primary withdraw-submit" hover-class="none" disabled="{{loading}}" bindtap="onSubmit">确认提现</button>
   </view>
 </view>

@@ -2,8 +2,8 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getShopDetail, getShopReviews, reportReviewReading, likeReview } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getShopDetail, getShopReviews, reportReviewReading, likeReview, dislikeReview } = require('../../../utils/api');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const logger = getLogger('ShopDetail');
 
@@ -30,6 +30,8 @@ Page({
     hasMoreReviews: true,
     loading: true,
     loadingReviews: false,
+    repairProjectKeys: [],
+    repairProjectKey: '',
     favored: false,
     pageRootStyle: 'padding-top: 88px',
     _readingTimers: {}, // reviewId -> { intervalId, sawAt, sessionSec, totalReported }
@@ -51,7 +53,7 @@ Page({
 
   initScrollHeight(navBarHeight) {
     try {
-      const sys = wx.getSystemInfoSync();
+      const sys = getSystemInfo();
       const h = sys.windowHeight - (navBarHeight || getNavBarHeight());
       this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
     } catch (e) {
@@ -66,8 +68,8 @@ Page({
       const stats = shop.review_stats || {};
       const deviationRate = parseFloat(shop.deviation_rate) || 0;
       const deviationClass = getDeviationClass(deviationRate);
-      const avgRating = parseFloat(stats.avg_rating) || parseFloat(shop.rating) || 5;
-      const starFull = Math.floor(avgRating);
+      const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
+      const starDisplay = scoreToStarDisplay(shop.shop_score, shop.rating);
 
       this.setData({
         shop: {
@@ -78,9 +80,8 @@ Page({
           services: shop.services || [],
           deviationRate: deviationRate.toFixed(1),
           deviationClass,
-          avgRating: avgRating.toFixed(1),
-          starsFull: '★'.repeat(starFull),
-          starsEmpty: '☆'.repeat(5 - starFull),
+          avgRating: starDisplay.scoreText,
+          starsDisplay: starDisplay.stars,
           totalReviews: stats.total_reviews || 0
         },
         loading: false
@@ -97,40 +98,64 @@ Page({
   },
 
   async loadReviews() {
-    const { shopId, reviews, reviewPage, hasMoreReviews, loadingReviews } = this.data;
+    const { shopId, reviews, reviewPage, hasMoreReviews, loadingReviews, repairProjectKey } = this.data;
     if (!hasMoreReviews || loadingReviews) return;
 
     this.setData({ loadingReviews: true });
     try {
-      const res = await getShopReviews(shopId, { page: reviewPage, limit: 10, sort: 'completeness' });
+      const params = { page: reviewPage, limit: 10, sort: 'completeness' };
+      if (repairProjectKey) params.repair_project_item = repairProjectKey;
+      const res = await getShopReviews(shopId, params);
       const list = res?.list || [];
       const total = res?.total || 0;
+      const keys = res?.repair_project_keys || [];
 
       const mapped = list.map((r) => {
         const rating = parseFloat(r.rating) || 0;
         const content = r.content || '';
+        const amt = r.amount;
+        const amountText = amt != null ? (Number.isInteger(amt) ? String(amt) : amt.toFixed(2)) : '';
         return {
           ...r,
           contentPreview: content.length > 60 ? content.slice(0, 60) + '...' : content,
           expanded: false,
-          liked: false,
+          liked: !!r.is_liked,
+          disliked: !!r.is_disliked,
+          dislike_count: r.dislike_count ?? 0,
+          order_id: r.order_id,
+          is_my_review: !!r.is_my_review,
           ratingText: '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating)),
           dateText: formatDate(r.created_at),
-          isLowRating: rating > 0 && rating < 4
+          isLowRating: rating > 0 && rating < 4,
+          amountText
         };
       });
 
-      this.setData({
+      const updates = {
         reviews: [...reviews, ...mapped],
         reviewPage: reviewPage + 1,
         reviewTotal: total,
         hasMoreReviews: reviews.length + list.length < total,
         loadingReviews: false
-      });
+      };
+      if (reviewPage === 1 && keys.length > 0) updates.repairProjectKeys = keys;
+      this.setData(updates);
     } catch (err) {
       logger.error('加载评价失败', err);
       this.setData({ loadingReviews: false });
     }
+  },
+
+  onRepairProjectFilter(e) {
+    const key = e.currentTarget.dataset.key || '';
+    const cur = this.data.repairProjectKey;
+    if (key === cur) return;
+    this.setData({
+      repairProjectKey: key,
+      reviews: [],
+      reviewPage: 1,
+      hasMoreReviews: true
+    }, () => this.loadReviews());
   },
 
   onCall() {
@@ -223,6 +248,27 @@ Page({
     } catch (err) {
       logger.warn('上报阅读失败', { reviewId, err: err.message });
     }
+  },
+
+  async onDislikeReview(e) {
+    const idx = e.currentTarget.dataset.index;
+    const reviewId = e.currentTarget.dataset.reviewId;
+    const reviews = [...this.data.reviews];
+    if (!reviews[idx] || reviews[idx].disliked || reviews[idx].liked) return;
+    try {
+      await dislikeReview(reviewId);
+      reviews[idx].disliked = true;
+      reviews[idx].dislike_count = (reviews[idx].dislike_count || 0) + 1;
+      this.setData({ reviews });
+      ui.showSuccess('已踩');
+    } catch (err) {
+      ui.showError(err.message || '操作失败');
+    }
+  },
+
+  onAppealTap(e) {
+    const orderId = e.currentTarget.dataset.orderId;
+    if (orderId) navigation.navigateTo('/pages/order/detail/index', { id: orderId });
   },
 
   onLikeReview(e) {

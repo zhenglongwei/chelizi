@@ -9,17 +9,23 @@ const crypto = require('crypto');
 const antifraud = require('../antifraud');
 const rewardCalculator = require('../reward-calculator');
 const biddingDistribution = require('./bidding-distribution');
+const shopSortService = require('../shop-sort-service');
 const LOG_PREFIX = '[BiddingService]';
 
-function merchantVisibleWhereFragment(tablePrefix = 'b') {
+function merchantVisibleWhereFragment(tablePrefix = 'b', shopIdParam = null) {
   const b = tablePrefix;
   const u = 'u';
   const s = 's';
   const acosArg = `cos(radians(${u}.latitude)) * cos(radians(${s}.latitude)) * cos(radians(${s}.longitude) - radians(${u}.longitude)) + sin(radians(${u}.latitude)) * sin(radians(${s}.latitude))`;
+  const distanceCond = `(6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) <= ${b}.range_km`;
+  // 若店铺已被邀请（在 bidding_distribution 中），则不再用 range_km 过滤，确保被邀请的店铺能在商户端看到
+  const distanceFilter = shopIdParam
+    ? `(${distanceCond} OR EXISTS (SELECT 1 FROM bidding_distribution bd_inv WHERE bd_inv.bidding_id = ${b}.bidding_id AND bd_inv.shop_id = ?))`
+    : distanceCond;
   return `${b}.status = 0 AND ${b}.expire_at > NOW()
     AND ${u}.latitude IS NOT NULL AND ${u}.longitude IS NOT NULL
     AND ${s}.latitude IS NOT NULL AND ${s}.longitude IS NOT NULL
-    AND (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) <= ${b}.range_km`;
+    AND ${distanceFilter}`;
 }
 
 async function countPendingBiddingsForShop(pool, shopId, log = {}) {
@@ -32,8 +38,8 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
   const offsetNum = Math.max(0, ((parseInt(page, 10) || 1) - 1) * limitNum);
 
-  let list = [];
-  let total = 0;
+  let list;
+  let total;
 
   if (status === 'ended') {
     const [listRows] = await pool.execute(
@@ -59,7 +65,7 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
     list = listRows || [];
     total = countRows[0]?.total || 0;
   } else {
-    const baseWhere = merchantVisibleWhereFragment('b');
+    const baseWhere = merchantVisibleWhereFragment('b', shopId);
     const quoteCondition = status === 'quoted' ? '> 0' : '= 0';
     const visibilityFragment = `AND (
       NOT EXISTS (SELECT 1 FROM bidding_distribution bd2 WHERE bd2.bidding_id = b.bidding_id)
@@ -82,7 +88,7 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
       WHERE ${baseWhere}
         ${visibilityFragment}
         AND (SELECT COUNT(*) FROM quotes q WHERE q.bidding_id = b.bidding_id AND q.shop_id = ?) ${quoteCondition}`;
-    const [countRows] = await pool.execute(countSql, [shopId, shopId, shopId]);
+    const [countRows] = await pool.execute(countSql, [shopId, shopId, shopId, shopId]);
     total = countRows[0]?.total ?? 0;
 
     const listSql = `SELECT * FROM (
@@ -100,7 +106,7 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
          ${visibilityFragment}
          AND (SELECT COUNT(*) FROM quotes q WHERE q.bidding_id = b.bidding_id AND q.shop_id = ?) ${quoteCondition}
     ) t ORDER BY created_at DESC LIMIT ${limitNum} OFFSET ${offsetNum}`;
-    const listParams = [shopId, shopId, shopId, shopId, shopId];
+    const listParams = [shopId, shopId, shopId, shopId, shopId, shopId];
     const [listRows] = await pool.execute(listSql, listParams);
     list = listRows || [];
 
@@ -127,7 +133,7 @@ function mapBiddingRowToItem(row) {
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(row.user_lat * Math.PI / 180) * Math.cos(row.shop_lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
     distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
   }
-  // 列表展示用默认 L2，具体复杂度在选厂下单时由 reward-calculator 从 repair_complexity_levels 匹配
+  // 列表展示用默认 L2，具体复杂度在选厂下单时由 reward-calculator 从 reward_rules.complexityLevels 匹配
   const complexityLevel = 'L2';
   return {
     bidding_id: row.bidding_id,
@@ -161,9 +167,8 @@ function calcQuoteReasonablenessScore(quoteAmount, benchmarkAmount) {
 }
 
 /**
- * 综合匹配分（0-100）
- * 全指标 6.2：店铺综合得分 × 场景权重 + 同项目完单量分 + 报价历史准确度分 + 时效履约率分
- * 简化：shop_score + deviation_rate 扣分 + total_orders 加分
+ * 综合匹配分（0-100）- 同步简化版，用于无 bidding 上下文时的回退
+ * @deprecated 报价排序应使用 sortQuotesByScoreAsync 以与梯队划分一致
  */
 function calcMatchScore(shop) {
   const score = shop.shop_score != null ? parseFloat(shop.shop_score) : (shop.rating != null ? parseFloat(shop.rating) * 20 : 50);
@@ -177,26 +182,65 @@ function calcMatchScore(shop) {
 }
 
 /**
- * 按全指标 6.4 对报价列表排序
+ * 按 07 文档对报价列表排序（与梯队划分一致的综合匹配分）
  * 报价排序分 = 服务商综合匹配分 × 70% + 报价合理性分 × 30%
- * @param {Array} quotes - 报价列表（含 shop 字段：shop_score, rating, deviation_rate, total_orders）
+ * @param {object} pool - 数据库连接池
+ * @param {string} biddingId - 竞价ID
+ * @param {Array} quotes - 报价列表（含 shop 字段：shop_id, shop_score, rating, deviation_rate, created_at/shop_created_at）
  * @param {number} benchmarkAmount - 公允价/定损预估中值（元）
  */
-function sortQuotesByScore(quotes, benchmarkAmount) {
+async function sortQuotesByScoreAsync(pool, biddingId, quotes, benchmarkAmount) {
   if (!quotes || quotes.length === 0) return quotes;
   const bench = parseFloat(benchmarkAmount) || 0;
-  const scored = quotes.map((q) => {
-    const matchScore = calcMatchScore(q);
+
+  const [biddingRows] = await pool.execute(
+    'SELECT dr.analysis_result FROM biddings b INNER JOIN damage_reports dr ON b.report_id = dr.report_id WHERE b.bidding_id = ?',
+    [biddingId]
+  );
+  let analysisResult = {};
+  if (biddingRows.length > 0 && biddingRows[0].analysis_result) {
+    try {
+      analysisResult = typeof biddingRows[0].analysis_result === 'string'
+        ? JSON.parse(biddingRows[0].analysis_result || '{}')
+        : (biddingRows[0].analysis_result || {});
+    } catch (_) {}
+  }
+  const biddingItems = await biddingDistribution.parseBiddingItemsWithComplexity(pool, analysisResult);
+  const config = await biddingDistribution.getBiddingDistributionConfig(pool);
+  const newShopDays = config.newShopDays || 90;
+
+  const shopIds = quotes.map((q) => q.shop_id).filter(Boolean);
+  const responseMap = await shopSortService.getAvgResponseMinutesByShopIds(pool, shopIds);
+
+  const scored = [];
+  for (const q of quotes) {
+    const shop = {
+      shop_id: q.shop_id,
+      shop_score: q.shop_score,
+      rating: q.rating,
+      deviation_rate: q.deviation_rate,
+      created_at: q.shop_created_at || q.created_at,
+    };
+    const created = shop.created_at ? new Date(shop.created_at) : null;
+    const isNewShop = created && (Date.now() - created) / (24 * 60 * 60 * 1000) <= newShopDays;
+    const sameProjectResult = await biddingDistribution.hasSameProjectCompletion(pool, q.shop_id, biddingId, config, isNewShop);
+
+    const matchScore = await biddingDistribution.calcMerchantMatchScore(pool, shop, { bidding_id: biddingId }, {
+      config,
+      biddingItems,
+      sameProjectResult,
+      avgResponseMinutes: responseMap.get(q.shop_id),
+    });
     const reasonScore = calcQuoteReasonablenessScore(q.amount, bench);
     const sortScore = matchScore * 0.7 + reasonScore * 0.3;
-    return { ...q, _quote_sort_score: sortScore };
-  });
+    scored.push({ ...q, _quote_sort_score: sortScore });
+  }
   scored.sort((a, b) => (b._quote_sort_score || 0) - (a._quote_sort_score || 0));
   return scored;
 }
 
 function normalizePlate(s) {
-  return (String(s || '').replace(/[\s·\-]/g, '')).toUpperCase();
+  return (String(s || '').replace(/[\s·-]/g, '')).toUpperCase();
 }
 
 /**
@@ -259,9 +303,9 @@ async function createBidding(pool, userId, body) {
     );
   }
   const biddingId = 'BID' + Date.now();
-  const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const expireAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
   const config = await biddingDistribution.getBiddingDistributionConfig(pool);
-  const tier1Minutes = config.tier1ExclusiveMinutes || 15;
+  const tier1Minutes = config.tier1ExclusiveMinutes || 10;
   const tier1WindowEndsAt = new Date(Date.now() + tier1Minutes * 60 * 1000);
   await pool.execute(
     `INSERT INTO biddings (bidding_id, user_id, report_id, vehicle_info, 
@@ -313,6 +357,14 @@ async function selectQuote(pool, req) {
   }
   const quote = quotes[0];
 
+  // 报价有效期：quote_valid_until 到期后报价失效；NULL 视为有效（兼容旧数据）
+  if (quote.quote_valid_until) {
+    const validUntil = new Date(quote.quote_valid_until).getTime();
+    if (Date.now() > validUntil) {
+      return { success: false, error: '该报价已过期', statusCode: 400 };
+    }
+  }
+
   const [shopRows] = await pool.execute('SELECT qualification_status FROM shops WHERE shop_id = ?', [shop_id]);
   if (shopRows.length === 0 || (shopRows[0].qualification_status !== 1 && shopRows[0].qualification_status !== '1')) {
     return { success: false, error: '该维修厂暂未通过资质审核，无法选择', statusCode: 403 };
@@ -351,12 +403,40 @@ async function selectQuote(pool, req) {
     }
   }
 
+  // 竞价流程：用户确认报价后自动接单，订单直接 status=1，无需服务商手动接单
+  const items = typeof quote.items === 'string' ? JSON.parse(quote.items || '[]') : (quote.items || []);
+  const valueAdded = typeof quote.value_added_services === 'string' ? JSON.parse(quote.value_added_services || '[]') : (quote.value_added_services || []);
+  const repairPlanJson = JSON.stringify({
+    items,
+    value_added_services: valueAdded,
+    amount: parseFloat(quote.amount) || 0,
+    duration: parseInt(quote.duration, 10) || 3,
+    warranty: parseInt(quote.warranty, 10) || 12
+  });
+
   const orderId = 'ORD' + Date.now();
   await pool.execute(
-    `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, status, created_at) 
-     VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
-    [orderId, id, userId, shop_id, quote.quote_id, quote.amount]
+    `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, status, accepted_at, repair_plan, repair_plan_status, created_at) 
+     VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), ?, 0, NOW())`,
+    [orderId, id, userId, shop_id, quote.quote_id, quote.amount, repairPlanJson]
   );
+
+  let isInsuranceAccident = 0;
+  try {
+    const [bIns] = await pool.execute('SELECT insurance_info FROM biddings WHERE bidding_id = ?', [id]);
+    if (bIns.length && bIns[0].insurance_info) {
+      const ins =
+        typeof bIns[0].insurance_info === 'string'
+          ? JSON.parse(bIns[0].insurance_info || '{}')
+          : bIns[0].insurance_info || {};
+      if (ins && ins.is_insurance) isInsuranceAccident = 1;
+    }
+  } catch (_) {}
+  try {
+    await pool.execute('UPDATE orders SET is_insurance_accident = ? WHERE order_id = ?', [isInsuranceAccident, orderId]);
+  } catch (e) {
+    if (!String(e.message || '').includes('Unknown column')) throw e;
+  }
 
   try {
     const [biddings] = await pool.execute('SELECT vehicle_info FROM biddings WHERE bidding_id = ?', [id]);
@@ -405,11 +485,21 @@ async function selectQuote(pool, req) {
     );
     if (merchantRows.length > 0) {
       const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
+      const content = `您有一笔新订单已生成，报价金额 ¥${quote.amount}。请按方案进行维修。`;
       await pool.execute(
         `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
          VALUES (?, ?, 'order', ?, ?, ?, 0)`,
-        [msgId, merchantRows[0].merchant_id, '新订单待接单', `您有一笔新订单待接单，报价金额 ¥${quote.amount}。`, orderId]
+        [msgId, merchantRows[0].merchant_id, '新订单已生成', content, orderId]
       );
+      const subMsg = require('./subscribe-message-service');
+      subMsg.sendToMerchant(
+        pool,
+        merchantRows[0].merchant_id,
+        'merchant_order_new',
+        { title: '新订单已生成', content: '请按方案维修', relatedId: orderId },
+        process.env.WX_APPID,
+        process.env.WX_SECRET
+      ).catch(() => {});
     }
   } catch (msgErr) {
     if (!String((msgErr && msgErr.message) || '').includes('merchant_messages')) {
@@ -455,7 +545,7 @@ module.exports = {
   listBiddingsForShop,
   mapBiddingRowToItem,
   merchantVisibleWhereFragment,
-  sortQuotesByScore,
+  sortQuotesByScoreAsync,
   calcQuoteReasonablenessScore,
   calcMatchScore,
   createBidding,

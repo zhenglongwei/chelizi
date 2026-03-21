@@ -61,5 +61,62 @@
 .repair-plan-pending-actions { display: flex; gap: var(--space-md); }
 .repair-plan-pending-actions button { flex: 1; }
 
+/* 维修方案新方案展示（下方卡片） */
+.repair-plan-new-wrap {
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-md);
+  border-left: 4rpx solid var(--warning);
+}
+.repair-plan-new-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+.repair-plan-new-items,
+.repair-plan-new-value-added {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.repair-plan-new-value-added {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+.repair-plan-value-added-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+.repair-plan-compare-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 0;
+}
+.repair-plan-compare-meta {
+  margin-top: var(--space-md);
+}
+.repair-plan-diff-tag {
+  font-size: var(--fs-cap);
+  padding: 2rpx 8rpx;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.repair-plan-diff-tag.added { color: var(--success); background: rgba(34, 197, 94, 0.12); }
+.repair-plan-diff-tag.modified { color: var(--warning); background: rgba(245, 158, 11, 0.12); }
+.repair-plan-diff-tag.removed { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+
+/* 待确认时展示的维修凭证照片（只读） */
+.completion-evidence .evidence-view { display: flex; flex-direction: column; gap: var(--space-lg); }
+.completion-evidence .evidence-item { display: flex; flex-direction: column; gap: var(--space-xs); }
+.completion-evidence .evidence-label { color: var(--text-secondary); }
+.completion-evidence .evidence-grid { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.completion-evidence .evidence-thumb {
+  width: 120rpx; height: 120rpx; border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--bg-placeholder);
+}
+.completion-evidence .evidence-thumb image { width: 100%; height: 100%; }
+
 .order-detail-actions { margin-top: var(--space-xl); display: flex; flex-wrap: wrap; gap: var(--space-md); }
 .order-detail-actions .btn-secondary, .order-detail-actions button { flex: 1; min-width: 160rpx; }

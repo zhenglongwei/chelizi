@@ -223,14 +223,84 @@ radio{
   align-items: center;
   padding: var(--space-sm) 0;
 }
+/* 极简指引 */
+.review-guide-simple {
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+.review-guide-simple-title {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: var(--space-xs);
+}
+.review-guide-simple-desc {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--space-md);
+}
+.review-guide-simple-btn {
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  text-decoration: underline;
+}
+.review-guide-simple-btn-sm {
+  margin-top: var(--space-xs);
+  display: inline-block;
+}
+.review-guide-mini {
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+.review-guide-mini-text {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.review-guide-float {
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+.review-guide-float-text {
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  line-height: 1.5;
+}
+.review-textarea-wrap {
+  position: relative;
+  margin-top: var(--space-sm);
+}
+.review-word-count {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  font-size: 28rpx;
+  color: var(--text-hint);
+  z-index: 1;
+}
+.review-textarea-placeholder {
+  color: var(--text-hint);
+}
 .review-textarea {
   width: 100%;
-  min-height: 160rpx;
+  min-height: 200rpx;
   padding: var(--space-md);
+  padding-right: 100rpx;
   border: 1rpx solid var(--border);
   border-radius: var(--radius-md);
   font-size: var(--fs-body);
-  margin-top: var(--space-sm);
   box-sizing: border-box;
 }
 .review-anonymous {
@@ -245,6 +315,98 @@ radio{
 }
 .review-bottom-pad {
   height: var(--space-2xl);
+}
+
+/* 侧边栏：详细指引 */
+.review-detail-guide-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 900;
+  pointer-events: none;
+  transition: background 0.25s ease;
+}
+.review-detail-guide-mask-show {
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.review-detail-guide-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 85%;
+  max-width: 560rpx;
+  background: var(--bg-card);
+  z-index: 901;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+.review-detail-guide-drawer-show {
+  transform: translateX(0);
+}
+.review-detail-guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1rpx solid var(--border);
+  flex-shrink: 0;
+}
+.review-detail-guide-title {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.review-detail-guide-close {
+  font-size: 48rpx;
+  color: var(--text-hint);
+  line-height: 1;
+  padding: var(--space-xs);
+}
+.review-detail-guide-body {
+  flex: 1;
+  padding: var(--space-lg);
+  height: 0;
+}
+.review-detail-guide-part {
+  margin-bottom: var(--space-xl);
+}
+.review-detail-guide-part-title {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
+}
+.review-detail-guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.review-detail-guide-check,
+.review-detail-guide-dot {
+  flex-shrink: 0;
+  font-size: var(--fs-body);
+}
+.review-detail-guide-check-text {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 横屏适配：侧边栏加宽便于阅读 */
+@media (orientation: landscape) {
+  .review-detail-guide-drawer {
+    max-width: 70%;
+  }
 }
 .review-footer {
   position: fixed;

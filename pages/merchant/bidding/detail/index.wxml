@@ -19,6 +19,11 @@
         </view>
       </view>
     </view>
+    <!-- 用户情况描述（泡水、异响等无法通过照片体现的问题） -->
+    <view class="detail-user-desc" wx:if="{{bidding.user_description}}">
+      <text class="detail-user-desc-title text-muted fs-cap">车主补充说明</text>
+      <text class="detail-user-desc-text fs-body">{{bidding.user_description}}</text>
+    </view>
     <view class="detail-vehicle-row">
       <text class="text-muted fs-cap">车辆</text>
       <text class="fs-body fw-medium">{{bidding.vehicle_info.brand || ''}} {{bidding.vehicle_info.model || ''}}</text>
@@ -128,6 +133,12 @@
             <text class="quote-extra-unit">月</text>
           </view>
         </view>
+      </view>
+      <view class="quote-validity-row">
+        <text class="quote-validity-label text-muted fs-cap">报价有效期</text>
+        <picker mode="selector" range="{{quoteValidityOptions}}" range-key="label" value="{{quoteValidityIndex}}" bindchange="onQuoteValidityChange">
+          <view class="quote-validity-picker">{{quoteValidityOptions[quoteValidityIndex].label || '3 天'}}</view>
+        </picker>
       </view>
       <view class="quote-remark-row">
         <input class="quote-remark-input" placeholder="备注（选填）" value="{{remark}}" bindinput="onRemarkInput"/>

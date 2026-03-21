@@ -42,3 +42,21 @@ npm run simulate:flow
 
 - `POST /api/v1/dev/simulate-full-flow`：一键执行全流程
 - `POST /api/v1/dev/test-token`：获取测试 token（type=user 或 merchant）
+
+---
+
+## 订阅消息发送测试
+
+验证 `.env` 配置、access_token、模板 ID，并尝试发送一条测试消息。
+
+### 运行方式
+
+```bash
+cd web/api-server && node scripts/test-subscribe-message.js
+```
+
+### 前置条件
+
+1. `web/.env` 已配置 `WX_APPID`、`WX_SECRET`、`SUBSCRIBE_TEMPLATE_ID`
+2. 数据库中有带真实 openid 的用户或服务商（车主需微信登录，服务商需进入工作台完成 openid 绑定）
+3. 该用户/服务商曾在小程序中授权过订阅消息

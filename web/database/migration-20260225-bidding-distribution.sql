@@ -3,7 +3,7 @@
 
 -- 1. biddings 表增加第一梯队窗口结束时间
 ALTER TABLE biddings
-  ADD COLUMN tier1_window_ends_at DATETIME DEFAULT NULL COMMENT '第一梯队独家窗口结束时间（创建时+15分钟）' AFTER expire_at;
+  ADD COLUMN tier1_window_ends_at DATETIME DEFAULT NULL COMMENT '第一梯队独家窗口结束时间（创建时+10分钟）' AFTER expire_at;
 
 -- 2. 竞价分发结果表（用于快速查询店铺可见性）
 CREATE TABLE IF NOT EXISTS bidding_distribution (
@@ -24,14 +24,12 @@ INSERT INTO settings (`key`, `value`, `description`) VALUES
   "filterComplianceMin": 80,
   "filterViolationDays": 30,
   "filterCapacityCheck": false,
-  "fallbackDistanceExpandRate": 0.2,
-  "fallbackMinShops": 3,
   "tier1MatchScoreMin": 80,
   "tier1ComplianceMin": 95,
   "tier2MatchScoreMin": 60,
   "tier2MatchScoreMax": 79,
   "tier2ComplianceMin": 85,
-  "tier1ExclusiveMinutes": 15,
+  "tier1ExclusiveMinutes": 10,
   "tier3MaxShops": 2,
   "distributeL1L2Max": 10,
   "distributeL1L2ValidStop": 5,

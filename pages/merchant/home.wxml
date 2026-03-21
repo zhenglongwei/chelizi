@@ -77,9 +77,30 @@
       </view>
       <text class="merchant-action-arrow">›</text>
     </view>
-    <view class="merchant-action card" bindtap="onMessageTap">
+    <view class="merchant-action card" bindtap="onCommissionTap">
+      <view class="merchant-action-icon">
+        <image src="/images/icon/compete_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">佣金账户</text>
+        <text class="text-muted fs-cap">充值、明细、补缴佣金</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+    <view class="merchant-action card" bindtap="onProductTap">
       <view class="merchant-action-icon">
         <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+      </view>
+      <view class="merchant-action-text">
+        <text class="fs-body fw-bold">商品管理</text>
+        <text class="text-muted fs-cap">上架/下架保养、钣金等服务</text>
+      </view>
+      <text class="merchant-action-arrow">›</text>
+    </view>
+    <view class="merchant-action card" bindtap="onMessageTap">
+      <view class="merchant-action-icon merchant-action-icon-wrap">
+        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+        <view class="merchant-action-badge" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCount > 99 ? '99+' : messageUnreadCount}}</view>
       </view>
       <view class="merchant-action-text">
         <text class="fs-body fw-bold">消息中心</text>

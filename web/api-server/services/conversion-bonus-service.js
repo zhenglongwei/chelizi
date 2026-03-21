@@ -1,7 +1,7 @@
 /**
  * 内容转化追加奖金 - 决策权重计算与分配
  * 按《04-点赞追加奖金体系》3.2 实现
- * 7 天窗口内点赞 → 用户成交 → 按四维决策权重分配奖金池（佣金 50%）
+ * 7 天窗口内点赞 → 用户成交 → 按四维决策权重分配奖金池（佣金 20%，与事后验证共享）
  */
 
 const rewardCalculator = require('../reward-calculator');
@@ -90,7 +90,7 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
     try {
       const commission = await getOrderCommission(pool, order);
       if (commission <= 0) continue;
-      const poolAmount = commission * 0.5;
+      const poolAmount = commission * 0.2;
 
       const orderCreated = new Date(order.created_at);
       const sevenDaysBefore = new Date(orderCreated);
@@ -108,7 +108,7 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
       const orderBrand = orderVi.brand || '';
 
       const [likes] = await pool.execute(
-        `SELECT rl.review_id, rl.created_at as like_at,
+        `SELECT rl.review_id, rl.created_at as like_at, rl.weight_coefficient,
                 r.user_id as author_id, r.order_id as review_order_id, r.content_quality_level
          FROM review_likes rl
          JOIN reviews r ON rl.review_id = r.review_id AND r.type = 1 AND r.status = 1
@@ -159,9 +159,35 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
       if (totalWeight <= 0) continue;
 
       for (const c of top10) {
-        const share = (c.weight / totalWeight) * poolAmount;
+        let share = (c.weight / totalWeight) * poolAmount;
         const taxDeducted = share > 800 ? Math.round((share - 800) * 0.2 * 100) / 100 : 0;
-        const afterTax = Math.round((share - taxDeducted) * 100) / 100;
+        let afterTax = Math.round((share - taxDeducted) * 100) / 100;
+
+        // 扣除已通过常规点赞发放的金额（点赞先于订单产生、跨结算周期时可能已发过 like_bonus）
+        const likeMonth = c.like_at ? String(c.like_at).slice(0, 7) : null;
+        if (likeMonth) {
+          const [likeBonusTxns] = await pool.execute(
+            `SELECT amount FROM transactions WHERE related_id = ? AND type = 'like_bonus' AND settlement_month = ?`,
+            [c.review_id, likeMonth]
+          );
+          if (likeBonusTxns.length > 0) {
+            const [y, m] = likeMonth.split('-').map(Number);
+            const lastDay = new Date(y, m, 0).getDate();
+            const monthEnd = `${likeMonth}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+            const [weightRows] = await pool.execute(
+              `SELECT COALESCE(SUM(weight_coefficient), 0) as total FROM review_likes
+               WHERE review_id = ? AND is_valid_for_bonus = 1 AND like_type = 'normal'
+                 AND created_at >= ? AND created_at <= ?`,
+              [c.review_id, likeMonth + '-01 00:00:00', monthEnd]
+            );
+            const totalW = parseFloat(weightRows[0]?.total || 0);
+            const thisW = parseFloat(c.weight_coefficient || 0);
+            if (totalW > 0 && thisW > 0) {
+              const likeBonusShare = parseFloat(likeBonusTxns[0].amount || 0) * (thisW / totalW);
+              afterTax = Math.round(Math.max(0, afterTax - likeBonusShare) * 100) / 100;
+            }
+          }
+        }
         if (afterTax <= 0) continue;
 
         const [dup] = await pool.execute(
@@ -170,11 +196,14 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
         );
         if (dup.length > 0) continue;
 
-        const calcReason = `内容转化（决策权重${c.weight.toFixed(2)}，占比${((c.weight / totalWeight) * 100).toFixed(1)}%）`;
+        const adjustedTax = afterTax < share - taxDeducted ? 0 : taxDeducted;
+        const adjustedShare = afterTax + adjustedTax;
+        const likeMonthStr = c.like_at ? String(c.like_at).slice(0, 7) : '';
+        const calcReason = `内容转化（决策权重${c.weight.toFixed(2)}，占比${((c.weight / totalWeight) * 100).toFixed(1)}%${likeMonthStr ? '，已扣常规点赞' : ''}）`;
         await pool.execute(
           `INSERT INTO reward_settlement_pending (user_id, review_id, order_id, pending_type, amount_before_tax, tax_deducted, amount_after_tax, calc_reason, trigger_month)
            VALUES (?, ?, ?, 'conversion_bonus', ?, ?, ?, ?, ?)`,
-          [c.author_id, c.review_id, order.order_id, share, taxDeducted, afterTax, calcReason, monthStr]
+          [c.author_id, c.review_id, order.order_id, adjustedShare, adjustedTax, afterTax, calcReason, monthStr]
         );
         try {
           const auditLogger = require('../reward-audit-logger');

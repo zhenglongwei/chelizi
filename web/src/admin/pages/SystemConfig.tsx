@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Card, Form, Input, InputNumber, Button, message, Typography, Tabs, Switch } from 'antd';
+import { Card, Form, Input, InputNumber, Button, message, Typography, Tabs, Switch, Space, Alert } from 'antd';
+import { Link } from 'react-router-dom';
 import { callCloudFunction } from '../utils/api';
 import { parseSystemConfig, flattenSystemConfig, getDefaultSystemConfig } from '../utils/systemConfig';
 
@@ -12,6 +13,7 @@ export default function SystemConfig() {
   useEffect(() => {
     loadConfig();
     loadBiddingDistConfig();
+    loadRecommendConfig();
   }, []);
 
   const loadConfig = async () => {
@@ -29,8 +31,6 @@ export default function SystemConfig() {
         
         form.setFieldsValue({
           platformName: config.platformName || '事故车维修竞价平台',
-          commissionRate: config.commissionRate?.oem || 2,
-          refundRate: config.refundRate || 10,
           quoteTimeout: config.quoteTimeoutHours || 2,
           requireSettlementBeforeReview: config.require_settlement_before_review === '1',
           nearbyMaxKm: config.nearby_max_km != null ? Number(config.nearby_max_km) : 50,
@@ -49,13 +49,6 @@ export default function SystemConfig() {
       
       if (values.platformName !== undefined && values.platformName !== null && values.platformName !== '') {
         config.platformName = String(values.platformName);
-      }
-      
-      if (values.commissionRate !== undefined && values.commissionRate !== null) {
-        config.commissionRate = {
-          oem: Number(values.commissionRate),
-          nonOem: Number(values.commissionRate) + 10 // 非原厂件包含返现
-        };
       }
       
       if (values.refundRate !== undefined && values.refundRate !== null) {
@@ -134,6 +127,8 @@ export default function SystemConfig() {
 
   const [biddingDistForm] = Form.useForm();
   const [biddingDistLoading, setBiddingDistLoading] = useState(false);
+  const [recommendForm] = Form.useForm();
+  const [recommendLoading, setRecommendLoading] = useState(false);
 
   const loadBiddingDistConfig = async () => {
     try {
@@ -149,14 +144,12 @@ export default function SystemConfig() {
       biddingDistForm.setFieldsValue({
         filterComplianceMin: cfg.filterComplianceMin ?? 80,
         filterViolationDays: cfg.filterViolationDays ?? 30,
-        fallbackDistanceExpandRate: cfg.fallbackDistanceExpandRate ?? 0.2,
-        fallbackMinShops: cfg.fallbackMinShops ?? 3,
         tier1MatchScoreMin: cfg.tier1MatchScoreMin ?? 80,
         tier1ComplianceMin: cfg.tier1ComplianceMin ?? 95,
         tier2MatchScoreMin: cfg.tier2MatchScoreMin ?? 60,
         tier2MatchScoreMax: cfg.tier2MatchScoreMax ?? 79,
         tier2ComplianceMin: cfg.tier2ComplianceMin ?? 85,
-        tier1ExclusiveMinutes: cfg.tier1ExclusiveMinutes ?? 15,
+        tier1ExclusiveMinutes: cfg.tier1ExclusiveMinutes ?? 10,
         tier3MaxShops: cfg.tier3MaxShops ?? 2,
         distributeL1L2Max: cfg.distributeL1L2Max ?? 10,
         distributeL1L2ValidStop: cfg.distributeL1L2ValidStop ?? 5,
@@ -166,6 +159,8 @@ export default function SystemConfig() {
         newShopBaseScore: cfg.newShopBaseScore ?? 60,
         sameProjectScorePriority: cfg.sameProjectScorePriority ?? 15,
         sameProjectScoreFallback: cfg.sameProjectScoreFallback ?? 5,
+        sceneWeightL1L2: cfg.sceneWeightL1L2 ?? 0.35,
+        sceneWeightL3L4: cfg.sceneWeightL3L4 ?? 0.6,
       });
     } catch (_) {}
   };
@@ -176,14 +171,12 @@ export default function SystemConfig() {
       const cfg = {
         filterComplianceMin: Number(values.filterComplianceMin) ?? 80,
         filterViolationDays: Number(values.filterViolationDays) ?? 30,
-        fallbackDistanceExpandRate: Number(values.fallbackDistanceExpandRate) ?? 0.2,
-        fallbackMinShops: Number(values.fallbackMinShops) ?? 3,
         tier1MatchScoreMin: Number(values.tier1MatchScoreMin) ?? 80,
         tier1ComplianceMin: Number(values.tier1ComplianceMin) ?? 95,
         tier2MatchScoreMin: Number(values.tier2MatchScoreMin) ?? 60,
         tier2MatchScoreMax: Number(values.tier2MatchScoreMax) ?? 79,
         tier2ComplianceMin: Number(values.tier2ComplianceMin) ?? 85,
-        tier1ExclusiveMinutes: Number(values.tier1ExclusiveMinutes) ?? 15,
+        tier1ExclusiveMinutes: Number(values.tier1ExclusiveMinutes) ?? 10,
         tier3MaxShops: Number(values.tier3MaxShops) ?? 2,
         distributeL1L2Max: Number(values.distributeL1L2Max) ?? 10,
         distributeL1L2ValidStop: Number(values.distributeL1L2ValidStop) ?? 5,
@@ -193,6 +186,8 @@ export default function SystemConfig() {
         newShopBaseScore: Number(values.newShopBaseScore) ?? 60,
         sameProjectScorePriority: Number(values.sameProjectScorePriority) ?? 15,
         sameProjectScoreFallback: Number(values.sameProjectScoreFallback) ?? 5,
+        sceneWeightL1L2: Number(values.sceneWeightL1L2) ?? 0.35,
+        sceneWeightL3L4: Number(values.sceneWeightL3L4) ?? 0.6,
       };
       await callCloudFunction('addData', {
         collection: 'system_config',
@@ -206,6 +201,75 @@ export default function SystemConfig() {
     }
   };
 
+  const loadRecommendConfig = async () => {
+    try {
+      const result = await callCloudFunction('queryData', { collection: 'system_config' });
+      const configList = result.data || [];
+      const defaultConfig = getDefaultSystemConfig();
+      const config = parseSystemConfig(configList, defaultConfig);
+      const weights = config.recommendationWeights || {};
+      recommendForm.setFieldsValue({
+        priceWeight: weights.price ?? 40,
+        violationWeight: weights.violations ?? 25,
+        accuracyWeight: weights.accuracy ?? 10,
+        satisfactionWeight: weights.satisfaction ?? 20,
+        distanceWeight: weights.distance ?? 5,
+        warningThreshold: config.quoteWarningThreshold ?? 30,
+        priceBottomLine: config.priceBottomLine ?? 90,
+        deviationThreshold: config.quoteDeviationThreshold ?? 20,
+      });
+    } catch (_) {}
+  };
+
+  const handleRecommendSubmit = async (values: any) => {
+    setRecommendLoading(true);
+    try {
+      const config: any = {
+        recommendationWeights: {
+          price: Number(values.priceWeight),
+          violations: Number(values.violationWeight),
+          accuracy: Number(values.accuracyWeight),
+          satisfaction: Number(values.satisfactionWeight),
+          distance: Number(values.distanceWeight),
+        },
+        quoteWarningThreshold: Number(values.warningThreshold),
+        priceBottomLine: Number(values.priceBottomLine),
+        quoteDeviationThreshold: Number(values.deviationThreshold),
+      };
+      const flatConfig = flattenSystemConfig(config);
+      const promises = Object.keys(flatConfig).map(async (key) => {
+        const value = flatConfig[key];
+        const existResult = await callCloudFunction('queryData', {
+          collection: 'system_config',
+          where: { key },
+          limit: 1
+        });
+        if (existResult.success && existResult.data?.length > 0) {
+          return callCloudFunction('updateData', {
+            collection: 'system_config',
+            where: { key },
+            data: { value }
+          });
+        }
+        return callCloudFunction('addData', {
+          collection: 'system_config',
+          data: { key, value }
+        });
+      });
+      const results = await Promise.all(promises);
+      const hasError = results.some(r => !r.success);
+      if (!hasError) {
+        message.success('推荐规则配置已保存');
+      } else {
+        message.error('部分配置保存失败');
+      }
+    } catch (e: any) {
+      message.error(e.message || '保存失败');
+    } finally {
+      setRecommendLoading(false);
+    }
+  };
+
   const basicConfigItems = [
     {
       key: 'basic',
@@ -214,12 +278,6 @@ export default function SystemConfig() {
         <Form form={form} onFinish={handleSubmit} layout="vertical">
           <Form.Item name="platformName" label="平台名称">
             <Input placeholder="请输入平台名称" />
-          </Form.Item>
-          <Form.Item name="commissionRate" label="佣金比例（%）">
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="refundRate" label="返点比例（%）">
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="quoteTimeout" label="报价时效（小时）">
             <InputNumber min={1} style={{ width: '100%' }} />
@@ -257,13 +315,6 @@ export default function SystemConfig() {
             <InputNumber min={0} max={100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="filterViolationDays" label="重大违规统计天数">
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Title level={5}>兜底</Title>
-          <Form.Item name="fallbackDistanceExpandRate" label="距离扩大幅度（0.2=20%）">
-            <InputNumber min={0.1} max={1} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="fallbackMinShops" label="兜底最少店铺数">
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Title level={5}>梯队</Title>
@@ -315,12 +366,78 @@ export default function SystemConfig() {
           <Form.Item name="sameProjectScoreFallback" label="兜底匹配加分">
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
+          <Title level={5}>场景权重</Title>
+          <Form.Item
+            name="sceneWeightL1L2"
+            label="L1-L2 项目权重"
+            tooltip="综合匹配分公式：店铺得分×场景权重+同项目完单量分+报价准确度分+时效履约分。L1-L2（洗车、钣金喷漆等）权重"
+          >
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="sceneWeightL3L4"
+            label="L3-L4 项目权重"
+            tooltip="L3-L4（发动机、事故车等）高复杂度项目权重，通常高于 L1-L2"
+          >
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+          </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={biddingDistLoading}>
               保存竞价分发配置
             </Button>
           </Form.Item>
         </Form>
+      ),
+    },
+    {
+      key: 'recommend',
+      label: '推荐规则',
+      children: (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            message="推荐规则与竞价分发统一在系统配置中管理"
+            description={<><Link to="/admin/reward-rules">前往奖励金规则配置 →</Link></>}
+            style={{ marginBottom: 16 }}
+          />
+          <Form form={recommendForm} onFinish={handleRecommendSubmit} layout="vertical">
+            <Title level={5}>权重配置</Title>
+            <Form.Item name="priceWeight" label="价格权重（分）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="violationWeight" label="违规记录权重（分）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="accuracyWeight" label="报价准确性权重（分）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="satisfactionWeight" label="车主满意度权重（分）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="distanceWeight" label="距离权重（分）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Title level={5} style={{ marginTop: 24 }}>预警阈值设置</Title>
+            <Form.Item name="warningThreshold" label="报价预警阈值（%）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="priceBottomLine" label="价格底线（%）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="deviationThreshold" label="报价偏离度惩罚阈值（%）">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit" loading={recommendLoading}>
+                  保存推荐规则配置
+                </Button>
+                <Button onClick={() => recommendForm.resetFields()}>重置</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </>
       ),
     },
     {

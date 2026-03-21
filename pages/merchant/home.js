@@ -1,8 +1,9 @@
 // 服务商工作台 - M03
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
-const { getMerchantToken, getMerchantUser, getMerchantDashboard, getMerchantShop } = require('../../utils/api');
+const { getMerchantToken, getMerchantUser, getMerchantDashboard, getMerchantShop, merchantBindOpenid, getMerchantUnreadCount } = require('../../utils/api');
 const { getNavBarHeight } = require('../../utils/util');
+const { requestMerchantSubscribe } = require('../../utils/subscribe');
 
 const logger = getLogger('MerchantHome');
 
@@ -17,7 +18,8 @@ Page({
     pendingBidding: 0,
     pendingOrder: 0,
     repairing: 0,
-    pendingConfirm: 0
+    pendingConfirm: 0,
+    messageUnreadCount: 0
   },
 
   onLoad() {
@@ -29,9 +31,28 @@ Page({
       wx.redirectTo({ url: '/pages/merchant/login?redirect=' + encodeURIComponent('/pages/merchant/home') });
       return;
     }
+    // 从支付页返回等场景下，栈底页可能收到 onShow；避免在非当前页请求工作台导致误报「令牌无效」
+    try {
+      const pages = getCurrentPages();
+      const top = pages[pages.length - 1];
+      if (!top || top.route !== 'pages/merchant/home') {
+        return;
+      }
+    } catch (_) {}
     const user = getMerchantUser();
     this.setData({ shopName: (user && user.shop_name) || '' });
     this.loadDashboard();
+    this.bindOpenid();
+    requestMerchantSubscribe('order_new');
+  },
+
+  async bindOpenid() {
+    try {
+      const { code } = await new Promise((resolve, reject) => {
+        wx.login({ success: (r) => resolve(r), fail: reject });
+      });
+      if (code) await merchantBindOpenid(code);
+    } catch (_) {}
   },
 
   async loadDashboard() {
@@ -59,10 +80,20 @@ Page({
         repairing: res.repairing_count || 0,
         pendingConfirm: res.pending_confirm_count || 0
       });
+      this.loadMessageUnreadCount();
     } catch (err) {
       logger.error('加载工作台失败', err);
+      if (err && err.statusCode === 401) return;
       ui.showError(err.message || '加载失败');
     }
+  },
+
+  async loadMessageUnreadCount() {
+    try {
+      const res = await getMerchantUnreadCount();
+      const n = parseInt(res?.count ?? res?.unread_count ?? 0, 10) || 0;
+      this.setData({ messageUnreadCount: n });
+    } catch (_) {}
   },
 
   onBiddingTap(e) {
@@ -78,11 +109,19 @@ Page({
     wx.navigateTo({ url: '/pages/merchant/shop/profile/index' });
   },
 
+  onCommissionTap() {
+    wx.navigateTo({ url: '/pages/merchant/commission/index' });
+  },
+
   onMessageTap() {
     wx.navigateTo({ url: '/pages/merchant/message/index' });
   },
 
   onAppealTap() {
     wx.navigateTo({ url: '/pages/merchant/appeal/list/index' });
+  },
+
+  onProductTap() {
+    wx.navigateTo({ url: '/pages/merchant/product/list/index' });
   }
 });

@@ -88,13 +88,7 @@ export function getDefaultSystemConfig(): any {
     quoteTimeoutHours: 2,
     // 报价有效期（小时）
     quoteValidityPeriod: 24,
-    // 佣金比例
-    commissionRate: {
-      oem: 2,      // 原厂件2%
-      nonOem: 12   // 非原厂件12%（包含2%平台佣金+10%车主返现）
-    },
-    // 返现比例
-    refundRate: 10, // 非原厂件10%
+    // 佣金比例、返点比例已迁移至 reward_rules，此处不再使用
     // 分账与评价开关：0=可提前评价，1=需等分账完成
     require_settlement_before_review: '0',
     // 保证金标准

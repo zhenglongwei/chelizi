@@ -1,4 +1,4 @@
-// 等级详情 - 升级进度、权益、保级条件
+// 等级详情 - 升级进度、权益、等级维持
 const { getNavBarHeight } = require('../../../utils/util');
 const { getToken, getUserLevelDetail } = require('../../../utils/api');
 

@@ -3,22 +3,27 @@ const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 const { getShopsSearch } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const logger = getLogger('SearchList');
+const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
 
 const CATEGORIES = ['钣金喷漆', '发动机维修', '电路维修', '保养服务'];
-const SORT_OPTIONS = [
+const SORT_OPTIONS_BASE = [
+  { value: 'score', label: '好评优先' },
   { value: 'default', label: '综合排序' },
   { value: 'compliance_rate', label: '合规率优先' },
   { value: 'complaint_rate', label: '投诉率低' },
   { value: 'distance', label: '距离优先' },
   { value: 'orders', label: '订单量优先' }
 ];
+const SORT_OPTIONS_WITH_PRICE = [
+  ...SORT_OPTIONS_BASE,
+  { value: 'price', label: '价格最低' }
+];
 
 function mapShopItem(s, idx) {
-  const rating = parseFloat(s.rating) || 5;
-  const starFull = Math.floor(rating);
+  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
   let badgeText = '';
   let badgeClass = '';
   let locationText = s.district || s.address || '—';
@@ -37,15 +42,21 @@ function mapShopItem(s, idx) {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/logo/logo_white.png',
-    rating: rating.toFixed(1),
-    starsFull: '★'.repeat(starFull),
-    starsEmpty: '☆'.repeat(5 - starFull),
+    rating: starDisplay.scoreText,
+    starsDisplay: starDisplay.stars,
+    scoreNum: starDisplay.score,
     orderCount: s.total_orders || s.rating_count || 0,
     is_certified: s.is_certified,
     badgeText,
     badgeClass,
-    locationText
+    locationText,
+    latestReviewSummary: s.latest_review_summary || null,
+    latestReviewNegative: !!s.latest_review_negative
   };
+}
+
+function getSortOptions(hasProductContext) {
+  return hasProductContext ? SORT_OPTIONS_WITH_PRICE : SORT_OPTIONS_BASE;
 }
 
 Page({
@@ -54,7 +65,7 @@ Page({
     category: '',
     categories: CATEGORIES,
     sortIndex: 0,
-    sortLabels: SORT_OPTIONS,
+    sortLabels: SORT_OPTIONS_BASE,
     list: [],
     page: 1,
     limit: 10,
@@ -78,21 +89,35 @@ Page({
   onLoad(options) {
     const keyword = (options.keyword || '').trim();
     const category = options.category || '';
+    const hasProductContext = !!(keyword || category);
+    const sortOpts = getSortOptions(hasProductContext);
     let sortIndex = 0;
     if (options.sort) {
-      const idx = SORT_OPTIONS.findIndex((o) => o.value === options.sort);
+      const idx = sortOpts.findIndex((o) => o.value === options.sort);
       if (idx >= 0) sortIndex = idx;
     }
     const navH = getNavBarHeight();
-    this.setData({ keyword, category, sortIndex, pageRootStyle: 'padding-top: ' + navH + 'px' });
+    this.setData({ keyword, category, sortLabels: sortOpts, sortIndex, pageRootStyle: 'padding-top: ' + navH + 'px' });
     this.initScrollHeight(navH);
     logger.info('进入搜索列表', { keyword, category });
     this.search();
   },
 
+  updateSortOptions() {
+    const { keyword, category, sortIndex, sortLabels } = this.data;
+    const hasProductContext = !!(keyword || category);
+    const newOpts = getSortOptions(hasProductContext);
+    const hadPrice = sortLabels.some((o) => o.value === 'price');
+    const hasPrice = newOpts.some((o) => o.value === 'price');
+    let newIndex = sortIndex;
+    if (hadPrice && !hasPrice && sortIndex >= newOpts.length) newIndex = 0;
+    else if (!hadPrice && hasPrice) newIndex = sortIndex;
+    this.setData({ sortLabels: newOpts, sortIndex: newIndex });
+  },
+
   initScrollHeight(navBarHeight) {
     try {
-      const sys = wx.getSystemInfoSync();
+      const sys = getSystemInfo();
       const headerPx = (220 * sys.windowWidth) / 750;
       const h = sys.windowHeight - (navBarHeight || getNavBarHeight()) - headerPx;
       this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
@@ -107,7 +132,7 @@ Page({
 
   onKeywordInput(e) {
     const keyword = (e.detail.value || '').trim();
-    this.setData({ keyword });
+    this.setData({ keyword }, () => this.updateSortOptions());
     this.searchDebounced();
   },
 
@@ -116,7 +141,7 @@ Page({
   },
 
   clearKeyword() {
-    this.setData({ keyword: '' });
+    this.setData({ keyword: '' }, () => this.updateSortOptions());
     this.search();
   },
 
@@ -136,7 +161,7 @@ Page({
 
   onCategoryTap(e) {
     const category = e.currentTarget.dataset.category || '';
-    this.setData({ category });
+    this.setData({ category }, () => this.updateSortOptions());
     this.search();
   },
 
@@ -166,10 +191,11 @@ Page({
         lng = cached.longitude;
       }
 
+      const sortLabels = this.data.sortLabels || SORT_OPTIONS_BASE;
       const params = {
         page,
         limit,
-        sort: SORT_OPTIONS[sortIndex].value
+        sort: sortLabels[sortIndex]?.value || 'default'
       };
       if (keyword) params.keyword = keyword;
       if (category) params.category = category;

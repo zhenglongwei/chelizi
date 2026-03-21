@@ -1,0 +1,56 @@
+<!-- 口碑首页 - 评价为核心定位 -->
+<custom-nav-bar title="口碑" />
+<view class="page-root rep-page" style="{{pageRootStyle}}">
+  <!-- 搜索栏 -->
+  <view class="rep-search-wrap">
+    <view class="input-wrap rep-search" bindtap="onSearchTap">
+      <image class="rep-search-icon" src="/images/icon/search.png" mode="aspectFit"/>
+      <text class="rep-search-ph text-muted fs-body">搜索维修厂、车型、维修项目</text>
+    </view>
+  </view>
+
+  <scroll-view
+    class="rep-scroll"
+    scroll-y
+    style="{{scrollStyle}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onPullRefresh"
+  >
+    <!-- 口碑好店 -->
+    <view class="rep-section">
+      <view class="rep-section-head">
+        <text class="rep-section-title">口碑好店</text>
+        <text class="rep-section-more text-muted fs-cap" bindtap="goToMoreShops">更多</text>
+      </view>
+      <view class="rep-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
+      <view class="rep-empty text-muted fs-body" wx:elif="{{!loading && reputationShops.length === 0}}">暂无口碑好店</view>
+      <view class="rep-shop-list" wx:else>
+        <view class="rep-shop-card card" wx:for="{{reputationShops}}" wx:key="shop_id" bindtap="goToShopDetail" data-id="{{item.shop_id}}">
+          <image class="rep-shop-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
+          <view class="rep-shop-logo rep-shop-logo-ph" wx:else></view>
+          <view class="rep-shop-info-wrap">
+            <view class="rep-shop-info">
+              <text class="rep-shop-name text-primary fs-body fw-bold">{{item.name}}</text>
+              <view class="rep-shop-rating">
+                <text class="rep-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                <text class="rep-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+              </view>
+              <text class="rep-shop-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
+              <view class="rep-shop-foot">
+                <view class="rep-badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
+                  <text class="fs-cap">{{item.badgeText}}</text>
+                </view>
+                <view class="rep-shop-addr text-muted fs-cap">
+                  <image class="rep-addr-icon" src="/images/icon/location.png" mode="aspectFit"/>
+                  <text class="rep-shop-addr-txt">{{item.locationText}}</text>
+                </view>
+              </view>
+            </view>
+            <image class="rep-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

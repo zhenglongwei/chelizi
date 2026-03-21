@@ -3,6 +3,7 @@ const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantBiddings } = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
+const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 
 const logger = getLogger('MerchantBiddingList');
 
@@ -43,6 +44,7 @@ Page({
     if (getMerchantToken()) {
       this.setData({ list: [], page: 1, hasMore: true });
       this.loadList();
+      if (this.data.tabIndex === 0) requestMerchantSubscribe('bidding_new');
     }
   },
 

@@ -62,6 +62,22 @@ location /api {
 
 确保已配置 SSL（HTTPS），微信小程序合法域名要求 HTTPS。
 
+### 5. 云端联调（无本地开发环境）
+
+本机**未**安装 Node/MySQL、或未配置 `web/.env` 时，可直接在服务器上验证功能：
+
+1. **上传/同步代码**（含 `web/api-server/`、小程序工程、`web/.env` 等，勿把密钥提交到公开仓库）。
+2. **数据库**：对线上库执行尚未跑过的迁移脚本（例如含佣金结算的 `web/database/migration-20260321-merchant-commission.sql`）；全新库可继续以 `schema.sql` 为基准。
+3. **依赖与重启**：
+   ```bash
+   cd /path/to/web/api-server
+   npm install --production
+   pm2 restart chelizi-api   # 或你实际使用的进程名
+   ```
+4. **小程序**：保持 `config.js` 中 `BASE_URL` 为线上 HTTPS 域名，用微信开发者工具**真机/预览**走合法域名。
+5. **佣金与微信支付（若启用）**：在服务器 `web/.env` 配置 `PUBLIC_API_BASE_URL`、`WECHAT_PAY_*` 等（见 [docs/本地开发环境配置.md](../docs/本地开发环境配置.md)）；在微信商户平台将支付回调 URL 设为 `https://你的域名/api/v1/pay/wechat/commission-notify`。**用户奖励金商家转账**：在商户平台「商家转账」中配置结果通知 URL 为 `https://你的域名/api/v1/pay/wechat/reward-transfer-notify`（或与 `WECHAT_PAY_TRANSFER_NOTIFY_URL` 一致）。
+6. **微信支付 API 出口 IP 白名单**：若日志出现 `INVALID_REQUEST` / **「此IP地址不允许调用接口，请按开发指引设置」**，说明当前 **发起 APIv3 请求的服务器公网出口 IP** 未加入商户平台白名单。登录 [微信支付商户平台](https://pay.weixin.qq.com/) → **账户中心 → API 安全**（或「IP 白名单」相关菜单，以平台当前界面为准）→ 将 **运行 Node API 的那台机器访问外网时使用的公网 IP** 加入白名单。在服务器上可用 `curl -s ifconfig.me` 或 `curl -s ip.sb` 查看出口 IP；若使用负载均衡/多机，需分别加入或改用固定出口；云函数/无固定 IP 时需按微信文档使用允许的方案。
+
 ## 三、小程序 & 管理端配置
 
 ### 合法域名
@@ -116,7 +132,7 @@ BASE_URL=https://simplewin.cn
 
 1. **健康检查**
    ```bash
-   curl https://simplewin.cn/health
+   curl https://simplewin.cn/api/health
    ```
 
 2. **附近维修厂接口**

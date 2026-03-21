@@ -285,7 +285,7 @@ async function settleConversionBonus(pool, startDate, endDate) {
 }
 
 /**
- * 事后验证补发：上月完成订单，存在 post_verify 点赞且该订单未分配内容转化时，从奖金池 50% 补发
+ * 事后验证补发：上月完成订单，存在 post_verify 点赞且该订单未分配内容转化时，从佣金 20% 池补发
  */
 async function settlePostVerifyBonus(pool, startDate, endDate) {
   const monthStr = startDate.slice(0, 7);
@@ -346,7 +346,7 @@ async function settlePostVerifyBonus(pool, startDate, endDate) {
 
       const commission = await getOrderCommission(pool, order);
       if (commission <= 0) continue;
-      const bonusBeforeTax = commission * 0.5;
+      const bonusBeforeTax = commission * 0.2;
       const taxDeducted = bonusBeforeTax > 800 ? Math.round((bonusBeforeTax - 800) * 0.2 * 100) / 100 : 0;
       const bonusAfterTax = Math.round((bonusBeforeTax - taxDeducted) * 100) / 100;
       if (bonusAfterTax <= 0) continue;

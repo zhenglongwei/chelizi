@@ -1,0 +1,251 @@
+/**
+ * 评价聚合页
+ */
+.feed-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+.feed-sort-bar {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--page-padding-x);
+  background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.feed-sort-item {
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  padding: var(--space-xs) 0;
+}
+
+.feed-sort-item.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.feed-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.feed-scroll {
+  height: 100%;
+}
+
+.feed-list {
+  padding: var(--space-lg) var(--page-padding-x);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.feed-card {
+  padding: var(--space-xl);
+}
+
+.feed-shop-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.feed-shop-logo {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  background: var(--bg-placeholder);
+}
+
+.feed-shop-info {
+  flex: 1;
+  margin-left: var(--space-md);
+  min-width: 0;
+}
+
+.feed-shop-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-shop-addr {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-shop-arrow {
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: var(--space-sm);
+}
+
+.feed-review-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.feed-user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-level {
+  padding: 0 var(--space-xs);
+}
+
+.feed-date {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.feed-review-meta {
+  margin-bottom: var(--space-xs);
+}
+
+.feed-meta-label {
+  margin-right: var(--space-xs);
+}
+
+.feed-stars {
+  margin-bottom: var(--space-sm);
+}
+
+.feed-objectives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.feed-obj {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.feed-content-wrap {
+  margin-bottom: var(--space-sm);
+}
+
+.feed-content {
+  display: block;
+  line-height: 1.5;
+}
+
+.feed-content-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.feed-expand-btn {
+  display: inline-block;
+  margin-top: var(--space-xs);
+}
+
+.feed-images-wrap {
+  margin-top: var(--space-md);
+}
+
+.feed-img-group {
+  margin-bottom: var(--space-md);
+}
+
+.feed-img-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.feed-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.feed-img {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-sm);
+  background: var(--bg-placeholder);
+}
+
+.feed-badge {
+  margin-top: var(--space-sm);
+}
+
+.feed-appeal {
+  margin-top: var(--space-sm);
+}
+
+.feed-owner-verify {
+  margin-top: var(--space-sm);
+}
+
+.feed-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+
+.feed-like {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.feed-like-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.feed-dislike {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.feed-dislike.disliked {
+  color: var(--text-weak);
+}
+
+.feed-dislike-icon {
+  font-size: 28rpx;
+}
+
+.feed-more {
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+.feed-empty {
+  text-align: center;
+  padding: var(--space-2xl);
+}
+
+.feed-bottom-pad {
+  height: 40rpx;
+}

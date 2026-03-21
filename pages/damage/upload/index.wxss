@@ -5,7 +5,7 @@
 .damage-page {
   min-height: 100vh;
   background: var(--bg-page);
-  padding-bottom: 140rpx;
+  padding-bottom: calc(100rpx + env(safe-area-inset-bottom) + 140rpx);
 }
 
 .damage-empty {
@@ -52,6 +52,17 @@
 .damage-section-title {
   margin-bottom: var(--space-lg);
   color: var(--text-primary);
+}
+
+.damage-desc-input {
+  width: 100%;
+  min-height: 120rpx;
+  padding: var(--space-md);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
 }
 
 .damage-location-block {
@@ -450,7 +461,7 @@
 
 .damage-footer {
   position: fixed;
-  bottom: 200;
+  bottom: calc(100rpx + env(safe-area-inset-bottom) + 20rpx);
   left: 0;
   right: 0;
   padding: var(--space-md) var(--page-padding-x);

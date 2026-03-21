@@ -78,6 +78,24 @@
   gap: 2rpx;
 }
 
+.balance-item-breakdown {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.balance-breakdown-title {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+.balance-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .balance-load-more {
   padding: var(--space-lg);
   text-align: center;

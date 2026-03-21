@@ -3,7 +3,7 @@ const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 const { getToken, getUserBalance } = require('../../../utils/api');
-const { getNavBarHeight, formatRelativeTime } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo, formatRelativeTime } = require('../../../utils/util');
 
 const logger = getLogger('Balance');
 
@@ -69,7 +69,7 @@ Page({
   onLoad() {
     const navH = getNavBarHeight();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px' });
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({ scrollStyle: 'height: ' + (sys.windowHeight - navH - 280) + 'px' });
     this.checkAuth();
   },
@@ -113,7 +113,8 @@ Page({
           isIncome: row.amount >= 0,
           timeText: formatRelativeTime(row.created_at),
           stageLabel,
-          taxLabel
+          taxLabel,
+          rewardBreakdown: row.reward_breakdown || null
         };
       });
       const prevList = refresh ? [] : this.data.list;
@@ -125,7 +126,7 @@ Page({
       this.setData({
         balanceText: formatMoney(res.balance),
         totalRebateText: formatMoney(res.total_rebate),
-        canWithdraw: balanceNum >= 10,
+        canWithdraw: balanceNum > 0,
         list: newList,
         page,
         total,
@@ -134,6 +135,10 @@ Page({
       });
     } catch (err) {
       logger.error('加载余额明细失败', err);
+      if (err && err.statusCode === 401) {
+        this.setData({ loading: false });
+        return;
+      }
       ui.showError(err.message || '加载失败');
       this.setData({ loading: false });
     }
@@ -141,8 +146,8 @@ Page({
 
   onWithdraw() {
     const balance = parseFloat(this.data.balanceText || '0');
-    if (balance < 10) {
-      ui.showWarning('至少 10 元可提现');
+    if (balance <= 0) {
+      ui.showWarning('暂无可提现余额');
       return;
     }
     navigation.navigateTo('/pages/user/withdraw/index');

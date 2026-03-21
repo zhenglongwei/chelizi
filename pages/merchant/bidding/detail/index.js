@@ -15,6 +15,12 @@ const ACCIDENT_TYPE_LABELS = {
 };
 
 const REPAIR_TYPES = [{ label: '换', value: '换' }, { label: '修', value: '修' }];
+const QUOTE_VALIDITY_OPTIONS = [
+  { label: '1 天', value: 1 },
+  { label: '3 天', value: 3 },
+  { label: '5 天', value: 5 },
+  { label: '7 天', value: 7 }
+];
 const PARTS_TYPES = [
   { label: '原厂配件', value: '原厂配件' },
   { label: '同质品牌件', value: '同质品牌件' },
@@ -38,6 +44,9 @@ Page({
     duration: '',
     warranty: '',
     remark: '',
+    quoteValidityDays: 3,
+    quoteValidityIndex: 1,
+    quoteValidityOptions: QUOTE_VALIDITY_OPTIONS,
     submitting: false,
     hasAiSuggestions: false
   },
@@ -195,6 +204,12 @@ Page({
     this.setData({ remark: (e.detail.value || '').trim() });
   },
 
+  onQuoteValidityChange(e) {
+    const idx = parseInt(e.detail.value, 10);
+    const opt = QUOTE_VALIDITY_OPTIONS[idx];
+    if (opt) this.setData({ quoteValidityIndex: idx, quoteValidityDays: opt.value });
+  },
+
   onPreviewPhoto(e) {
     const idx = e.currentTarget.dataset.index;
     const images = (this.data.bidding && this.data.bidding.images) || [];
@@ -245,7 +260,8 @@ Page({
         value_added_services,
         duration: dur,
         warranty: war,
-        remark: remark || null
+        remark: remark || null,
+        quote_validity_days: this.data.quoteValidityDays || 3
       });
       ui.showSuccess('报价已提交');
       setTimeout(() => wx.navigateBack(), 800);

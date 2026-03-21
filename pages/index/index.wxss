@@ -332,6 +332,14 @@
   margin-right: var(--space-xs);
 }
 
+.idx-star-full.star-gold {
+  color: var(--accent);
+}
+
+.idx-star-full.star-orange {
+  color: var(--warning);
+}
+
 .idx-star-empty {
   font-size: var(--fs-cap);
   margin-right: var(--space-md);
@@ -339,6 +347,14 @@
 
 .idx-rating-txt {
   flex-shrink: 0;
+}
+
+.idx-shop-review-summary {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .idx-shop-foot {

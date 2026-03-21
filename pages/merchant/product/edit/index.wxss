@@ -1,0 +1,62 @@
+.merchant-product-edit {
+  min-height: 100vh;
+  padding-bottom: 120rpx;
+  background: var(--bg-page);
+}
+
+.edit-form {
+  margin: var(--space-lg) var(--page-padding-x);
+  padding: var(--space-xl);
+}
+
+.edit-item {
+  margin-bottom: var(--space-lg);
+}
+
+.edit-item:last-child {
+  margin-bottom: 0;
+}
+
+.edit-label {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.edit-input, .edit-picker, .edit-textarea {
+  width: 100%;
+  padding: var(--space-md);
+  font-size: var(--fs-body);
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  padding: 0 0;
+}
+
+.edit-textarea {
+  min-height: 120rpx;
+}
+
+.edit-picker {
+  color: var(--text-primary);
+}
+
+.edit-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  background: var(--bg-page);
+}
+
+.edit-submit {
+  padding: var(--space-lg);
+  text-align: center;
+  border-radius: var(--radius-md);
+  padding: 0 0;
+}
+
+.edit-submit.disabled {
+  opacity: 0.6;
+}

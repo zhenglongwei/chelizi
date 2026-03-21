@@ -3,7 +3,8 @@ const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
 const navigation = require('../../utils/navigation');
 const { getShopsNearby } = require('../../utils/api');
-const { getNavBarHeight } = require('../../utils/util');
+const { fetchAndApplyUnreadBadge } = require('../../utils/message-badge');
+const { getNavBarHeight, getSystemInfo } = require('../../utils/util');
 
 const logger = getLogger('Index');
 
@@ -21,9 +22,10 @@ const QUICK_ENTRIES = [
   { id: 4, name: '保养服务', icon: '🔧', category: '保养服务' }
 ];
 
+const { scoreToStarDisplay } = require('../../utils/shop-score-display');
+
 function mapShopItem(s, idx) {
-  const rating = parseFloat(s.rating) || 5;
-  const starFull = Math.floor(rating);
+  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
   let badgeText = '';
   let badgeClass = '';
   let locationText = s.district || s.address || '—';
@@ -42,14 +44,16 @@ function mapShopItem(s, idx) {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/logo/logo_white.png',
-    rating: rating.toFixed(1),
-    starsFull: '★'.repeat(starFull),
-    starsEmpty: '☆'.repeat(5 - starFull),
+    rating: starDisplay.scoreText,
+    starsDisplay: starDisplay.stars,
+    scoreNum: starDisplay.score,
     orderCount: s.total_orders || s.rating_count || 0,
     is_certified: s.is_certified,
     badgeText,
     badgeClass,
-    locationText
+    locationText,
+    latestReviewSummary: s.latest_review_summary || null,
+    latestReviewNegative: !!s.latest_review_negative
   };
 }
 
@@ -61,8 +65,7 @@ function shopToAdSlide(s, idx) {
     name: s.name,
     logo: s.logo || '/images/logo/logo_white1.png',
     rating: s.rating,
-    starsFull: s.starsFull,
-    starsEmpty: s.starsEmpty,
+    starsDisplay: s.starsDisplay,
     orderCount: s.orderCount,
     bgStyle: 'background: linear-gradient(135deg, #1E293B 0%, #334155 100%)'
   };
@@ -73,7 +76,7 @@ Page({
     loading: false,
     quickEntries: QUICK_ENTRIES,
     adSlides: [],
-    nearbyShops: [],
+    nearbyGoodShops: [],
     locationDenied: false,
     scrollHeight: 600,
     scrollStyle: 'height: 600px',
@@ -94,6 +97,7 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
+    fetchAndApplyUnreadBadge();
   },
 
   onPullDownRefresh() {
@@ -111,7 +115,7 @@ Page({
 
   initScrollHeight(navBarHeight) {
     try {
-      const sys = wx.getSystemInfoSync();
+      const sys = getSystemInfo();
       const adHeightPx = (300 * sys.windowWidth) / 750;
       const h = sys.windowHeight - (navBarHeight || getNavBarHeight()) - adHeightPx;
       this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
@@ -123,42 +127,47 @@ Page({
   async loadData() {
     this.setData({ loading: true });
     try {
-      await this.fetchNearbyShops();
+      await this.fetchNearbyGoodShops();
       await this.fetchAdSlides();
     } catch (err) {
       logger.error('首页数据加载失败', err);
       ui.showError(err.message || '加载失败，请重试');
-      this.setData({ nearbyShops: [], adSlides: [] });
+      this.setData({ nearbyGoodShops: [], adSlides: [] });
     } finally {
       this.setData({ loading: false });
     }
   },
 
-  async fetchNearbyShops() {
+  /** 附近好店：5km 内口碑排行前 10，无则 10km，无则提示「附近暂无店铺」 */
+  async fetchNearbyGoodShops() {
     try {
       const app = getApp();
       const cached = app.getCachedLocation();
       if (!cached) {
-        this.setData({ nearbyShops: [], locationDenied: true });
+        this.setData({ nearbyGoodShops: [], locationDenied: true });
         this.showLocationGuideIfFirst();
         return;
       }
       const lat = cached.latitude;
       const lng = cached.longitude;
       this.setData({ locationDenied: false });
-      const params = { limit: 10, latitude: lat, longitude: lng };
-      // max_km 由后台系统配置 nearby_max_km 控制
-      logger.info('[首页-位置] 用户位置', { lat, lng, params });
-      const res = await getShopsNearby(params);
-      const rawList = res?.list || [];
-      const list = rawList.map((s, idx) => mapShopItem(s, idx));
-      this.setData({ nearbyShops: list });
-      const preview = rawList.slice(0, 3).map(s => `${s.name}: ${s.distance != null ? s.distance + 'km' : '?'}`);
-      logger.info('[首页-位置] 附近维修厂', { count: list.length, 前3条: preview.join(' | ') });
-      if (list.length === 0) logger.warn('[首页-位置] 附近无维修厂，可尝试搜索或调整后台最大距离');
+      // 先试 5km，口碑排行前 10；无则 10km
+      for (const maxKm of [5, 10]) {
+        const params = { limit: 10, latitude: lat, longitude: lng, max_km: maxKm, sort: 'default' };
+        const res = await getShopsNearby(params);
+        const rawList = res?.list || [];
+        if (rawList.length > 0) {
+          const list = rawList.map((s, idx) => mapShopItem(s, idx));
+          this.setData({ nearbyGoodShops: list });
+          logger.info('[首页-附近好店] 加载', { maxKm, count: list.length });
+          return;
+        }
+      }
+      this.setData({ nearbyGoodShops: [] });
+      logger.info('[首页-附近好店] 5km/10km 内均无店铺');
     } catch (err) {
-      logger.error('获取附近维修厂失败', err);
-      this.setData({ nearbyShops: [] });
+      logger.error('附近好店加载失败', err);
+      this.setData({ nearbyGoodShops: [] });
     }
   },
 
@@ -198,14 +207,7 @@ Page({
 
   async fetchAdSlides() {
     try {
-      const res = await getShopsNearby({ limit: 5 });
-      const rawList = res?.list || [];
-      const recommended = rawList
-        .filter(s => s.is_certified || (parseFloat(s.rating) || 0) >= 4.5)
-        .slice(0, 3)
-        .map((s, idx) => mapShopItem(s, idx))
-        .map(s => shopToAdSlide(s));
-      const adSlides = [...INTRO_SLIDES, ...recommended];
+      const adSlides = [...INTRO_SLIDES];
       this.setData({ adSlides });
       logger.info('广告区轮播加载成功', { count: adSlides.length });
     } catch (err) {
@@ -216,12 +218,9 @@ Page({
 
   onAdSlideTap(e) {
     const { type, action, shopId } = e.currentTarget.dataset;
-    if (type === 'shop' && shopId) {
-      logger.info('点击推荐商家', shopId);
-      navigation.navigateTo('/pages/shop/detail/index', { id: shopId });
-    } else if (type === 'intro' && action === 'damage') {
+    if (type === 'intro' && action === 'damage') {
       logger.info('点击 AI 定损入口');
-      navigation.navigateTo('/pages/damage/upload/index');
+      navigation.switchTab('/pages/damage/upload/index');
     }
   },
 
@@ -231,7 +230,7 @@ Page({
   },
 
   onSearchTap() {
-    navigation.switchTab('/pages/search/list/index');
+    navigation.navigateTo('/pages/search/list/index');
   },
 
   onQuickEntryTap(e) {

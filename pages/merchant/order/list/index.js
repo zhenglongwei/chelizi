@@ -1,8 +1,9 @@
 // 服务商订单列表 - M06
 const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
+const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 const { getMerchantToken, getMerchantOrders } = require('../../../../utils/api');
-const { getNavBarHeight } = require('../../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../../utils/util');
 
 const logger = getLogger('MerchantOrderList');
 
@@ -24,7 +25,7 @@ Page({
 
   onLoad(options) {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({
       pageRootStyle: 'padding-top: ' + navH + 'px',
       scrollStyle: 'height: ' + (sys.windowHeight - navH - 120) + 'px'
@@ -38,6 +39,7 @@ Page({
     if (getMerchantToken()) {
       this.setData({ list: [], page: 1, hasMore: true });
       this.loadList();
+      requestMerchantSubscribe('order_new');
     }
   },
 

@@ -1,6 +1,6 @@
 // 定损报告详情（从历史进入）
 const { getDamageReport } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 Page({
   data: {
@@ -15,7 +15,7 @@ Page({
   onLoad(options) {
     const id = options.id || options.report_id || '';
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({ reportId: id, pageRootStyle: 'padding-top: ' + navH + 'px', scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px' });
     if (id) {
       this.loadReport(id);

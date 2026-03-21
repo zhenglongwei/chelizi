@@ -3,7 +3,7 @@ const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 const { getToken, getUserOrder, submitReturnReview, uploadImage } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const logger = getLogger('ReviewReturn');
 
@@ -26,7 +26,7 @@ Page({
 
   onLoad(options) {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px', scrollStyle: 'height: ' + (sys.windowHeight - navH - 120) + 'px' });
     const orderId = (options.order_id || options.id || '').trim();
     if (!getToken()) {

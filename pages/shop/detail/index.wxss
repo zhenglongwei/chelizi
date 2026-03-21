@@ -171,15 +171,20 @@
 /* ========== 评价汇总 ========== */
 .detail-review-summary {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-xl);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
 }
 
 .detail-review-score {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: nowrap;
+}
+
+.detail-review-summary-hint {
+  display: block;
 }
 
 .detail-score-num {
@@ -192,6 +197,32 @@
 }
 
 /* ========== 评价列表 ========== */
+.detail-review-filter {
+  margin-bottom: var(--space-lg);
+}
+.detail-filter-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+.detail-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.detail-filter-chip {
+  padding: var(--space-xs) var(--space-lg);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  border: 1rpx solid var(--border);
+  flex-shrink: 0;
+}
+.detail-filter-chip.active {
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.08);
+  border-color: var(--primary);
+}
 .detail-review-list {
   display: flex;
   flex-direction: column;
@@ -227,6 +258,33 @@
   margin-left: var(--space-md);
 }
 
+.detail-review-meta {
+  margin-bottom: var(--space-xs);
+}
+.detail-review-meta-label {
+  margin-right: var(--space-xs);
+}
+.detail-review-objectives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+.detail-review-obj {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.detail-review-img-group {
+  margin-top: var(--space-md);
+}
+.detail-review-img-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+.detail-review-images-wrap {
+  margin-top: var(--space-sm);
+}
 .detail-review-stars {
   margin-bottom: var(--space-sm);
 }
@@ -276,8 +334,12 @@
   margin-top: var(--space-md);
   padding-top: var(--space-sm);
   border-top: 1rpx solid var(--border);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xl);
+  flex-wrap: wrap;
 }
-
 .detail-review-like {
   display: flex;
   flex-direction: row;
@@ -289,7 +351,22 @@
   width: 32rpx;
   height: 32rpx;
 }
+.detail-review-dislike {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.detail-review-dislike.disliked {
+  opacity: 0.7;
+}
+.detail-review-dislike-icon {
+  font-size: 28rpx;
+}
 
+.detail-review-appeal {
+  margin-top: var(--space-sm);
+}
 .detail-review-badge {
   display: block;
   margin-top: var(--space-sm);

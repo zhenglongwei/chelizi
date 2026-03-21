@@ -154,12 +154,14 @@ async function likeReview(pool, userId, reviewId) {
   if (review.status !== 1) return { success: false, error: '评价已隐藏' };
   if (review.author_id === userId) return { success: false, error: '不能给自己的评价点赞' };
 
-  // 2. 是否已点赞（单用户单评价终身1次）
+  // 2. 是否已点赞或已踩（单用户单评价终身1次，点赞与踩互斥）
   const [existing] = await pool.execute(
     'SELECT like_id, is_valid_for_bonus FROM review_likes WHERE review_id = ? AND user_id = ?',
     [reviewId, userId]
   );
   if (existing.length) return { success: false, error: '您已点赞过该评价' };
+  const [hasDislike] = await pool.execute('SELECT 1 FROM review_dislikes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
+  if (hasDislike.length) return { success: false, error: '已踩过该评价，不可点赞' };
 
   // 3. 累计有效阅读时长
   const totalReading = await getTotalEffectiveReading(pool, userId, reviewId);
@@ -312,10 +314,45 @@ async function getReviewLikeStats(pool, reviewIds) {
   return map;
 }
 
+/**
+ * 踩评价（负向反馈，影响内容质量与奖金）
+ * 单用户单评价终身 1 次踩，与点赞互斥（踩后不可点赞，点赞后不可踩）
+ */
+async function dislikeReview(pool, userId, reviewId) {
+  const [reviews] = await pool.execute(
+    'SELECT review_id, user_id as author_id, status FROM reviews WHERE review_id = ?',
+    [reviewId]
+  );
+  if (!reviews.length) return { success: false, error: '评价不存在' };
+  const review = reviews[0];
+  if (review.status !== 1) return { success: false, error: '评价已隐藏' };
+  if (review.author_id === userId) return { success: false, error: '不能踩自己的评价' };
+
+  const [hasLike] = await pool.execute('SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
+  if (hasLike.length) return { success: false, error: '已点赞过该评价，不可踩' };
+
+  const [hasDislike] = await pool.execute('SELECT 1 FROM review_dislikes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
+  if (hasDislike.length) return { success: false, error: '您已踩过该评价' };
+
+  const dislikeId = genId('rd_');
+  await pool.execute(
+    'INSERT INTO review_dislikes (dislike_id, review_id, user_id) VALUES (?, ?, ?)',
+    [dislikeId, reviewId, userId]
+  );
+
+  await pool.execute(
+    'UPDATE reviews SET dislike_count = COALESCE(dislike_count, 0) + 1 WHERE review_id = ?',
+    [reviewId]
+  );
+
+  return { success: true, dislike_id: dislikeId, dislike_count_delta: 1 };
+}
+
 module.exports = {
   reportReadingSession,
   getTotalEffectiveReading,
   likeReview,
+  dislikeReview,
   getReviewLikeStats,
   getCredibilityWeight,
   calcWeightCoefficient,

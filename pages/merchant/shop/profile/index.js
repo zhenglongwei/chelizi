@@ -2,6 +2,7 @@
 const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantShop, updateMerchantShop, withdrawMerchantQualification, merchantUploadImage, merchantAnalyzeTechnicianCert, merchantAnalyzeQualificationCert, ocrBusinessLicense } = require('../../../../utils/api');
+const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 const { getNavBarHeight } = require('../../../../utils/util');
 const { BUSINESS_HOURS_OPTIONS, QUALIFICATION_LEVEL_OPTIONS, TECHNICIAN_LEVEL_OPTIONS } = require('../../../../utils/shop-profile-constants');
 
@@ -64,7 +65,9 @@ Page({
     technicianModalVisible: false,
     technicianEditIndex: -1,
     technicianForm: { avatar_url: '', name: '', level: '普通技工', years: '', certificate_url: '', ai_recognized_level: '', occupation_name: '', job_direction: '', certificate_no: '' },
-    saving: false
+    saving: false,
+    oem4sCertImage: '',
+    partsBrandCertImage: ''
   },
 
   onLoad() {
@@ -110,7 +113,9 @@ Page({
         certifications: Array.isArray(res.certifications) ? res.certifications : [],
         qualification_ai_recognized: res.qualification_ai_recognized || '',
         qualification_ai_result: res.qualification_ai_result || '',
-        qualificationCertImage: (Array.isArray(res.certifications) ? res.certifications : []).find(c => c.type === 'qualification_cert')?.image || ''
+        qualificationCertImage: (Array.isArray(res.certifications) ? res.certifications : []).find(c => c.type === 'qualification_cert')?.image || '',
+        oem4sCertImage: (Array.isArray(res.certifications) ? res.certifications : []).find(c => c.type === 'oem_4s')?.image || '',
+        partsBrandCertImage: (Array.isArray(res.certifications) ? res.certifications : []).find(c => c.type === 'parts_brand')?.image || ''
       });
     } catch (err) {
       logger.error('加载店铺信息失败', err);
@@ -253,6 +258,55 @@ Page({
       }
       ui.showError(err.message || '识别失败，可手动选择');
     }
+  },
+
+  async onOem4sCertUpload() {
+    if (this._isAuditingLocked()) return;
+    await this._uploadBrandCert('oem_4s', '主机厂品牌授权书', 'oem4sCertImage');
+  },
+
+  onDelOem4sCert() {
+    if (this._isAuditingLocked()) return;
+    this._delBrandCert('oem_4s', 'oem4sCertImage');
+  },
+
+  async onPartsBrandCertUpload() {
+    if (this._isAuditingLocked()) return;
+    await this._uploadBrandCert('parts_brand', '配件品牌授权', 'partsBrandCertImage');
+  },
+
+  onDelPartsBrandCert() {
+    if (this._isAuditingLocked()) return;
+    this._delBrandCert('parts_brand', 'partsBrandCertImage');
+  },
+
+  async _uploadBrandCert(type, name, dataKey) {
+    try {
+      const files = await new Promise((resolve, reject) => {
+        wx.chooseMedia({ count: 1, mediaType: ['image'], success: (r) => resolve(r.tempFiles || []), fail: reject });
+      });
+      if (!files || !files.length) return;
+      ui.showLoading('上传中...');
+      const url = await merchantUploadImage(files[0].tempFilePath);
+      ui.hideLoading();
+      if (!url) return;
+      const certs = [...(this.data.certifications || [])];
+      const idx = certs.findIndex(c => c.type === type);
+      const cert = { type, name, image: url };
+      if (idx >= 0) certs[idx] = cert;
+      else certs.push(cert);
+      this.setData({ certifications: certs, [dataKey]: url });
+      ui.showSuccess('已上传');
+    } catch (err) {
+      ui.hideLoading();
+      logger.error('上传品牌授权失败', err);
+      ui.showError(err.message || '上传失败');
+    }
+  },
+
+  _delBrandCert(type, dataKey) {
+    const certs = (this.data.certifications || []).filter(c => c.type !== type);
+    this.setData({ certifications: certs, [dataKey]: '' });
   },
 
   async onAddShopImage() {
@@ -495,6 +549,7 @@ Page({
         shop_images: this.data.shop_images.length ? this.data.shop_images : null,
         technician_certs: technicians.length ? technicians : null
       });
+      requestMerchantSubscribe('qualification_audit');
       ui.showSuccess('保存成功');
       this.loadShop();
     } catch (err) {

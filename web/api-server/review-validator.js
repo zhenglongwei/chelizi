@@ -57,16 +57,17 @@ function validateContent(content, complexityLevel, isNegative) {
 
 /**
  * 判断是否为优质评价（仅与内容质量相关，不依赖材料）
- * 注：优质评价由 AI 优先判定（真实性、有效性、参考价值）；此处为规则回退
+ * 注：优质评价由 AI 优先判定；此处为规则回退。价格/隐形消费等已由客观题、后台对比覆盖，不重复作为优质判定依据。
+ * 侧重：服务细节、维修过程、效果、沟通、配件、故障排查等对同车型车主的参考价值。
  * @param {object} params - { content }
  * @param {string} complexityLevel - L1/L2/L3/L4
  * @returns {boolean}
  */
 function checkIsPremium(params, complexityLevel) {
   const content = String(params?.content || '').trim();
-  const hasPriceHint = /价格|避坑|对比|明细|花费|费用/.test(content);
-  const hasDetail = /过程|细节|步骤|师傅|技师|服务|维修/.test(content) && content.length >= 30;
-  const hasReference = hasPriceHint || hasDetail;
+  const hasServiceDetail = /过程|细节|步骤|师傅|技师|服务|效果|沟通|时效|态度|质保|售后|避坑/.test(content) && content.length >= 30;
+  const hasTroubleshoot = /故障|排查|问题|解决|配件/.test(content) && content.length >= 30;
+  const hasReference = hasServiceDetail || hasTroubleshoot;
   if (hasReference && content.length >= 30) return true;
   if (content.length >= 80 && /项目|维修|配件|故障|问题/.test(content)) return true;
   return false;

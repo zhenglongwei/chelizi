@@ -1,6 +1,6 @@
 // 服务商消息页 - 申诉、材料审核、竞价等站内消息
 const { getMerchantMessages, markMerchantMessagesRead } = require('../../../utils/api');
-const { getNavBarHeight, formatRelativeTime } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo, formatRelativeTime } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
 
 const TYPE_LABEL = {
@@ -38,7 +38,7 @@ Page({
 
   onLoad() {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({
       pageRootStyle: 'padding-top: ' + navH + 'px',
       scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px'

@@ -22,7 +22,8 @@ Component({
     navContentHeight: 44
   },
   attached() {
-    const sys = wx.getSystemInfoSync();
+    const { getSystemInfo } = require('../../utils/util');
+    const sys = getSystemInfo();
     const menu = wx.getMenuButtonBoundingClientRect();
     const statusBarHeight = sys.statusBarHeight || 20;
     const navContentHeight = (menu.top - statusBarHeight) * 2 + menu.height;

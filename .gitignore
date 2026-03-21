@@ -13,6 +13,15 @@ web/dist-ssr/
 .env.development
 web/scripts/cron.env
 
+# 微信支付商户证书 / 私钥（仅放服务器或本机私密目录，勿提交仓库）
+# 建议整目录存放，例如项目外 /var/www/.../certs/；若必须放在仓库旁，可用 ./certs/ 并忽略：
+certs/
+web/certs/
+secrets/
+apiclient_key.pem
+apiclient_cert.pem
+apiclient_cert.p12
+
 # 日志
 logs/
 *.log

@@ -88,6 +88,18 @@
   padding: var(--space-lg);
 }
 
+.followup-guide {
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+.followup-guide-text {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
 .followup-textarea {
   width: 100%;
   min-height: 160rpx;

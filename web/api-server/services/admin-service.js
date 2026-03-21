@@ -94,9 +94,14 @@ async function qualificationAudit(db, req) {
   const shopId = merchants[0].shop_id;
 
   if (auditStatus === 'approved') {
-    await db.execute(
-      'UPDATE shops SET qualification_status = 1, qualification_audit_reason = NULL, updated_at = NOW() WHERE shop_id = ?',
+    const [shopRow] = await db.execute(
+      'SELECT qualification_ai_recognized FROM shops WHERE shop_id = ?',
       [shopId]
+    );
+    const qualLevel = shopRow[0]?.qualification_ai_recognized || null;
+    await db.execute(
+      'UPDATE shops SET qualification_status = 1, qualification_level = COALESCE(qualification_level, ?), qualification_audit_reason = NULL, updated_at = NOW() WHERE shop_id = ?',
+      [qualLevel, shopId]
     );
     try {
       const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
@@ -105,6 +110,15 @@ async function qualificationAudit(db, req) {
          VALUES (?, ?, 'qualification_audit', ?, ?, ?, 0)`,
         [msgId, id, '资质审核已通过', '恭喜，您的维修资质已审核通过，现可正常接单并在车主端展示。', shopId]
       );
+      const subMsg = require('./subscribe-message-service');
+      subMsg.sendToMerchant(
+        db,
+        id,
+        'merchant_qualification_audit',
+        { title: '审核通过', content: '现可接单', relatedId: shopId },
+        process.env.WX_APPID,
+        process.env.WX_SECRET
+      ).catch(() => {});
     } catch (msgErr) {
       if (!String(msgErr.message || '').includes('merchant_messages')) console.warn('创建服务商消息失败:', msgErr.message);
     }
@@ -118,11 +132,21 @@ async function qualificationAudit(db, req) {
   );
   try {
     const msgId = 'mmsg_' + crypto.randomBytes(12).toString('hex');
+    const content = `您的资质审核未通过。原因：${reason}。请修改后重新提交。`;
     await db.execute(
       `INSERT INTO merchant_messages (message_id, merchant_id, type, title, content, related_id, is_read)
        VALUES (?, ?, 'qualification_audit', ?, ?, ?, 0)`,
-      [msgId, id, '资质审核被驳回', `您的资质审核未通过。原因：${reason}。请修改后重新提交。`, shopId]
+      [msgId, id, '资质审核被驳回', content, shopId]
     );
+    const subMsg = require('./subscribe-message-service');
+    subMsg.sendToMerchant(
+      db,
+      id,
+      'merchant_qualification_audit',
+      { title: '审核驳回', content: '请修改后重交', relatedId: shopId },
+      process.env.WX_APPID,
+      process.env.WX_SECRET
+    ).catch(() => {});
   } catch (msgErr) {
     if (!String(msgErr.message || '').includes('merchant_messages')) console.warn('创建服务商消息失败:', msgErr.message);
   }
@@ -191,15 +215,25 @@ async function getOrderDetail(db, req) {
     return { success: false, error: '订单不存在', statusCode: 404 };
   }
 
+  const order = orders[0];
+
+  // 奖励金记录：transactions.related_id 存的是 review_id，需通过 reviews 关联
   const [rebateRows] = await db.execute(
-    `SELECT t.transaction_id, t.amount, t.reward_tier as rewardTier, t.review_stage as reviewStage, t.tax_deducted as taxDeducted, t.created_at
+    `SELECT t.transaction_id, t.type, t.amount, t.reward_tier as rewardTier, t.review_stage as reviewStage,
+            t.tax_deducted as taxDeducted, t.created_at
      FROM transactions t
-     WHERE t.type = 'rebate' AND t.related_id = ?
+     JOIN reviews r ON t.related_id = r.review_id
+     WHERE t.type IN ('rebate', 'upgrade_diff', 'like_bonus') AND r.order_id = ?
      ORDER BY t.created_at`,
     [orderNo]
   );
 
-  const order = orders[0];
+  // 实际奖励金合计（已完成订单）
+  let actualReward = null;
+  if (order.status === 3 && rebateRows.length > 0) {
+    actualReward = rebateRows.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+  }
+
   const [quotes] = await db.execute(
     `SELECT q.*, s.name as merchantName FROM quotes q
      LEFT JOIN shops s ON q.shop_id = s.shop_id
@@ -221,6 +255,64 @@ async function getOrderDetail(db, req) {
     }
   }
 
+  // 成交信息：从 orders + 选中报价构建
+  let repairOrder = null;
+  const selectedQuote = quotes.find(q => q.quote_id === order.quote_id) || quotes[0];
+  if (selectedQuote) {
+    repairOrder = {
+      merchantName: selectedQuote.merchantName || order.shopName,
+      selectedQuote: {
+        type: 'non-oem',
+        totalAmount: order.quoted_amount,
+      },
+      finalSettlement: {
+        finalAmount: order.actual_amount,
+        additionalAmount: 0,
+        commission: {
+          platform: order.commission,
+          ownerRefund: null,
+        },
+        settlementTime: order.completed_at,
+      },
+      progress: { steps: [] },
+      additionalItems: [],
+      completion_evidence: order.completion_evidence,
+    };
+  }
+
+  // 评价信息
+  const [reviewRows] = await db.execute(
+    `SELECT review_id, order_id, rating, content, type, review_stage, created_at
+     FROM reviews WHERE order_id = ? ORDER BY type, created_at`,
+    [orderNo]
+  );
+  const reviewList = reviewRows.map(r => ({ ...r, createTime: r.created_at }));
+  const review = reviewList.length > 0 ? reviewList[0] : null;
+
+  // 定损材料：orders -> biddings -> damage_reports
+  let settlementProofs = [];
+  if (order.bidding_id) {
+    const [biddingRows] = await db.execute(
+      'SELECT report_id FROM biddings WHERE bidding_id = ?',
+      [order.bidding_id]
+    );
+    if (biddingRows.length > 0 && biddingRows[0].report_id) {
+      const [damageRows] = await db.execute(
+        'SELECT images FROM damage_reports WHERE report_id = ?',
+        [biddingRows[0].report_id]
+      );
+      if (damageRows.length > 0 && damageRows[0].images) {
+        let imgs = damageRows[0].images;
+        if (typeof imgs === 'string') {
+          try { imgs = JSON.parse(imgs); } catch (_) { imgs = []; }
+        }
+        if (Array.isArray(imgs) && imgs.length > 0) {
+          settlementProofs = [{ title: '事故照片', files: imgs }];
+        }
+      }
+    }
+  }
+
   const orderDetail = {
     order: {
       orderNo: order.order_id,
@@ -230,6 +322,7 @@ async function getOrderDetail(db, req) {
       orderTier: order.order_tier,
       complexityLevel: order.complexity_level,
       rewardPreview: order.reward_preview,
+      actualReward,
       commissionRate: order.commission_rate,
       commission: order.commission,
       reviewStageStatus: order.review_stage_status,
@@ -251,9 +344,10 @@ async function getOrderDetail(db, req) {
       submitTime: q.created_at,
       nonOemQuote: { totalAmount: q.amount, partsCost: q.amount, laborCost: 0, materialCost: 0 },
     })),
-    repairOrder: null,
+    repairOrder,
     selectedMerchantInfo: { name: order.shopName },
     refunds: rebateRows.map(r => ({
+      _id: r.transaction_id,
       transaction_id: r.transaction_id,
       amount: r.amount,
       refundAmount: r.amount,
@@ -261,11 +355,13 @@ async function getOrderDetail(db, req) {
       review_stage: r.reviewStage,
       tax_deducted: r.taxDeducted,
       createTime: r.created_at,
-      type: 'order',
+      type: r.type === 'rebate' ? 'order' : r.type,
+      status: 'paid',
     })),
     complaints: [],
-    review: null,
-    settlementProofs: [],
+    review,
+    reviewList: reviewList || [],
+    settlementProofs,
   };
 
   return { success: true, data: orderDetail };
@@ -360,7 +456,7 @@ async function getStatistics(db, req) {
 async function getSettlements(db, req) {
   const [orders] = await db.execute(
     `SELECT o.order_id as orderNo, s.name as merchantName, o.quoted_amount as orderAmount,
-            o.commission as commission, o.completed_at as settlementTime
+            o.commission as commission, o.completed_at as settlementTime, o.commission_status as commissionStatus
      FROM orders o
      LEFT JOIN shops s ON o.shop_id = s.shop_id
      WHERE o.status = 3 AND o.completed_at IS NOT NULL
@@ -376,6 +472,29 @@ async function getSettlements(db, req) {
      WHERE t.type = 'rebate' AND t.amount > 0
      ORDER BY t.created_at DESC LIMIT 50`
   );
+
+  let deposits = [];
+  let commissionLedger = [];
+  try {
+    const [wallets] = await db.execute(
+      `SELECT s.name as merchantName, w.shop_id as shopId, w.balance, w.frozen, w.deduct_mode as deductMode, w.updated_at as updateTime
+       FROM merchant_commission_wallets w
+       JOIN shops s ON w.shop_id = s.shop_id
+       ORDER BY w.updated_at DESC LIMIT 200`
+    );
+    deposits = wallets;
+    const [led] = await db.execute(
+      `SELECT l.ledger_id as ledgerId, l.shop_id as shopId, s.name as merchantName, l.type, l.amount,
+              l.order_id as orderId, l.remark, l.created_at as createdAt
+       FROM merchant_commission_ledger l
+       JOIN shops s ON l.shop_id = s.shop_id
+       ORDER BY l.id DESC LIMIT 500`
+    );
+    commissionLedger = led;
+  } catch (e) {
+    console.warn('[getSettlements] commission tables:', e.message);
+  }
+
   return {
     success: true,
     data: {
@@ -387,7 +506,8 @@ async function getSettlements(db, req) {
         review_stage: r.reviewStage,
         tax_deducted: r.taxDeducted,
       })),
-      deposits: [],
+      deposits,
+      commissionLedger,
     },
   };
 }
@@ -469,6 +589,32 @@ async function postRewardRule(db, req) {
   await db.execute(
     'INSERT INTO reward_rules (rule_key, rule_value, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE rule_value=VALUES(rule_value), description=VALUES(description)',
     [ruleKey, val, description || '']
+  );
+  return { success: true, message: '保存成功' };
+}
+
+/** 获取完整奖励金规则配置（reward_rules.rewardRules） */
+async function getRewardRulesConfig(db, req) {
+  const rewardRulesLoader = require('./reward-rules-loader');
+  const config = await rewardRulesLoader.getRewardRulesConfig(db);
+  return { success: true, data: config };
+}
+
+/** 保存完整奖励金规则配置到 reward_rules 表 */
+async function saveRewardRulesConfig(db, req) {
+  const config = req.body;
+  if (!config || typeof config !== 'object') {
+    return { success: false, error: '配置不能为空', statusCode: 400 };
+  }
+  const levels = config.complexityLevels;
+  if (!Array.isArray(levels) || levels.length === 0) {
+    return { success: false, error: '模块1 复杂度等级不能为空，请至少配置一条', statusCode: 400 };
+  }
+  const val = JSON.stringify(config);
+  await db.execute(
+    `INSERT INTO reward_rules (rule_key, rule_value, description) VALUES ('rewardRules', ?, '奖励金规则配置（模块1-5）')
+     ON DUPLICATE KEY UPDATE rule_value = VALUES(rule_value), description = VALUES(description)`,
+    [val]
   );
   return { success: true, message: '保存成功' };
 }
@@ -828,6 +974,8 @@ module.exports = {
   deleteComplexityLevel,
   getRewardRules,
   postRewardRule,
+  getRewardRulesConfig,
+  saveRewardRulesConfig,
   getReviewAuditList,
   postReviewAuditManual,
   getComplexityUpgradeList,

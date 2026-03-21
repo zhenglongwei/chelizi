@@ -1,0 +1,60 @@
+<custom-nav-bar title="佣金账户" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card">
+    <view class="row-between">
+      <text class="fs-h3 fw-bold text-primary">账户余额</text>
+      <text class="fs-h3 fw-bold" style="color: var(--success);">¥{{walletBalance}}</text>
+    </view>
+    <text class="fs-cap text-muted">冻结：¥{{walletFrozen}} · 模式：{{modeLabel}}</text>
+    <view style="margin-top: var(--space-md);">
+      <text class="fs-cap text-muted">扣款方式</text>
+      <view style="margin-top: var(--space-sm);">
+        <button class="btn-outline" size="mini" bindtap="onSetMode" data-mode="auto">自动扣余额</button>
+        <button class="btn-outline" size="mini" bindtap="onSetMode" data-mode="per_order">逐单微信支付</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <text class="fs-body fw-bold text-primary">充值</text>
+    <input class="input" type="digit" placeholder="金额（元）" value="{{rechargeAmount}}" bindinput="onRechargeInput" />
+    <button class="btn-primary" bindtap="onRecharge">微信充值</button>
+  </view>
+
+  <view class="card">
+    <text class="fs-body fw-bold text-primary">原路退款</text>
+    <input class="input" type="digit" placeholder="退款金额（元）" value="{{refundAmount}}" bindinput="onRefundInput" />
+    <button class="btn-primary" bindtap="onRefund" style="background: var(--warning);">申请退款</button>
+    <text class="fs-cap text-muted" style="margin-top: var(--space-sm); display: block;">可退余额 = 当前余额 − 冻结；按充值记录 FIFO 原路退回。</text>
+  </view>
+
+  <view class="card" wx:if="{{pendingOrders.length}}">
+    <text class="fs-body fw-bold text-primary">待缴佣金订单</text>
+    <view class="order-pending" wx:for="{{pendingOrders}}" wx:key="order_id">
+      <text class="fs-body">{{item.order_id}}</text>
+      <text class="fs-cap text-muted" style="display: block;">状态 {{item.commission_status}} · 应付约 ¥{{item.needPay}}</text>
+      <button class="btn-primary" size="mini" bindtap="onPayOrder" data-id="{{item.order_id}}">微信支付佣金</button>
+    </view>
+  </view>
+
+  <view class="card">
+    <text class="fs-body fw-bold text-primary">阶段 B：提交实际金额与支付凭证</text>
+    <input class="input" placeholder="订单号" value="{{finalizeOrderId}}" bindinput="onFinOrderInput" />
+    <input class="input" type="digit" placeholder="实际维修金额（元）" value="{{finalizeAmount}}" bindinput="onFinAmtInput" />
+    <button class="btn-outline" bindtap="onPickProof">上传支付凭证图</button>
+    <view wx:if="{{proofUrls.length}}" class="fs-cap text-muted">已选 {{proofUrls.length}} 张</view>
+    <button class="btn-primary" bindtap="onFinalize">提交 finalize</button>
+  </view>
+
+  <view class="card">
+    <text class="fs-body fw-bold text-primary">收支明细</text>
+    <view class="ledger-item" wx:for="{{ledger}}" wx:key="ledger_id">
+      <text class="fs-body">{{item.type}}</text>
+      <text class="fs-cap text-muted" style="display: block;">
+        {{item.amount >= 0 ? '+' : ''}}{{item.amount}} 元
+      </text>
+      <text class="fs-cap text-muted">{{item.created_at}}</text>
+    </view>
+    <text wx:if="{{!ledger.length}}" class="fs-cap text-muted">暂无记录</text>
+  </view>
+</view>

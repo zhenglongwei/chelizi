@@ -1,12 +1,14 @@
 /**
  * 奖励金计算服务
- * 按《全指标底层逻辑梳理》第四章实现
- * 公式：用户奖励金 = （基础固定奖励 × 车价校准系数 × 维修复杂度校准系数） + 优质内容浮动奖励
+ * 按《全链路激励驱动体系》实现
+ * 公式：用户奖励金 = 复杂度基础固定奖励 × 车价校准系数 + 优质内容浮动奖励
  * 双重约束：单订单封顶、70% 佣金红线
+ * 注：维修复杂度校准系数已并入基础固定奖励（方案A）
  */
 
-// 全指标 4.2 基础固定奖励（元）
-const BASE_REWARD = { L1: 10, L2: 30, L3: 100, L4: 300 };
+// 基础固定奖励（元）：L3/L4 已并入原 1.5 倍，保险事故车单独档位
+const BASE_REWARD = { L1: 10, L2: 30, L3: 150, L4: 450 };
+const BASE_REWARD_INSURANCE = { L1: 20, L2: 60, L3: 300, L4: 900 };
 
 // 全指标 4.3 车价校准系数（车辆官方指导价 万元）
 const VEHICLE_COEFF = [
@@ -29,90 +31,101 @@ const PREMIUM_FLOAT_RATIO = 0.5;
 const VIRAL_FLOAT_RATIO = 1.0;
 
 /**
- * 从 repair_complexity_levels、reward_rules 表读取规则（方案 A：admin 配置即生效）
- * 表为空时返回 {}，计算逻辑使用模块内默认值
+ * 从 reward_rules 表读取规则（唯一数据源）
+ * 配置缺失时直接报错，不兼容 settings 或 repair_complexity_levels
  */
 async function getRewardRules(pool) {
-  const rules = {};
-  try {
-    // 1. repair_complexity_levels：按 level 取 fixed_reward、cap_amount
-    const [levelRows] = await pool.execute(
-      'SELECT `level`, fixed_reward, cap_amount FROM repair_complexity_levels ORDER BY `level`, id'
-    );
+  const rewardRulesLoader = require('./services/reward-rules-loader');
+  const config = await rewardRulesLoader.getRewardRulesConfig(pool);
+
+  const rules = { ...config };
+  if (config.baseReward && typeof config.baseReward === 'object') {
+    rules.baseReward = config.baseReward;
+  }
+  if (config.baseRewardInsurance && typeof config.baseRewardInsurance === 'object') {
+    rules.baseRewardInsurance = config.baseRewardInsurance;
+  }
+
+  // 从 complexityLevels 聚合 orderCap（按 level 取首条）；baseReward 缺失时从 complexityLevels 兜底
+  const levels = config.complexityLevels;
+  if (Array.isArray(levels) && levels.length > 0) {
     const byLevel = {};
-    for (const r of levelRows || []) {
+    for (const r of levels) {
       const L = (r.level || '').toUpperCase();
       if (!L || !['L1', 'L2', 'L3', 'L4'].includes(L)) continue;
       if (!byLevel[L]) {
-        byLevel[L] = { fixed_reward: parseFloat(r.fixed_reward) || 0, cap_amount: parseFloat(r.cap_amount) || 0 };
+        byLevel[L] = {
+          fixed_reward: parseFloat(r.fixed_reward) || 0,
+          cap_amount: parseFloat(r.cap_amount) || 0,
+        };
       }
     }
-    if (Object.keys(byLevel).length > 0) {
+    rules.orderCap = {};
+    for (const L of ['L1', 'L2', 'L3', 'L4']) {
+      if (byLevel[L]) {
+        rules.orderCap[L] = byLevel[L].cap_amount;
+      }
+    }
+    if (!config.baseReward || typeof config.baseReward !== 'object') {
       rules.baseReward = {};
-      rules.orderCap = {};
       for (const L of ['L1', 'L2', 'L3', 'L4']) {
-        if (byLevel[L]) {
-          rules.baseReward[L] = byLevel[L].fixed_reward;
-          rules.orderCap[L] = byLevel[L].cap_amount;
-        }
+        if (byLevel[L]) rules.baseReward[L] = byLevel[L].fixed_reward;
       }
     }
-
-    // 2. reward_rules：rule_key -> rule_value 合并
-    const [ruleRows] = await pool.execute('SELECT rule_key, rule_value FROM reward_rules');
-    for (const r of ruleRows || []) {
-      const key = r.rule_key;
-      if (!key) continue;
-      let val = r.rule_value;
-      if (typeof val === 'string') {
-        try {
-          val = val ? JSON.parse(val) : null;
-        } catch {
-          val = val;
-        }
-      }
-      rules[key] = val;
-    }
-
-    // 3. 兼容旧 settings.rewardRules（若表为空则回退读取，便于迁移过渡）
-    if (Object.keys(rules).length === 0) {
-      const [settingsRows] = await pool.execute("SELECT `value` FROM settings WHERE `key` = 'rewardRules'");
-      if (settingsRows.length > 0 && settingsRows[0].value) {
-        const parsed = typeof settingsRows[0].value === 'string' ? JSON.parse(settingsRows[0].value) : settingsRows[0].value;
-        return parsed || {};
+    if (!config.baseRewardInsurance || typeof config.baseRewardInsurance !== 'object') {
+      rules.baseRewardInsurance = {};
+      for (const L of ['L1', 'L2', 'L3', 'L4']) {
+        if (byLevel[L]) rules.baseRewardInsurance[L] = (byLevel[L].fixed_reward || 0) * 2;
       }
     }
-
-    return rules;
-  } catch {
-    return {};
   }
+
+  return rules;
 }
 
 /**
  * 车价校准系数（全指标 4.3）
- * @param {number} vehiclePrice - 裸车价（元），null 时返回 1.0
+ * @param {number} vehiclePrice - 裸车价（元），null 时尝试用 vehicle_price_tier
+ * @param {object} rules - 规则配置
+ * @param {string} vehiclePriceTier - 车型档次 low/mid/high（大模型根据品牌推断），无价格时使用
+ * @param {string} brand - 品牌名，用于无 tier 时的兜底推断（如沃尔沃→mid）
  */
-function getVehicleCoeff(vehiclePrice, rules = {}) {
-  if (vehiclePrice == null || vehiclePrice <= 0) return 1.0;
-  const priceWan = vehiclePrice / 10000;
-  const overrides = rules.vehicleCoeff || rules.vehicle_coeff;
-  if (overrides && Array.isArray(overrides)) {
-    const m = overrides.find((o) => priceWan <= (o.max ?? o.maxWan ?? Infinity));
-    if (m) return parseFloat(m.coeff) ?? 1.0;
+function getVehicleCoeff(vehiclePrice, rules = {}, vehiclePriceTier = null, brand = null) {
+  if (vehiclePrice != null && vehiclePrice > 0) {
+    const priceWan = vehiclePrice / 10000;
+    const overrides = rules.vehicleCoeff || rules.vehicle_coeff;
+    if (overrides && Array.isArray(overrides)) {
+      const m = overrides.find((o) => priceWan <= (o.max ?? o.maxWan ?? Infinity));
+      if (m) return parseFloat(m.coeff) ?? 1.0;
+    }
+    const m = VEHICLE_COEFF.find((v) => priceWan <= v.max);
+    return m ? m.coeff : 3.0;
   }
-  const m = VEHICLE_COEFF.find((v) => priceWan <= v.max);
-  return m ? m.coeff : 3.0;
+  const tier = (vehiclePriceTier || '').toLowerCase();
+  if (['low', 'mid', 'high'].includes(tier)) {
+    return { low: 1.0, mid: 1.3, high: 1.5 }[tier];
+  }
+  if (brand) {
+    const b = String(brand).toLowerCase();
+    if (/沃尔沃|奔驰|宝马|奥迪|特斯拉|蔚来|理想|保时捷|路虎|雷克萨斯|凯迪拉克|林肯/i.test(b)) return 1.3;
+    if (/丰田|本田|日产|大众|吉利|比亚迪|长安|哈弗/i.test(b)) return 1.0;
+  }
+  return 1.0;
 }
 
 /**
- * 维修复杂度校准系数（全指标 4.4）
- * 基础项目 1.0；高难度 1.5；保险事故车 2.0
+ * 配件数量升级：L1/L2 项目数 > 3 时升级 1 级（L2→L3, L1→L2）
+ * @param {string} L - 当前复杂度 L1|L2|L3|L4
+ * @param {Array} items - 维修项目 [{ name, repair_type }]
  */
-function getComplexityCoeff(isInsuranceAccident, isHighDifficulty, rules = {}) {
-  if (isInsuranceAccident) return rules.insuranceAccidentCoeff ?? 2.0;
-  if (isHighDifficulty) return rules.highDifficultyCoeff ?? 1.5;
-  return 1.0;
+function applyComplexityUpgrade(L, items = []) {
+  if (!['L1', 'L2'].includes(L)) return L;
+  const count = (items || []).filter((i) => {
+    const n = String(i.name || i.damage_part || i.item || '').trim();
+    return n.length > 0;
+  }).length;
+  if (count > 3) return L === 'L1' ? 'L2' : 'L3';
+  return L;
 }
 
 /**
@@ -158,7 +171,7 @@ function calcCommissionRate(rules, orderAmount, shopComplianceRate, shopComplain
  * 计算订单税前奖励金（基础部分，不含优质浮动）
  * @param {object} pool - 数据库连接池
  * @param {object} order - { actual_amount, quoted_amount, complexity_level, vehicle_price_tier, order_tier, is_insurance_accident }
- * @param {object} vehicleInfo - { vehicle_price } 裸车价（元）
+ * @param {object} vehicleInfo - { vehicle_price, vehicle_price_max } 裸车价（元），vehicle_price_max 为大模型推断的车型指导价上限
  * @param {object} quoteItems - 报价项目 [{ name }]
  * @param {object} shop - { compliance_rate, complaint_rate, has_violation }
  * @returns {Promise<{ reward_pre, reward_base, order_tier, complexity_level, vehicle_price_tier, commission_rate, commission_amount, stages, complexity_level }>}
@@ -166,31 +179,39 @@ function calcCommissionRate(rules, orderAmount, shopComplianceRate, shopComplain
 async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], shop = {}) {
   const rules = await getRewardRules(pool);
   const M_order = parseFloat(order.actual_amount || order.quoted_amount) || 0;
-  const vehiclePrice = vehicleInfo?.vehicle_price != null ? parseFloat(vehicleInfo.vehicle_price) : null;
+  const vehiclePrice = vehicleInfo?.vehicle_price != null
+    ? parseFloat(vehicleInfo.vehicle_price)
+    : (vehicleInfo?.vehicle_price_max != null ? parseFloat(vehicleInfo.vehicle_price_max) : null);
+  const vehiclePriceTier = vehicleInfo?.vehicle_price_tier || null;
+  const brand = vehicleInfo?.brand || null;
   const orderTier = order.order_tier ?? getOrderTier(M_order, rules);
 
-  // 复杂度：优先用订单已有值，否则从 repair_complexity_levels 匹配维修项目，未匹配时默认 L2
+  // 复杂度：优先用订单已有值，否则从 repair_complexity_levels 匹配维修项目，未匹配时默认 L2；配件数>3 时升级 1 级
   let L = (order.complexity_level || '').toUpperCase();
   if (!L || !['L1', 'L2', 'L3', 'L4'].includes(L)) {
     const complexityService = require('./services/complexity-service');
     const { level } = await complexityService.resolveComplexityFromItems(pool, quoteItems);
     L = level;
   }
+  L = applyComplexityUpgrade(L, quoteItems);
   const isInsuranceAccident = !!(order.is_insurance_accident);
-  const vehicleCoeff = getVehicleCoeff(vehiclePrice, rules);
-  const isHighDifficulty = ['L3', 'L4'].includes(L);
-  const complexityCoeff = getComplexityCoeff(isInsuranceAccident, isHighDifficulty, rules);
+  const vehicleCoeff = getVehicleCoeff(vehiclePrice, rules, vehiclePriceTier, brand);
 
-  const baseFixed = rules.baseReward?.[L] ?? BASE_REWARD[L] ?? BASE_REWARD.L2;
-  const baseReward = baseFixed * vehicleCoeff * complexityCoeff;
+  const baseFixed = isInsuranceAccident
+    ? (rules.baseRewardInsurance?.[L] ?? BASE_REWARD_INSURANCE[L] ?? BASE_REWARD_INSURANCE.L2)
+    : (rules.baseReward?.[L] ?? BASE_REWARD[L] ?? BASE_REWARD.L2);
+  const baseReward = baseFixed * vehicleCoeff;
 
   const capBase = isInsuranceAccident ? INSURANCE_ACCIDENT_CAP : (ORDER_CAP[L] ?? ORDER_CAP.L2);
   const capFromRules = rules.orderCap?.[L] ?? rules[`orderCap${L}`];
   let capByComplexity = capFromRules ?? capBase;
-  const isLowEndVehicle = vehiclePrice != null && vehiclePrice <= 100000;
-  if (isLowEndVehicle) capByComplexity *= (rules.lowEndCapBoost ?? 1.2);
+  const lowMax = rules.vehicleTierLowMax ?? 100000;
+  const isLowEndVehicle = vehiclePrice != null && vehiclePrice <= lowMax;
+  const lowCapUp = rules.vehicleTierLowCapUp ?? 20;
+  const lowEndCapBoost = rules.lowEndCapBoost ?? (1 + lowCapUp / 100);
+  if (isLowEndVehicle) capByComplexity *= lowEndCapBoost;
 
-  const capByOrderTier = ORDER_TIER_CAP[orderTier] ?? ORDER_TIER_CAP[2];
+  const capByOrderTier = rules[`orderTier${orderTier}Cap`] ?? ORDER_TIER_CAP[orderTier] ?? ORDER_TIER_CAP[2];
 
   const commissionRate = calcCommissionRate(
     rules, M_order,
@@ -211,7 +232,10 @@ async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], s
     reward_base: rewardPre,
     order_tier: orderTier,
     complexity_level: L,
-    vehicle_price_tier: vehiclePrice != null ? (vehiclePrice < 100000 ? 'low' : vehiclePrice < 300000 ? 'mid' : 'high') : 'mid',
+    vehicle_coeff: vehicleCoeff,
+    vehicle_price_tier: vehiclePrice != null
+      ? (vehiclePrice <= (rules.vehicleTierLowMax ?? 100000) ? 'low' : vehiclePrice <= (rules.vehicleTierMediumMax ?? 300000) ? 'mid' : 'high')
+      : 'mid',
     commission_rate: commissionRate,
     commission_amount: Math.round(commission * 100) / 100,
     stages: getReleaseStages(orderTier, rewardPre),
@@ -232,35 +256,23 @@ function calcPremiumFloatReward(rewardBase, isPremium, isViral = false) {
 }
 
 /**
- * 分阶段发放规则（全指标 4.7）
+ * 发放规则：主评价全额发放，追评整体评估后若升级则差额补发（不再分阶段）
  */
 function getReleaseStages(orderTier, totalReward) {
-  if (orderTier <= 2) {
-    return [{ stage: 'main', percent: 100, amount: totalReward.toFixed(2) }];
-  }
-  if (orderTier === 3) {
-    return [
-      { stage: 'main', percent: 50, amount: (totalReward * 0.5).toFixed(2) },
-      { stage: '1m', percent: 50, amount: (totalReward * 0.5).toFixed(2) },
-    ];
-  }
-  return [
-    { stage: 'main', percent: 50, amount: (totalReward * 0.5).toFixed(2) },
-    { stage: '1m', percent: 30, amount: (totalReward * 0.3).toFixed(2) },
-    { stage: '3m', percent: 20, amount: (totalReward * 0.2).toFixed(2) },
-  ];
+  return [{ stage: 'main', percent: 100, amount: totalReward.toFixed(2) }];
 }
 
 module.exports = {
   getRewardRules,
   getVehicleCoeff,
-  getComplexityCoeff,
+  applyComplexityUpgrade,
   getOrderTier,
   calcCommissionRate,
   calculateReward,
   calcPremiumFloatReward,
   getReleaseStages,
   BASE_REWARD,
+  BASE_REWARD_INSURANCE,
   ORDER_CAP,
   ORDER_TIER_CAP,
   PREMIUM_FLOAT_RATIO,

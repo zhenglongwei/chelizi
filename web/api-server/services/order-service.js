@@ -93,7 +93,7 @@ async function doCancelOrder(pool, orderId, biddingId) {
  */
 async function confirmOrder(pool, orderId, userId) {
   const [orders] = await pool.execute(
-    'SELECT order_id, status, quoted_amount, actual_amount, commission_rate FROM orders WHERE order_id = ? AND user_id = ?',
+    'SELECT order_id, shop_id, quote_id, status, quoted_amount, actual_amount, commission_rate FROM orders WHERE order_id = ? AND user_id = ?',
     [orderId, userId]
   );
   if (orders.length === 0) {
@@ -111,7 +111,31 @@ async function confirmOrder(pool, orderId, userId) {
     'UPDATE orders SET status = 3, completed_at = NOW(), updated_at = NOW(), commission = ? WHERE order_id = ?',
     [commission, orderId]
   );
-  return { success: true, data: { order_id: orderId } };
+
+  try {
+    const systemViolation = require('./system-violation-service');
+    await systemViolation.checkAndRecordOrderViolations(pool, order);
+  } catch (err) {
+    console.error('[order-service] checkAndRecordOrderViolations error:', err.message);
+  }
+
+  let commissionSettlement = null;
+  try {
+    const commissionWallet = require('./commission-wallet-service');
+    const [freshRows] = await pool.execute(
+      `SELECT order_id, shop_id, commission_rate, quoted_amount, actual_amount, commission,
+              is_insurance_accident
+       FROM orders WHERE order_id = ?`,
+      [orderId]
+    );
+    if (freshRows.length) {
+      commissionSettlement = await commissionWallet.afterOrderCompleted(pool, freshRows[0]);
+    }
+  } catch (ce) {
+    console.error('[order-service] commission settlement:', ce.message);
+  }
+
+  return { success: true, data: { order_id: orderId, commission_settlement: commissionSettlement } };
 }
 
 /**
@@ -396,6 +420,15 @@ async function updateRepairPlan(pool, orderId, shopId, body) {
          VALUES (?, ?, 'order', '维修方案已更新', '服务商已调整维修方案，请前往订单详情确认。', ?, 0)`,
         [msgId, o.user_id, orderId]
       );
+      const subMsg = require('./subscribe-message-service');
+      subMsg.sendToUser(
+        pool,
+        o.user_id,
+        'user_order_update',
+        { title: '方案待确认', content: '方案已调整，请确认', relatedId: orderId },
+        process.env.WX_APPID,
+        process.env.WX_SECRET
+      ).catch(() => {});
     } catch (msgErr) {
       console.warn('[OrderService] 创建车主消息失败:', msgErr && msgErr.message);
     }
@@ -425,6 +458,28 @@ async function approveRepairPlan(pool, orderId, userId, approved) {
       'UPDATE orders SET repair_plan_status = 0, updated_at = NOW() WHERE order_id = ?',
       [orderId]
     );
+    try {
+      const [orderRows] = await pool.execute('SELECT shop_id FROM orders WHERE order_id = ?', [orderId]);
+      if (orderRows.length > 0) {
+        const [merchantRows] = await pool.execute(
+          'SELECT merchant_id FROM merchant_users WHERE shop_id = ? AND status = 1 LIMIT 1',
+          [orderRows[0].shop_id]
+        );
+        if (merchantRows.length > 0) {
+          const subMsg = require('./subscribe-message-service');
+          subMsg.sendToMerchant(
+            pool,
+            merchantRows[0].merchant_id,
+            'merchant_order_new',
+            { title: '方案已确认', content: '可继续维修完成', relatedId: orderId },
+            process.env.WX_APPID,
+            process.env.WX_SECRET
+          ).catch((e) => console.warn('[OrderService] 维修方案确认订阅消息发送异常:', e));
+        }
+      }
+    } catch (msgErr) {
+      console.warn('[OrderService] 维修方案确认订阅消息失败:', msgErr && msgErr.message);
+    }
     return { success: true, data: { order_id: orderId, approved: true } };
   }
 

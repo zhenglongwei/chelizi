@@ -1,12 +1,17 @@
 // 主评价页 - 05-评价页（3 模块 1 次提交）
 const { getToken, getOrderForReview, getRewardPreview, submitReview, uploadImage } = require('../../../utils/api');
-const { getNavBarHeight } = require('../../../utils/util');
+const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
 
-// 选填星级：仅保留主观可评价维度。报价透明度、完工时效由平台客观计算；售后响应在追评时评价
+// 弱网适配：输入内容本地缓存 key 前缀
+const STORAGE_REVIEW_DRAFT = 'review_draft_';
+
+// 评价维度（与文档对齐）：价格合理性、师傅专业度、配件正品度、维修时效。售后保障在追评时填写
 const RATING_KEYS = [
-  { key: 'service', label: '服务态度', dbKey: 'service' },
-  { key: 'environment', label: '维修环境', dbKey: 'quality' }
+  { key: 'price', label: '价格合理性', dbKey: 'price' },
+  { key: 'quality', label: '师傅专业度', dbKey: 'quality' },
+  { key: 'parts', label: '配件正品度', dbKey: 'parts' },
+  { key: 'speed', label: '维修时效', dbKey: 'speed' }
 ];
 
 function formatMoney(v) {
@@ -77,7 +82,7 @@ Page({
       fault_evidence_images: [],
       faultEvidenceDisplayList: [],
       content: '',
-      ratings: { service: 5, environment: 5 }
+      ratings: { price: 5, quality: 5, parts: 5, speed: 5 }
     },
     isAnonymous: false,
     submitting: false,
@@ -89,14 +94,20 @@ Page({
     canSubmit: false,
     planCompare: null,
     ratingItems: [
-      { key: 'service', label: '服务态度', value: 5 },
-      { key: 'environment', label: '维修环境', value: 5 }
-    ]
+      { key: 'price', label: '价格合理性', value: 5 },
+      { key: 'quality', label: '师傅专业度', value: 5 },
+      { key: 'parts', label: '配件正品度', value: 5 },
+      { key: 'speed', label: '维修时效', value: 5 }
+    ],
+    contentLength: 0,
+    inputFocused: false,
+    guideCollapsedByDefault: false,
+    detailGuideVisible: false
   },
 
   onLoad(options) {
     const navH = getNavBarHeight();
-    const sys = wx.getSystemInfoSync();
+    const sys = getSystemInfo();
     this.setData({
       pageRootStyle: 'padding-top: ' + navH + 'px',
       scrollStyle: 'height: ' + (sys.windowHeight - navH - 120) + 'px'
@@ -131,7 +142,7 @@ Page({
         else if (amount < 20000) orderTier = 3;
         else orderTier = 4;
       }
-      const ratings = { service: 5, environment: 5 };
+      const ratings = { price: 5, quality: 5, parts: 5, speed: 5 };
       const ratingItems = RATING_KEYS.map((k) => ({ ...k, value: ratings[k.key] ?? 5 }));
 
       const merchantMaterials = info.merchant_material_images || [];
@@ -156,6 +167,18 @@ Page({
 
       const planCompare = buildPlanCompare(info.quote_plan, info.repair_plan);
 
+      // 老用户适配：≥3 条有效评价时，详细指引默认永久收起
+      const guideCollapsedByDefault = (info.valid_review_count || 0) >= 3;
+      // 弱网适配：尝试恢复本地缓存的输入内容
+      let restoredContent = '';
+      try {
+        const draft = wx.getStorageSync(STORAGE_REVIEW_DRAFT + orderId);
+        if (draft && typeof draft === 'string') restoredContent = draft;
+      } catch (_) {}
+      const finalContent = restoredContent || module3.content || '';
+      if (restoredContent) {
+        module3.content = restoredContent;
+      }
       this.setData({
         info,
         rewardPreview,
@@ -166,6 +189,8 @@ Page({
         planCompare,
         orderVerification: info.order_verification || null,
         orderVerificationAllOk: !!info.order_verification_all_ok,
+        guideCollapsedByDefault,
+        contentLength: (finalContent || '').length,
         loading: false
       });
       this.updateProgress();
@@ -179,20 +204,33 @@ Page({
     const answersDone = answers.q1_progress_synced != null && answers.q2_parts_shown != null && answers.q3_fault_resolved != null;
     const contentLen = (module3.content || '').trim().length;
     const contentOk = contentLen >= 5;
+    const ratings = module3.ratings || {};
+    const ratingsDone = RATING_KEYS.every((k) => ratings[k.key] != null && ratings[k.key] >= 1 && ratings[k.key] <= 5);
     let done = 0;
     if (answersDone) done++;
     if (contentOk) done++;
-    const hint = done >= 2 ? '完成' : '完成 3 道题 + 至少 1 句描述可获奖励';
+    if (ratingsDone) done++;
+    const hint = done >= 3 ? '完成' : '完成 3 道题 + 4 项星级 + 至少 1 句描述可获奖励';
     this.setData({
       progressText: hint,
-      canSubmit: true
+      canSubmit: answersDone && contentOk && ratingsDone
     });
   },
 
   onQ1(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q1_progress_synced': v }, () => this.updateProgress()); },
   onQ2(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q2_parts_shown': v }, () => this.updateProgress()); },
   onQ3(e) { const v = e.detail.value === 'true'; this.setData({ 'answers.q3_fault_resolved': v }, () => this.updateProgress()); },
-  onM3Content(e) { this.setData({ 'module3.content': (e.detail.value || '').trim() }, () => this.updateProgress()); },
+  onM3Content(e) {
+    const content = e.detail.value || '';
+    const { orderId } = this.data;
+    this.setData({ 'module3.content': content, contentLength: content.length }, () => this.updateProgress());
+    try { wx.setStorageSync(STORAGE_REVIEW_DRAFT + orderId, content); } catch (_) {}
+  },
+  onContentFocus() { this.setData({ inputFocused: true }); },
+  onContentBlur() { this.setData({ inputFocused: false }); },
+  onShowDetailGuide() { this.setData({ detailGuideVisible: true }); },
+  onHideDetailGuide() { this.setData({ detailGuideVisible: false }); },
+  onPreventMove() {},
 
   onAnonymousChange(e) { this.setData({ isAnonymous: !!e.detail.value }); },
 
@@ -349,7 +387,10 @@ Page({
 
       const ratings = module3.ratings || {};
       const ratingsForApi = {
-        quality: ratings.environment ?? 5,
+        price: ratings.price ?? 5,
+        quality: ratings.quality ?? 5,
+        parts: ratings.parts ?? 5,
+        speed: ratings.speed ?? 5,
         service: ratings.service ?? 5
       };
 
@@ -364,7 +405,7 @@ Page({
           q1_progress_synced: answers.q1_progress_synced,
           q2_parts_shown: answers.q2_parts_shown,
           q3_fault_resolved: answers.q3_fault_resolved,
-          content: module3.content,
+          content: (module3.content || '').trim(),
           ratings: ratingsForApi
         },
         is_anonymous: isAnonymous
@@ -372,6 +413,7 @@ Page({
 
       const amt = (res.reward && res.reward.amount) ?? 0;
       const isInvalid = !!res.is_invalid;
+      try { wx.removeStorageSync(STORAGE_REVIEW_DRAFT + orderId); } catch (_) {}
       this.setData({
         submitting: false,
         submitted: true,

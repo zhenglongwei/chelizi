@@ -51,6 +51,41 @@
           <text class="text-weak fs-sm" wx:if="{{item.taxLabel}}">{{item.taxLabel}}</text>
           <text class="text-weak fs-sm" wx:if="{{item.description}}">{{item.description}}</text>
         </view>
+        <view class="balance-item-breakdown" wx:if="{{item.rewardBreakdown}}">
+          <text class="balance-breakdown-title fs-cap">奖励明细</text>
+          <view class="balance-breakdown-row">
+            <text class="text-weak fs-cap">订单分级</text>
+            <text class="fs-cap">{{item.rewardBreakdown.tier_label}}</text>
+          </view>
+          <view class="balance-breakdown-row">
+            <text class="text-weak fs-cap">发放阶段</text>
+            <text class="fs-cap">{{item.rewardBreakdown.stage_label}}{{item.rewardBreakdown.stage_percent ? ' ' + item.rewardBreakdown.stage_percent : ''}}</text>
+          </view>
+          <view class="balance-breakdown-row" wx:if="{{item.rewardBreakdown.content_quality_level}}">
+            <text class="text-weak fs-cap">内容评级</text>
+            <text class="fs-cap">{{item.rewardBreakdown.content_quality_level}}</text>
+          </view>
+          <view class="balance-breakdown-row">
+            <text class="text-weak fs-cap">维修复杂度</text>
+            <text class="fs-cap">{{item.rewardBreakdown.complexity_level}}</text>
+          </view>
+          <view class="balance-breakdown-row" wx:if="{{item.rewardBreakdown.vehicle_coeff}}">
+            <text class="text-weak fs-cap">车价系数</text>
+            <text class="fs-cap">{{item.rewardBreakdown.vehicle_coeff}}</text>
+          </view>
+          <view class="balance-breakdown-row">
+            <text class="text-weak fs-cap">税前</text>
+            <text class="fs-cap">¥{{item.rewardBreakdown.amount_before_tax}}</text>
+          </view>
+          <view class="balance-breakdown-row" wx:if="{{item.rewardBreakdown.tax_deducted !== '0.00'}}">
+            <text class="text-weak fs-cap">代扣个税</text>
+            <text class="fs-cap">¥{{item.rewardBreakdown.tax_deducted}}</text>
+          </view>
+          <view class="balance-breakdown-row">
+            <text class="text-weak fs-cap">实收</text>
+            <text class="fs-cap text-gold">¥{{item.rewardBreakdown.amount_after_tax}}</text>
+          </view>
+        </view>
       </view>
       <view class="balance-load-more" wx:if="{{hasMore && !loading}}">
         <text class="text-muted fs-sm">上拉加载更多</text>

@@ -1,0 +1,255 @@
+/**
+ * 服务商商品服务
+ * 上架/下架需后台审核通过
+ */
+
+const crypto = require('crypto');
+
+const PRODUCT_CATEGORIES = ['钣金喷漆', '发动机维修', '电路维修', '保养服务'];
+
+function genProductId() {
+  return 'PRD' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex').slice(0, 8);
+}
+
+/**
+ * 服务商：获取本店商品列表
+ */
+async function listByShop(pool, shopId) {
+  const [rows] = await pool.execute(
+    `SELECT product_id, name, category, price, description, images, status, audit_reason, created_at, updated_at
+     FROM shop_products WHERE shop_id = ? ORDER BY created_at DESC`,
+    [shopId]
+  );
+  return {
+    success: true,
+    data: {
+      list: rows.map(row => ({
+        product_id: row.product_id,
+        name: row.name,
+        category: row.category,
+        price: parseFloat(row.price),
+        description: row.description,
+        images: typeof row.images === 'string' ? JSON.parse(row.images || '[]') : (row.images || []),
+        status: row.status,
+        audit_reason: row.audit_reason,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      })),
+    },
+  };
+}
+
+/**
+ * 服务商：上架商品（提交审核）
+ */
+async function create(pool, shopId, body) {
+  const { name, category, price, description, images } = body || {};
+  if (!name || !String(name).trim()) {
+    return { success: false, error: '请填写商品名称', statusCode: 400 };
+  }
+  if (!category || !PRODUCT_CATEGORIES.includes(category)) {
+    return { success: false, error: '请选择有效分类', statusCode: 400 };
+  }
+  const priceNum = parseFloat(price);
+  if (isNaN(priceNum) || priceNum < 0) {
+    return { success: false, error: '请填写有效价格', statusCode: 400 };
+  }
+
+  const productId = genProductId();
+  const imgArr = Array.isArray(images) ? images : JSON.parse(images || '[]');
+
+  await pool.execute(
+    `INSERT INTO shop_products (product_id, shop_id, name, category, price, description, images, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    [productId, shopId, String(name).trim(), category, priceNum, description || null, JSON.stringify(imgArr)]
+  );
+
+  return {
+    success: true,
+    data: { product_id: productId, status: 'pending', message: '已提交审核，请等待后台审核通过' },
+  };
+}
+
+/**
+ * 服务商：编辑商品（仅 pending/rejected 可编辑）
+ */
+async function update(pool, shopId, productId, body) {
+  const [rows] = await pool.execute(
+    'SELECT product_id FROM shop_products WHERE product_id = ? AND shop_id = ?',
+    [productId, shopId]
+  );
+  if (rows.length === 0) {
+    return { success: false, error: '商品不存在', statusCode: 404 };
+  }
+  const current = rows[0];
+  const [statusRows] = await pool.execute(
+    'SELECT status FROM shop_products WHERE product_id = ?',
+    [productId]
+  );
+  const status = statusRows[0]?.status;
+  if (status === 'approved' || status === 'off_shelf') {
+    return { success: false, error: '已上架或已下架的商品请先下架后再编辑', statusCode: 400 };
+  }
+
+  const { name, category, price, description, images } = body || {};
+  const updates = [];
+  const params = [];
+
+  if (name != null && String(name).trim()) {
+    updates.push('name = ?');
+    params.push(String(name).trim());
+  }
+  if (category != null && PRODUCT_CATEGORIES.includes(category)) {
+    updates.push('category = ?');
+    params.push(category);
+  }
+  if (price != null) {
+    const priceNum = parseFloat(price);
+    if (!isNaN(priceNum) && priceNum >= 0) {
+      updates.push('price = ?');
+      params.push(priceNum);
+    }
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    params.push(description || null);
+  }
+  if (images !== undefined) {
+    const imgArr = Array.isArray(images) ? images : JSON.parse(images || '[]');
+    updates.push('images = ?');
+    params.push(JSON.stringify(imgArr));
+  }
+  if (updates.length > 0) {
+    updates.push('status = ?');
+    params.push('pending');
+    params.push(productId);
+    await pool.execute(
+      `UPDATE shop_products SET ${updates.join(', ')} WHERE product_id = ?`,
+      params
+    );
+  }
+
+  return { success: true, data: { product_id: productId, status: 'pending', message: '已更新并重新提交审核' } };
+}
+
+/**
+ * 服务商：下架商品
+ */
+async function offShelf(pool, shopId, productId) {
+  const [rows] = await pool.execute(
+    'SELECT product_id FROM shop_products WHERE product_id = ? AND shop_id = ?',
+    [productId, shopId]
+  );
+  if (rows.length === 0) {
+    return { success: false, error: '商品不存在', statusCode: 404 };
+  }
+
+  await pool.execute(
+    "UPDATE shop_products SET status = 'off_shelf' WHERE product_id = ? AND shop_id = ?",
+    [productId, shopId]
+  );
+  return { success: true, data: { product_id: productId, status: 'off_shelf' } };
+}
+
+/**
+ * 后台：待审核商品列表
+ */
+async function listPendingForAdmin(pool, query) {
+  const { page = 1, limit = 20 } = query;
+  const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+  const offset = (Math.max(parseInt(page) || 1, 1) - 1) * limitNum;
+
+  const [rows] = await pool.execute(
+    `SELECT p.product_id, p.shop_id, p.name, p.category, p.price, p.description, p.images, p.status, p.audit_reason, p.created_at, s.name as shop_name
+     FROM shop_products p
+     JOIN shops s ON s.shop_id = p.shop_id
+     WHERE p.status = 'pending'
+     ORDER BY p.created_at ASC
+     LIMIT ? OFFSET ?`,
+    [limitNum, offset]
+  );
+
+  const [countRows] = await pool.execute(
+    "SELECT COUNT(*) as total FROM shop_products WHERE status = 'pending'"
+  );
+  const total = countRows[0]?.total || 0;
+
+  return {
+    success: true,
+    data: {
+      list: rows.map(r => ({
+        product_id: r.product_id,
+        shop_id: r.shop_id,
+        shop_name: r.shop_name,
+        name: r.name,
+        category: r.category,
+        price: parseFloat(r.price),
+        description: r.description,
+        images: typeof r.images === 'string' ? JSON.parse(r.images || '[]') : (r.images || []),
+        status: r.status,
+        audit_reason: r.audit_reason,
+        created_at: r.created_at,
+      })),
+      total,
+      page: Math.floor(offset / limitNum) + 1,
+      limit: limitNum,
+    },
+  };
+}
+
+/**
+ * 后台：审核通过/驳回
+ */
+async function audit(pool, productId, body) {
+  const { action, reason } = body || {};
+  if (!['approve', 'reject'].includes(action)) {
+    return { success: false, error: '无效的审核操作', statusCode: 400 };
+  }
+
+  const [rows] = await pool.execute(
+    'SELECT product_id FROM shop_products WHERE product_id = ? AND status = ?',
+    [productId, 'pending']
+  );
+  if (rows.length === 0) {
+    return { success: false, error: '商品不存在或非待审核状态', statusCode: 404 };
+  }
+
+  const newStatus = action === 'approve' ? 'approved' : 'rejected';
+  const auditReason = action === 'reject' ? (reason || '不符合上架要求') : null;
+
+  await pool.execute(
+    'UPDATE shop_products SET status = ?, audit_reason = ?, audited_at = NOW() WHERE product_id = ?',
+    [newStatus, auditReason, productId]
+  );
+
+  return {
+    success: true,
+    data: { product_id: productId, status: newStatus, message: action === 'approve' ? '已通过审核' : '已驳回' },
+  };
+}
+
+/**
+ * 按分类获取已上架商品（供搜索页展示）
+ */
+async function getApprovedByCategory(pool, category) {
+  const [rows] = await pool.execute(
+    `SELECT p.product_id, p.shop_id, p.name, p.category, p.price, p.description, p.images, s.name as shop_name, s.address, s.district
+     FROM shop_products p
+     JOIN shops s ON s.shop_id = p.shop_id
+     WHERE p.category = ? AND p.status = 'approved' AND s.status = 1 AND (s.qualification_status = 1 OR s.qualification_status IS NULL)
+     ORDER BY p.price ASC`,
+    [category]
+  );
+  return rows;
+}
+
+module.exports = {
+  PRODUCT_CATEGORIES,
+  listByShop,
+  create,
+  update,
+  offShelf,
+  listPendingForAdmin,
+  audit,
+  getApprovedByCategory,
+};

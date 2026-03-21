@@ -95,7 +95,10 @@ npm start
 | GET | /api/v1/user/profile | 获取用户信息 |
 | PUT | /api/v1/user/profile | 更新用户信息 |
 | GET | /api/v1/user/balance | 余额明细 |
-| POST | /api/v1/user/withdraw | 申请提现 |
+| POST | /api/v1/user/withdraw | 申请提现（微信通道且单笔≥2000元时 `real_name` 必填；商家转账时返回 `package_info`；有待确认单时自动续传不重复扣款） |
+| POST | /api/v1/user/withdraw/reconcile | 同步微信单据并返回是否可再次拉起确认页 |
+| POST | /api/v1/user/withdraw/cancel-pending | 撤销待用户确认的转账单（异步终态以回调/查询为准） |
+| POST | /api/v1/pay/wechat/reward-transfer-notify | 微信商家转账结果通知（raw body，勿经 JSON 中间件） |
 
 ### 3. 定损分析
 
