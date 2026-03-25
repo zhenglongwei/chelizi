@@ -8,6 +8,12 @@ const { fetchAndApplyUnreadBadge } = require('../../../utils/message-badge');
 
 const logger = getLogger('DamageUpload');
 
+/** 已是服务端/网络上的图片地址，不可再 wx.uploadFile */
+function isRemoteImageUrl(pathOrUrl) {
+  const s = String(pathOrUrl || '').trim();
+  return /^https?:\/\//i.test(s);
+}
+
 const ACCIDENT_TYPES = [
   { value: 'single', label: '单方事故', hint: '选自家的保险公司', needSelf: true, needOther: false },
   { value: 'self_fault', label: '己方全责', hint: '选自家的保险公司', needSelf: true, needOther: false },
@@ -190,7 +196,8 @@ Page({
       const imageUrls = [];
 
       for (let i = 0; i < images.length; i++) {
-        const url = await uploadImage(images[i]);
+        const raw = images[i];
+        const url = isRemoteImageUrl(raw) ? raw : await uploadImage(raw);
         imageUrls.push(url);
         const p = Math.round(20 + progressStep * (i + 1));
         this.setData({
@@ -549,14 +556,15 @@ Page({
         total_estimate: totalEst,
         repair_suggestions: ar.repair_suggestions || []
       };
+      // 历史报告的 res.images 为网络 URL，勿写入 images：images 仅用于本地上传路径，否则关闭报告回到步骤 1 后会误用 uploadFile 导致 file not found
       this.setData({
         reportId: res.report_id,
         report,
         vehiclesList,
         selectedVehicleIndex: 0,
         vehicleEdits: {},
-        images: (res.images || []).slice(0, 4),
-        imageUrls: res.images || [],
+        images: [],
+        imageUrls: [],
         step: 2
       }, () => {
         this._updateVehicleDisplay(0);
@@ -580,7 +588,11 @@ Page({
       plateMatchInput: '',
       currentDamages: [],
       currentRepairSuggestions: [],
-      submitting: false
+      submitting: false,
+      images: [],
+      imageUrls: [],
+      analyzeProgress: 0,
+      progressStyle: 'width: 0%'
     });
     this._loadDailyQuota();
   },

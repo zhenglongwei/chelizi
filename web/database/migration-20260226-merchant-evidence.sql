@@ -1,5 +1,5 @@
 -- 商户申诉任务表 + 店铺违规记录表（阶段2、3）
--- 执行：mysql -u root -p chelizi < migration-20260226-merchant-evidence.sql
+-- 执行：mysql -u root -p zhejian < migration-20260226-merchant-evidence.sql
 
 -- 1. 商户申诉任务表（表名 merchant_evidence_requests 保留兼容）
 CREATE TABLE IF NOT EXISTS merchant_evidence_requests (

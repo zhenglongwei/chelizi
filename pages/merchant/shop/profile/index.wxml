@@ -1,123 +1,164 @@
 <!-- 维修厂信息 - M08，按《设计规范.md》 -->
 <custom-nav-bar title="维修厂信息" showBack="{{true}}" />
 <view class="page-root merchant-shop-profile" style="{{pageRootStyle}}">
-  <!-- 审核中：不可编辑，可撤回 -->
-  <view class="merchant-qualification-auditing card" wx:if="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
-    <text class="fs-body fw-bold">资质审核中</text>
-    <text class="text-muted fs-cap">审核期间不可修改，如需修改请先撤回</text>
-    <button class="btn-secondary merchant-withdraw-btn" bindtap="onWithdrawQualification">撤回后重新修改</button>
-  </view>
-  <view class="profile-form card {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'profile-form-disabled' : ''}}" wx:if="{{shop}}">
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">店铺名称 <text class="text-danger">*</text></text>
-      <input class="merchant-form-input" placeholder="请输入维修厂名称" value="{{name}}" bindinput="onNameInput" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}"/>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">店铺地址 <text class="text-danger">*</text></text>
-      <text class="text-muted fs-cap">需在地图上选点，获取精准经纬度以计算与用户距离</text>
-      <view class="merchant-location-picker {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onChooseLocation">
-        <text class="merchant-location-text {{address ? 'has-value' : ''}}">{{address || '点击选择店铺位置'}}</text>
-        <text class="merchant-location-hint fs-cap" wx:if="{{address}}">已选：{{locationName || '已定位'}}</text>
+  <block wx:if="{{shop}}">
+    <view class="page-scroll profile-page-body">
+      <!-- 状态区：与表单解耦 -->
+      <view class="merchant-qualification-auditing card profile-section-card" wx:if="{{formLocked}}">
+        <text class="fs-body fw-bold">资质审核中</text>
+        <text class="text-muted fs-cap">审核期间不可修改，如需修改请先撤回</text>
+        <button class="btn-secondary merchant-withdraw-btn" bindtap="onWithdrawQualification">撤回后重新修改</button>
       </view>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">联系电话 <text class="text-danger">*</text></text>
-      <input class="merchant-form-input" type="number" placeholder="手机号" value="{{phone}}" bindinput="onPhoneInput" maxlength="11" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}"/>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">营业时间</text>
-      <picker mode="selector" range="{{businessHoursOptions}}" value="{{businessHoursIndex}}" bindchange="onBusinessHoursChange" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
-        <view class="merchant-picker-value {{business_hours ? 'has-value' : ''}}">{{business_hours || '请选择营业时间'}}</view>
-      </picker>
-    </view>
-    <view class="merchant-form-item" wx:if="{{qualificationStatus === 0}}">
-      <text class="text-warning fs-cap">请补充资质信息并等待审核通过后，方可接单并在车主端展示</text>
-    </view>
-    <view class="merchant-form-item" wx:if="{{qualificationStatus === 2}}">
-      <text class="text-danger fs-cap">资质审核被驳回：{{qualificationAuditReason || '请修改后重新提交'}}</text>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">维修资质等级</text>
-      <!-- 已识别：直接展示 -->
-      <block wx:if="{{qualification_ai_recognized}}">
-        <text class="text-muted fs-cap">营业执照已识别</text>
-        <view class="merchant-picker-value has-value">{{qualificationLevelLabel || qualification_ai_recognized}}</view>
-      </block>
-      <!-- 未识别：要求上传资质证明 -->
-      <block wx:else>
-        <text class="text-muted fs-cap">营业执照未识别到资质，请上传资质证明进行 AI 识别；若识别失败可手动选择（将提交人工审核）</text>
-        <view class="qualification-cert-preview" wx:if="{{qualificationCertImage}}">
-          <image src="{{qualificationCertImage}}" mode="aspectFill"/>
-          <text class="fs-cap text-muted">资质证明（已提交审核）</text>
+      <view class="card profile-section-card profile-status-reject" wx:if="{{qualificationStatus === 2}}">
+        <view class="section-head">
+          <text class="section-title fs-body fw-bold text-danger">资质审核未通过</text>
         </view>
-        <view class="qualification-actions">
-          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:if="{{certifications.length}}" bindtap="onQualificationFromLicense">从营业执照重试</text>
-          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onQualificationCertUpload">上传资质证明识别</text>
-        </view>
-        <picker mode="selector" range="{{qualificationLevelOptions}}" range-key="label" value="{{qualificationLevelIndex}}" bindchange="onQualificationLevelChange" disabled="{{qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn}}">
-          <view class="merchant-picker-value {{qualification_level ? 'has-value' : ''}}">{{qualificationLevelLabel || '识别失败时可手动选择'}}</view>
-        </picker>
-      </block>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">服务商/店铺照片</text>
-      <text class="text-muted fs-cap">上传店铺门头、车间等环境照片，便于车主了解</text>
-      <view class="merchant-image-upload">
-        <view class="merchant-image-item" wx:for="{{shop_images}}" wx:key="*this">
-          <image class="merchant-image-preview" src="{{item}}" mode="aspectFill"/>
-          <view class="merchant-image-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelShopImage" data-index="{{index}}">×</view>
-        </view>
-        <view class="merchant-image-add {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:if="{{shop_images.length < 6}}" bindtap="onAddShopImage">
-          <text class="merchant-image-add-icon">+</text>
-          <text class="merchant-image-add-text fs-cap">添加照片</text>
-        </view>
+        <text class="text-muted fs-cap profile-status-reject-reason">{{qualificationAuditReason || '请修改资质相关信息后重新保存提交'}}</text>
       </view>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">技师持证情况</text>
-      <text class="text-muted fs-cap">参照国家职业资格等级，可录入头像、姓名、等级、从业年限</text>
-      <view class="technician-list">
-        <view class="technician-card" wx:for="{{technicians}}" wx:key="id">
-          <image class="technician-avatar" src="{{item.avatar_url || '/images/icon/person.png'}}" mode="aspectFill"/>
-          <view class="technician-info">
-            <text class="technician-name fs-body fw-bold">{{item.name || '未填写'}}</text>
-            <text class="technician-meta fs-cap text-muted">{{item.level || '-'}} · {{item.years != null ? item.years + '年' : '-'}}{{item.certificate_url ? ' · 已上传证书' : ''}}</text>
-          </view>
-          <view class="technician-actions">
-            <text class="technician-edit {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onEditTechnician" data-index="{{index}}">编辑</text>
-            <text class="technician-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelTechnician" data-index="{{index}}">删除</text>
+      <view class="card profile-section-card profile-status-pending" wx:if="{{qualificationStatus === 0 && !formLocked}}">
+        <text class="text-warning fs-cap">请补充资质信息并等待审核通过后，方可接单并在车主端展示</text>
+      </view>
+
+      <!-- 基础信息 -->
+      <view class="card profile-section-card profile-form-block {{formLocked ? 'profile-form-disabled' : ''}}">
+        <view class="section-head profile-section-head">
+          <text class="section-title fs-body fw-bold">基础信息</text>
+        </view>
+        <view class="merchant-form-item profile-form-item-first">
+          <text class="merchant-form-label fs-body">店铺名称 <text class="text-danger">*</text></text>
+          <input class="merchant-form-input" placeholder="请输入维修厂名称" value="{{name}}" bindinput="onNameInput" disabled="{{formLocked}}"/>
+        </view>
+        <view class="merchant-form-item">
+          <text class="merchant-form-label fs-body">店铺地址 <text class="text-danger">*</text></text>
+          <text class="text-muted fs-cap profile-field-hint">请在地图上选点，用于计算与用户距离</text>
+          <view class="merchant-location-picker {{formLocked ? 'disabled' : ''}}" bindtap="onChooseLocation">
+            <text class="merchant-location-text {{address ? 'has-value' : ''}}">{{address || '点击选择店铺位置'}}</text>
+            <text class="merchant-location-hint fs-cap" wx:if="{{address}}">已选：{{locationName || '已定位'}}</text>
           </view>
         </view>
-        <view class="technician-add {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onAddTechnician">
-          <text class="technician-add-icon">+</text>
-          <text class="technician-add-text fs-cap">添加技师</text>
+        <view class="merchant-form-item">
+          <text class="merchant-form-label fs-body">联系电话 <text class="text-danger">*</text></text>
+          <input class="merchant-form-input" type="number" placeholder="手机号" value="{{phone}}" bindinput="onPhoneInput" maxlength="11" disabled="{{formLocked}}"/>
+        </view>
+        <view class="merchant-form-item merchant-form-item-last">
+          <text class="merchant-form-label fs-body">营业时间</text>
+          <picker mode="selector" range="{{businessHoursOptions}}" value="{{businessHoursIndex}}" bindchange="onBusinessHoursChange" disabled="{{formLocked}}">
+            <view class="merchant-picker-value {{business_hours ? 'has-value' : ''}}">{{business_hours || '请选择营业时间'}}</view>
+          </picker>
         </view>
       </view>
-    </view>
-    <view class="merchant-form-item">
-      <text class="merchant-form-label fs-body">品牌授权</text>
-      <text class="text-muted fs-cap">4S 店需上传主机厂品牌授权书；有配件品牌授权的可上传，可提升店铺得分</text>
-      <view class="brand-cert-row">
-        <view class="brand-cert-item">
-          <text class="fs-cap text-muted">主机厂 4S 授权书</text>
-          <view class="qualification-cert-preview" wx:if="{{oem4sCertImage}}">
-            <image src="{{oem4sCertImage}}" mode="aspectFill"/>
-            <view class="qualification-cert-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelOem4sCert">×</view>
-          </view>
-          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:else bindtap="onOem4sCertUpload">上传</text>
+
+      <!-- 资质与等级 -->
+      <view class="card profile-section-card profile-form-block {{formLocked ? 'profile-form-disabled' : ''}}">
+        <view class="section-head profile-section-head">
+          <text class="section-title fs-body fw-bold">资质与等级</text>
         </view>
-        <view class="brand-cert-item">
-          <text class="fs-cap text-muted">配件品牌授权</text>
-          <view class="qualification-cert-preview" wx:if="{{partsBrandCertImage}}">
-            <image src="{{partsBrandCertImage}}" mode="aspectFill"/>
-            <view class="qualification-cert-del {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" bindtap="onDelPartsBrandCert">×</view>
-          </view>
-          <text class="qualification-action-btn {{(qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? 'disabled' : ''}}" wx:else bindtap="onPartsBrandCertUpload">上传</text>
+        <text class="text-muted fs-cap profile-field-hint" wx:if="{{qualificationStatus === 2}}">请根据上方驳回说明修改后保存</text>
+        <view class="merchant-form-item profile-form-item-first">
+          <text class="merchant-form-label fs-body">维修资质等级</text>
+          <block wx:if="{{qualification_ai_recognized}}">
+            <text class="text-muted fs-cap profile-field-hint">营业执照已识别，可直接保存；如需更正请联系平台</text>
+            <view class="merchant-picker-value has-value">{{qualificationLevelLabel || qualification_ai_recognized}}</view>
+          </block>
+          <block wx:else>
+            <view class="qual-help-toggle" bindtap="onToggleQualHelp" hover-class="none">
+              <text class="fs-cap profile-help-toggle-text">{{qualHelpExpanded ? '收起说明' : '查看资质填写说明'}}</text>
+            </view>
+            <view class="qual-help-body fs-cap text-muted" wx:if="{{qualHelpExpanded}}">营业执照未识别到资质时，请上传资质证明进行 AI 识别；若识别失败可手动选择（将提交人工审核）</view>
+            <view class="qualification-cert-preview" wx:if="{{qualificationCertImage}}">
+              <image src="{{qualificationCertImage}}" mode="aspectFill"/>
+              <text class="fs-cap text-muted">资质证明（已提交审核）</text>
+            </view>
+            <view class="qualification-actions">
+              <text class="qualification-action-btn {{formLocked ? 'disabled' : ''}}" wx:if="{{certifications.length}}" bindtap="onQualificationFromLicense">从营业执照重试</text>
+              <text class="qualification-action-btn {{formLocked ? 'disabled' : ''}}" bindtap="onQualificationCertUpload">上传资质证明识别</text>
+            </view>
+            <picker mode="selector" range="{{qualificationLevelOptions}}" range-key="label" value="{{qualificationLevelIndex}}" bindchange="onQualificationLevelChange" disabled="{{formLocked}}">
+              <view class="merchant-picker-value {{qualification_level ? 'has-value' : ''}}">{{qualificationLevelLabel || '识别失败时可手动选择'}}</view>
+            </picker>
+          </block>
         </view>
       </view>
+
+      <!-- 店铺展示 -->
+      <view class="card profile-section-card profile-form-block {{formLocked ? 'profile-form-disabled' : ''}}">
+        <view class="section-head profile-section-head">
+          <text class="section-title fs-body fw-bold">店铺展示</text>
+        </view>
+        <view class="merchant-form-item profile-form-item-first merchant-form-item-last">
+          <text class="merchant-form-label fs-body">服务商/店铺照片</text>
+          <text class="text-muted fs-cap profile-field-hint">门头、车间等环境照，便于车主了解（最多 6 张）</text>
+          <view class="merchant-image-upload">
+            <view class="merchant-image-item" wx:for="{{shop_images}}" wx:key="*this">
+              <image class="merchant-image-preview" src="{{item}}" mode="aspectFill"/>
+              <view class="merchant-image-del {{formLocked ? 'disabled' : ''}}" bindtap="onDelShopImage" data-index="{{index}}">×</view>
+            </view>
+            <view class="merchant-image-add {{formLocked ? 'disabled' : ''}}" wx:if="{{shop_images.length < 6}}" bindtap="onAddShopImage">
+              <text class="merchant-image-add-icon">+</text>
+              <text class="merchant-image-add-text fs-cap">添加照片</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 人员与品牌授权 -->
+      <view class="card profile-section-card profile-form-block {{formLocked ? 'profile-form-disabled' : ''}}">
+        <view class="section-head profile-section-head">
+          <text class="section-title fs-body fw-bold">人员与品牌授权</text>
+        </view>
+        <view class="merchant-form-item profile-form-item-first">
+          <text class="merchant-form-label fs-body">技师持证情况</text>
+          <text class="text-muted fs-cap profile-field-hint">头像、称呼、等级、从业年限；等级参照国家职业资格</text>
+          <view class="technician-list">
+            <view class="technician-card" wx:for="{{technicians}}" wx:key="id">
+              <image class="technician-avatar" src="{{item.avatar_url || '/images/icon/person.png'}}" mode="aspectFill"/>
+              <view class="technician-info">
+                <text class="technician-name fs-body fw-bold">{{item.name || '未填写'}}</text>
+                <text class="technician-meta fs-cap text-muted">{{item.level || '-'}} · {{item.years != null ? item.years + '年' : '-'}}{{item.certificate_url ? ' · 已上传证书' : ''}}</text>
+              </view>
+              <view class="technician-actions">
+                <text class="technician-edit {{formLocked ? 'disabled' : ''}}" bindtap="onEditTechnician" data-index="{{index}}">编辑</text>
+                <text class="technician-del {{formLocked ? 'disabled' : ''}}" bindtap="onDelTechnician" data-index="{{index}}">删除</text>
+              </view>
+            </view>
+            <view class="technician-add {{formLocked ? 'disabled' : ''}}" bindtap="onAddTechnician">
+              <text class="technician-add-icon">+</text>
+              <text class="technician-add-text fs-cap">添加技师</text>
+            </view>
+          </view>
+        </view>
+        <view class="merchant-form-item merchant-form-item-last">
+          <text class="merchant-form-label fs-body">品牌授权</text>
+          <text class="text-muted fs-cap profile-field-hint">4S 店建议上传主机厂授权；配件品牌授权可提升店铺得分</text>
+          <view class="brand-cert-row">
+            <view class="brand-cert-item">
+              <text class="fs-cap text-muted">主机厂 4S 授权书</text>
+              <view class="qualification-cert-preview" wx:if="{{oem4sCertImage}}">
+                <image src="{{oem4sCertImage}}" mode="aspectFill"/>
+                <view class="qualification-cert-del {{formLocked ? 'disabled' : ''}}" bindtap="onDelOem4sCert">×</view>
+              </view>
+              <text class="qualification-action-btn {{formLocked ? 'disabled' : ''}}" wx:else bindtap="onOem4sCertUpload">上传</text>
+            </view>
+            <view class="brand-cert-item">
+              <text class="fs-cap text-muted">配件品牌授权</text>
+              <view class="qualification-cert-preview" wx:if="{{partsBrandCertImage}}">
+                <image src="{{partsBrandCertImage}}" mode="aspectFill"/>
+                <view class="qualification-cert-del {{formLocked ? 'disabled' : ''}}" bindtap="onDelPartsBrandCert">×</view>
+              </view>
+              <text class="qualification-action-btn {{formLocked ? 'disabled' : ''}}" wx:else bindtap="onPartsBrandCertUpload">上传</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="profile-bottom-spacer"/>
     </view>
-    <button class="btn-primary merchant-register-btn" disabled="{{saving || (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn)}}" bindtap="onSave">{{saving ? '保存中...' : (qualificationStatus === 0 && qualificationSubmitted && !qualificationWithdrawn) ? '审核中不可保存' : '保存'}}</button>
-  </view>
+  </block>
+</view>
+
+<!-- 底部固定保存 -->
+<view class="profile-footer" wx:if="{{shop}}">
+  <button class="btn-primary merchant-register-btn" disabled="{{saving || formLocked}}" bindtap="onSave">{{saving ? '保存中...' : formLocked ? '审核中不可保存' : '保存'}}</button>
 </view>
 
 <!-- 技师编辑弹窗 -->

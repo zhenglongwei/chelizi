@@ -4,7 +4,7 @@
 -- 执行前请备份数据
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- 1. shops 表新增 qualification_audit_reason
 ALTER TABLE shops

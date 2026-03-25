@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const CLI_PATH = process.env.WEAPP_CLI_PATH || 'C:\\Program Files (x86)\\Tencent\\微信web开发者工具\\cli.bat';
-const PROJECT_PATH = process.env.WEAPP_PROJECT_PATH || 'C:\\Users\\longwei\\WeChatProjects\\chelizi';
+const PROJECT_PATH = process.env.WEAPP_PROJECT_PATH || 'C:\\Users\\longwei\\WeChatProjects\\zhejian';
 const AUTO_PORT = parseInt(process.env.WEAPP_AUTO_PORT || '9420', 10);
 
 function launchWeapp() {

@@ -4,7 +4,7 @@
 -- 执行：mysql -u 用户名 -p 数据库名 < migration-20260218-shops-missing-cols.sql
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 DELIMITER $$
 

@@ -3,7 +3,7 @@
 -- 执行前请备份数据。若列已存在（Duplicate column），可跳过 ALTER
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- shop_images: 服务商/店铺环境照片 URL 数组
 ALTER TABLE shops

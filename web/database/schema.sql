@@ -1,15 +1,15 @@
 -- ========================================================
--- 车厘子 - 事故车维修平台 数据库Schema
+-- 辙见 - 事故车维修平台 数据库Schema
 -- 基于MySQL 8.0
 -- 阿里云ECS部署
 -- ========================================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS chelizi 
+CREATE DATABASE IF NOT EXISTS zhejian 
   DEFAULT CHARACTER SET utf8mb4 
   DEFAULT COLLATE utf8mb4_unicode_ci;
 
-USE chelizi;
+USE zhejian;
 
 -- ========================================================
 -- 1. 用户表 (users)
@@ -197,11 +197,17 @@ CREATE TABLE IF NOT EXISTS orders (
   deviation_rate DECIMAL(5, 2) DEFAULT NULL COMMENT '偏差率(%)',
   commission_rate DECIMAL(4, 2) DEFAULT 12.00 COMMENT '佣金比例(%)',
   commission DECIMAL(10, 2) DEFAULT NULL COMMENT '佣金金额（与暂计/最终对齐展示）',
-  commission_status VARCHAR(32) DEFAULT NULL COMMENT 'waived_insurance|legacy_exempt|paid_provisional|arrears|awaiting_pay|finalized',
+  commission_status VARCHAR(32) DEFAULT NULL COMMENT 'waived_insurance|legacy_exempt|paid_provisional|arrears|awaiting_pay|pending_owner_repair_pay|finalized',
   commission_provisional DECIMAL(10, 2) DEFAULT NULL COMMENT '阶段A暂计佣金',
   commission_final DECIMAL(10, 2) DEFAULT NULL COMMENT '阶段B最终佣金',
   commission_paid_amount DECIMAL(10, 2) DEFAULT 0 COMMENT '本单已收佣金累计',
+  repair_payment_status VARCHAR(24) DEFAULT NULL COMMENT 'pending_pay|paid|closed 车主维修款',
+  repair_out_trade_no VARCHAR(32) DEFAULT NULL,
+  repair_wx_transaction_id VARCHAR(64) DEFAULT NULL,
+  repair_prepay_id VARCHAR(128) DEFAULT NULL,
+  repair_paid_at DATETIME DEFAULT NULL,
   repair_payment_proof JSON DEFAULT NULL COMMENT '维修款支付凭证URL数组',
+  UNIQUE KEY uk_repair_out_trade (repair_out_trade_no),
   order_tier TINYINT UNSIGNED DEFAULT NULL COMMENT '订单分级 1-4（一级~四级）',
   complexity_level VARCHAR(10) DEFAULT NULL COMMENT '维修项目复杂度 L1-L4',
   is_insurance_accident TINYINT UNSIGNED DEFAULT 0 COMMENT '是否保险事故车 0-否 1-是',
@@ -543,6 +549,7 @@ CREATE TABLE IF NOT EXISTS merchant_users (
   INDEX idx_merchant_id (merchant_id),
   INDEX idx_shop_id (shop_id),
   INDEX idx_phone (phone),
+  INDEX idx_openid (openid),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商账号表';
 
@@ -573,6 +580,8 @@ CREATE TABLE IF NOT EXISTS merchant_commission_wallets (
   shop_id VARCHAR(32) NOT NULL UNIQUE COMMENT '维修厂ID',
   balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00 COMMENT '可用余额(元)',
   frozen DECIMAL(12, 2) NOT NULL DEFAULT 0.00 COMMENT '冻结(元)',
+  income_balance DECIMAL(12, 2) NOT NULL DEFAULT 0.00 COMMENT '标品货款可提现(元)',
+  income_frozen DECIMAL(12, 2) NOT NULL DEFAULT 0.00 COMMENT '标品货款提现冻结(元)',
   deduct_mode VARCHAR(16) NOT NULL DEFAULT 'auto' COMMENT 'auto=自动扣 per_order=逐单微信支付',
   low_balance_notified_at DATETIME DEFAULT NULL COMMENT '低余额提醒时间',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -596,6 +605,71 @@ CREATE TABLE IF NOT EXISTS merchant_commission_ledger (
   INDEX idx_order (order_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商佣金流水';
+
+CREATE TABLE IF NOT EXISTS merchant_shop_income_ledger (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ledger_id VARCHAR(32) NOT NULL UNIQUE,
+  shop_id VARCHAR(32) NOT NULL,
+  type VARCHAR(32) NOT NULL COMMENT 'product_order_settle|repair_order_settle|withdraw_payout|withdraw_refund',
+  amount DECIMAL(12, 2) NOT NULL,
+  balance_after DECIMAL(12, 2) DEFAULT NULL COMMENT '入账后 income_balance',
+  product_order_id VARCHAR(32) DEFAULT NULL,
+  order_id VARCHAR(32) DEFAULT NULL COMMENT '维修自费入账',
+  withdraw_id VARCHAR(32) DEFAULT NULL,
+  remark VARCHAR(500) DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_product_order_settle (product_order_id),
+  UNIQUE KEY uk_repair_order_income (order_id),
+  KEY idx_shop_created (shop_id, created_at),
+  KEY idx_withdraw (withdraw_id),
+  FOREIGN KEY (shop_id) REFERENCES shops (shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商标品货款流水';
+
+CREATE TABLE IF NOT EXISTS merchant_income_withdrawals (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  withdraw_id VARCHAR(32) NOT NULL UNIQUE,
+  shop_id VARCHAR(32) NOT NULL,
+  merchant_id VARCHAR(32) DEFAULT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0待确认 1成功 2失败 3撤销',
+  remark VARCHAR(200) DEFAULT NULL,
+  wx_transfer_bill_no VARCHAR(64) DEFAULT NULL,
+  wx_bill_state VARCHAR(32) DEFAULT NULL,
+  wx_package_info TEXT DEFAULT NULL,
+  processed_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_shop_status (shop_id, status),
+  KEY idx_shop_created (shop_id, created_at),
+  FOREIGN KEY (shop_id) REFERENCES shops (shop_id),
+  FOREIGN KEY (merchant_id) REFERENCES merchant_users (merchant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商标品货款提现';
+
+CREATE TABLE IF NOT EXISTS merchant_income_corp_withdrawals (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(32) NOT NULL UNIQUE,
+  shop_id VARCHAR(32) NOT NULL,
+  merchant_id VARCHAR(32) DEFAULT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  company_name VARCHAR(200) NOT NULL,
+  bank_name VARCHAR(200) NOT NULL,
+  bank_account_no VARCHAR(64) NOT NULL,
+  bank_branch VARCHAR(300) DEFAULT NULL,
+  contact_name VARCHAR(64) DEFAULT NULL,
+  contact_phone VARCHAR(32) DEFAULT NULL,
+  merchant_remark VARCHAR(500) DEFAULT NULL,
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0待财务 1已完成 2已驳回 3商户撤销',
+  admin_remark VARCHAR(500) DEFAULT NULL,
+  finance_ref VARCHAR(128) DEFAULT NULL,
+  processed_by VARCHAR(64) DEFAULT NULL,
+  processed_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_shop_status (shop_id, status),
+  KEY idx_shop_created (shop_id, created_at),
+  KEY idx_status_created (status, created_at),
+  FOREIGN KEY (shop_id) REFERENCES shops (shop_id),
+  FOREIGN KEY (merchant_id) REFERENCES merchant_users (merchant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='服务商标品货款对公提现';
 
 CREATE TABLE IF NOT EXISTS merchant_commission_payment_intents (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -690,17 +764,42 @@ CREATE TABLE IF NOT EXISTS appointments (
   service_category VARCHAR(20) DEFAULT 'other' COMMENT '服务类型: maintenance-保养 wash-洗车 repair-修车 other-其他',
   services JSON DEFAULT NULL COMMENT '服务项目 [{name, min_price, max_price}]',
   remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  product_order_id VARCHAR(32) DEFAULT NULL COMMENT '已付标品单',
+  order_id VARCHAR(32) DEFAULT NULL COMMENT '已接单维修单',
   status TINYINT UNSIGNED DEFAULT 0 COMMENT '0-待确认 1-已确认 2-已取消',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   INDEX idx_appointment_id (appointment_id),
+  KEY idx_appt_product_order (product_order_id),
+  KEY idx_appt_order (order_id),
   INDEX idx_user_id (user_id),
   INDEX idx_shop_id (shop_id),
   INDEX idx_date (appointment_date),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='预约表';
+
+-- 车主维修款微信支付意图（竞价自费单）
+CREATE TABLE IF NOT EXISTS repair_order_payment_intents (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  intent_id VARCHAR(32) NOT NULL UNIQUE,
+  order_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  out_trade_no VARCHAR(32) NOT NULL,
+  amount_fen INT UNSIGNED NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  prepay_id VARCHAR(64) DEFAULT NULL,
+  wx_transaction_id VARCHAR(64) DEFAULT NULL,
+  raw_notify JSON DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_out_trade (out_trade_no),
+  KEY idx_ropt_order (order_id),
+  KEY idx_ropt_user (user_id),
+  CONSTRAINT fk_ropt_order FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  CONSTRAINT fk_ropt_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='车主维修款微信支付单';
 
 -- ========================================================
 -- 15. 系统配置表 (settings)

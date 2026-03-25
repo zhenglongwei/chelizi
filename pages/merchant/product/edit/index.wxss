@@ -4,9 +4,68 @@
   background: var(--bg-page);
 }
 
+.edit-tip {
+  margin: var(--space-lg) var(--page-padding-x) 0;
+  padding: var(--space-md) var(--space-lg);
+  line-height: 1.5;
+}
+
 .edit-form {
   margin: var(--space-lg) var(--page-padding-x);
   padding: var(--space-xl);
+}
+
+.edit-images {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.edit-img-cell {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+}
+
+.edit-img-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+  background: var(--bg-placeholder);
+}
+
+.edit-img-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 36rpx;
+  border-radius: 0 var(--radius-md) 0 var(--radius-md);
+}
+
+.edit-img-add {
+  width: 160rpx;
+  height: 160rpx;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.edit-img-add-plus {
+  font-size: 48rpx;
+  color: var(--text-muted);
+  line-height: 1;
 }
 
 .edit-item {

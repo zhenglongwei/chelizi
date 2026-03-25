@@ -1,4 +1,45 @@
 /* 维修厂信息 - M08，按《设计规范.md》 */
+.merchant-shop-profile {
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.profile-page-body {
+  padding-top: var(--space-xl);
+  padding-bottom: 0;
+}
+
+.profile-section-card {
+  margin-bottom: var(--space-lg);
+}
+
+.profile-section-head {
+  margin-bottom: var(--space-lg);
+}
+
+.profile-form-item-first {
+  margin-top: 0;
+}
+
+.profile-field-hint {
+  display: block;
+  margin-bottom: var(--space-sm);
+  line-height: 1.45;
+}
+
+.profile-status-reject,
+.profile-status-pending {
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.profile-status-reject-reason {
+  line-height: 1.5;
+  word-break: break-all;
+}
+
 .merchant-qualification-auditing {
   margin-bottom: var(--space-lg);
   padding: var(--space-xl);
@@ -27,16 +68,12 @@
   pointer-events: none;
 }
 
-.merchant-shop-profile {
-  padding: var(--space-xl) var(--page-padding-x);
-}
-
-.profile-form .merchant-form-item {
+.profile-form-block .merchant-form-item {
   margin-bottom: var(--space-lg);
 }
 
-.profile-form .merchant-form-item:last-of-type {
-  margin-bottom: var(--space-xl);
+.profile-form-block .merchant-form-item-last {
+  margin-bottom: 0;
 }
 
 .merchant-form-label {
@@ -94,6 +131,41 @@
   display: block;
   margin-top: var(--space-xs);
   color: var(--text-hint);
+}
+
+/* 资质说明折叠 */
+.qual-help-toggle {
+  padding: var(--space-sm) 0;
+  margin-bottom: var(--space-xs);
+}
+
+.profile-help-toggle-text {
+  color: var(--primary);
+}
+
+.qual-help-body {
+  margin-bottom: var(--space-md);
+  line-height: 1.5;
+}
+
+/* 底部留白，避免内容被固定栏遮挡 */
+.profile-bottom-spacer {
+  min-height: 140rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: content-box;
+}
+
+.profile-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  padding: var(--space-md) var(--page-padding-x);
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--bg-page);
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
 }
 
 /* 维修资质证明预览 */
@@ -289,7 +361,7 @@
   color: var(--text-hint);
 }
 
-/* 技师编辑弹窗 */
+/* 技师编辑弹窗（高于底栏） */
 .technician-modal-mask {
   position: fixed;
   top: 0;
@@ -297,7 +369,7 @@
   right: 0;
   bottom: 0;
   background: rgba(0,0,0,0.4);
-  z-index: 100;
+  z-index: 200;
 }
 
 .technician-modal {
@@ -308,7 +380,8 @@
   background: var(--bg-card);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: var(--space-xl);
-  z-index: 101;
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+  z-index: 201;
   transform: translateY(100%);
   transition: transform 0.2s;
 }

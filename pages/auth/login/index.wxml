@@ -4,7 +4,7 @@
   <view class="login-content">
     <view class="login-logo">
       <image class="login-logo-img" src="/images/logo/logo_white.png" mode="aspectFit"/>
-      <text class="login-title fs-h2 fw-bold text-primary">车厘子</text>
+      <text class="login-title fs-h2 fw-bold text-primary">辙见</text>
       <text class="login-desc text-muted fs-cap">事故车维修点评平台</text>
     </view>
 

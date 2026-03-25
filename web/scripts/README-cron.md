@@ -66,7 +66,7 @@ crontab -e
 添加（路径按实际调整）：
 
 ```
-*/2 * * * * /var/www/simplewin/scripts/cron-send-delayed-bidding-messages.sh >> /var/log/chelizi-cron.log 2>&1
+*/2 * * * * /var/www/simplewin/scripts/cron-send-delayed-bidding-messages.sh >> /var/log/zhejian-cron.log 2>&1
 ```
 
 或使用示例文件：
@@ -79,8 +79,8 @@ crontab /var/www/simplewin/scripts/crontab.example
 ### 7. 创建日志文件（可选）
 
 ```bash
-touch /var/log/chelizi-cron.log
-chmod 644 /var/log/chelizi-cron.log
+touch /var/log/zhejian-cron.log
+chmod 644 /var/log/zhejian-cron.log
 ```
 
 ### 8. 若出现 `$'\r': command not found` 或 `bad interpreter`
@@ -102,4 +102,4 @@ sed -i 's/\r$//' /var/www/simplewin/scripts/cron.env
 - **401 未授权**：检查 `CRON_SECRET` 是否与 api-server `.env` 一致
 - **脚本无执行权限**：`chmod +x cron-send-delayed-bidding-messages.sh`
 - **cron.env 未找到**：确认脚本与 `cron.env` 在同一目录，或修改脚本中的 `SCRIPT_DIR`
-- **查看日志**：`tail -f /var/log/chelizi-cron.log`
+- **查看日志**：`tail -f /var/log/zhejian-cron.log`

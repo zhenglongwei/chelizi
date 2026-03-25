@@ -5,7 +5,7 @@
 -- 执行前请备份数据
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 ALTER TABLE shops
   ADD COLUMN qualification_withdrawn TINYINT UNSIGNED DEFAULT 0

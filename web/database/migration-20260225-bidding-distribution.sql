@@ -1,5 +1,5 @@
 -- 竞价单分发机制 - 数据库迁移
--- 执行：mysql -u user -p chelizi < migration-20260225-bidding-distribution.sql
+-- 执行：mysql -u user -p zhejian < migration-20260225-bidding-distribution.sql
 
 -- 1. biddings 表增加第一梯队窗口结束时间
 ALTER TABLE biddings

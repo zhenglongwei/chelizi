@@ -1,4 +1,4 @@
-# 车厘子 - 部署说明
+# 辙见 - 部署说明
 
 ## 一、数据库初始化（必须先执行）
 
@@ -20,7 +20,7 @@ bash run-init.sh
 
 ### 1. 上传代码
 
-将以下目录/文件上传到服务器（如 `/home/chelizi/`）：
+将以下目录/文件上传到服务器（如 `/home/zhejian/`）：
 
 - `web/api-server/`（含 server.js、package.json）
 - `web/.env`（环境变量，注意勿提交到公开仓库）
@@ -28,7 +28,7 @@ bash run-init.sh
 ### 2. 安装依赖并启动
 
 ```bash
-cd /home/chelizi/web/api-server
+cd /home/zhejian/web/api-server
 npm install --production
 ```
 
@@ -43,7 +43,7 @@ npm start
 
 **方式 B：使用 pm2（推荐）**
 ```bash
-pm2 start server.js --name chelizi-api
+pm2 start server.js --name zhejian-api
 pm2 save
 pm2 startup  # 开机自启
 ```
@@ -72,7 +72,7 @@ location /api {
    ```bash
    cd /path/to/web/api-server
    npm install --production
-   pm2 restart chelizi-api   # 或你实际使用的进程名
+   pm2 restart zhejian-api   # 或你实际使用的进程名
    ```
 4. **小程序**：保持 `config.js` 中 `BASE_URL` 为线上 HTTPS 域名，用微信开发者工具**真机/预览**走合法域名。
 5. **佣金与微信支付（若启用）**：在服务器 `web/.env` 配置 `PUBLIC_API_BASE_URL`、`WECHAT_PAY_*` 等（见 [docs/本地开发环境配置.md](../docs/本地开发环境配置.md)）；在微信商户平台将支付回调 URL 设为 `https://你的域名/api/v1/pay/wechat/commission-notify`。**用户奖励金商家转账**：在商户平台「商家转账」中配置结果通知 URL 为 `https://你的域名/api/v1/pay/wechat/reward-transfer-notify`（或与 `WECHAT_PAY_TRANSFER_NOTIFY_URL` 一致）。

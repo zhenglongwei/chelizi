@@ -67,7 +67,7 @@ function request(method, path, body = null) {
 }
 
 async function main() {
-  console.log('车厘子 - 定损到返佣全流程模拟');
+  console.log('辙见 - 定损到返佣全流程模拟');
   console.log('API:', API_BASE);
   console.log('用户:', USER_ID, '| 服务商:', MERCHANT_PHONE);
   console.log('');

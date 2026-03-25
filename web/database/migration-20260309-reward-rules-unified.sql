@@ -2,7 +2,7 @@
 -- 1. 将 repair_complexity_levels 种子数据 + 其他模块配置写入 reward_rules
 -- 2. 从 settings 删除 rewardRules（本应在 reward_rules 中的配置）
 --
--- 执行：mysql -u root -p chelizi < web/database/migration-20260309-reward-rules-unified.sql
+-- 执行：mysql -u root -p zhejian < web/database/migration-20260309-reward-rules-unified.sql
 
 INSERT INTO reward_rules (rule_key, rule_value, description) VALUES (
   'rewardRules',

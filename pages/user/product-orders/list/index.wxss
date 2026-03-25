@@ -1,0 +1,40 @@
+.po-list-page {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.po-loading,
+.po-empty {
+  padding: 80rpx 32rpx;
+  text-align: center;
+}
+
+.po-scroll {
+  height: 100vh;
+  padding: 24rpx 32rpx 48rpx;
+  box-sizing: border-box;
+}
+
+.po-card {
+  padding: 24rpx 28rpx;
+  margin-bottom: 20rpx;
+}
+
+.po-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.po-meta {
+  margin-top: 12rpx;
+}
+
+.po-status {
+  flex-shrink: 0;
+}
+
+.po-paid {
+  color: #16a34a;
+}

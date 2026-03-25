@@ -63,7 +63,7 @@ function ok(step, res, msg = '') {
 }
 
 async function main() {
-  console.log('\n========== 车厘子 真实 API 端到端测试 ==========\n');
+  console.log('\n========== 辙见 真实 API 端到端测试 ==========\n');
   console.log('API:', API_BASE);
   console.log('测试服务商:', TEST_PHONE);
   console.log('用户:', USER_ID);

@@ -36,7 +36,7 @@ Page({
   onAbout() {
     ui.showConfirm({
       title: '关于我们',
-      content: '车厘子 - 事故车维修点评平台\n专业、透明、省心的维修服务',
+      content: '辙见 - 事故车维修点评平台\n专业、透明、省心的维修服务',
       confirmText: '知道了',
       showCancel: false
     });
@@ -45,7 +45,7 @@ Page({
   onAgreement() {
     ui.showConfirm({
       title: '用户协议',
-      content: '请在使用前阅读并同意《车厘子用户服务协议》。协议内容可在小程序内查看。',
+      content: '请在使用前阅读并同意《辙见用户服务协议》。协议内容可在小程序内查看。',
       confirmText: '知道了',
       showCancel: false
     });
@@ -54,7 +54,7 @@ Page({
   onPrivacy() {
     ui.showConfirm({
       title: '隐私政策',
-      content: '我们重视您的隐私，收集的信息仅用于提供服务。详见《车厘子隐私政策》。',
+      content: '我们重视您的隐私，收集的信息仅用于提供服务。详见《辙见隐私政策》。',
       confirmText: '知道了',
       showCancel: false
     });

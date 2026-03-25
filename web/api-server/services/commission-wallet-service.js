@@ -62,7 +62,7 @@ async function afterOrderCompleted(pool, orderRow) {
     is_insurance_accident: insRaw,
   } = orderRow;
 
-  const waiveInsurance = (await getSetting(pool, 'commission_waive_insurance', '1')) === '1';
+  const waiveInsurance = (await getSetting(pool, 'commission_waive_insurance', '0')) === '1';
   const isInsurance = insRaw === 1 || insRaw === '1';
 
   if (waiveInsurance && isInsurance) {
@@ -171,7 +171,8 @@ async function getWallet(pool, shopId) {
     [shopId]
   );
   const [[w]] = await pool.execute(
-    'SELECT shop_id, balance, frozen, deduct_mode, updated_at FROM merchant_commission_wallets WHERE shop_id = ?',
+    `SELECT shop_id, balance, frozen, income_balance, income_frozen, deduct_mode, updated_at
+     FROM merchant_commission_wallets WHERE shop_id = ?`,
     [shopId]
   );
   return w;
@@ -232,7 +233,7 @@ async function createRechargePrepay(pool, shopId, merchantId, amountYuan, openid
   );
 
   const prepay = await wechatPay.jsapiPrepay({
-    description: '车厘子佣金账户充值',
+    description: '辙见佣金账户充值',
     outTradeNo,
     amountFen: fen,
     openid,
@@ -401,15 +402,22 @@ async function handleWechatPayNotify(pool, rawBody, headers) {
  */
 async function finalizeCommissionProof(pool, shopId, orderId, actualAmountYuan, proofUrls) {
   const [ords] = await pool.execute(
-    `SELECT order_id, shop_id, status, commission_rate, commission_provisional, commission_paid_amount, commission_status
+    `SELECT order_id, shop_id, status, commission_rate, commission_provisional, commission_paid_amount, commission_status,
+            is_insurance_accident
      FROM orders WHERE order_id = ? AND shop_id = ?`,
     [orderId, shopId]
   );
   if (!ords.length) return { success: false, error: '订单不存在', statusCode: 404 };
   const o = ords[0];
   if (o.status !== 3) return { success: false, error: '仅已完成订单可 finalize', statusCode: 400 };
+  if (o.commission_status === 'finalized') {
+    return { success: false, error: '该单已结算完成', statusCode: 400 };
+  }
   if (['waived_insurance', 'legacy_exempt'].includes(o.commission_status)) {
     return { success: false, error: '该订单无需佣金 finalize', statusCode: 400 };
+  }
+  if (o.commission_status === 'pending_owner_repair_pay') {
+    return { success: false, error: '已提交结算，请等待车主支付维修款', statusCode: 400 };
   }
 
   const actual = roundMoney(actualAmountYuan);
@@ -420,9 +428,27 @@ async function finalizeCommissionProof(pool, shopId, orderId, actualAmountYuan, 
 
   const proofJson = JSON.stringify(Array.isArray(proofUrls) ? proofUrls : []);
 
+  const isInsurance = o.is_insurance_accident === 1 || o.is_insurance_accident === '1';
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    if (!isInsurance) {
+      await conn.execute(
+        `UPDATE orders SET actual_amount = ?, repair_payment_proof = ?, commission_final = ?, commission = ?,
+         commission_status = 'pending_owner_repair_pay', repair_payment_status = 'pending_pay',
+         commission_paid_amount = 0
+         WHERE order_id = ?`,
+        [actual, proofJson, commissionFinal, commissionFinal, orderId]
+      );
+      await conn.commit();
+      return {
+        success: true,
+        data: { commission_final: commissionFinal, need_owner_repair_pay: true },
+      };
+    }
+
     await conn.execute(
       `UPDATE orders SET actual_amount = ?, repair_payment_proof = ?, commission_final = ?, commission = ?
        WHERE order_id = ?`,

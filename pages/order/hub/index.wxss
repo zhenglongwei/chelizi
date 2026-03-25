@@ -1,0 +1,177 @@
+@import '../list/index.wxss';
+
+.order-hub-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-md) var(--page-padding-x) var(--space-xl);
+}
+
+.hub-main-tabs {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-sm);
+}
+
+.hub-main-tab {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  background: var(--bg-placeholder);
+}
+
+.hub-main-tab.active {
+  background: var(--primary);
+  color: var(--bg-card);
+  font-weight: 600;
+}
+
+.po-scroll {
+  height: 100%;
+  padding-bottom: var(--space-xl);
+  box-sizing: border-box;
+}
+
+/* 标品订单卡片（含预约到店） */
+.po-card {
+  margin-bottom: var(--space-lg);
+  padding: 0;
+  overflow: hidden;
+}
+
+.po-card--bookable {
+  border-left: 8rpx solid var(--primary);
+}
+
+.po-card-body {
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+}
+
+.po-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.po-product-name {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.po-status-tag {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: var(--bg-placeholder);
+  color: var(--text-secondary);
+}
+
+.po-status-tag--paid {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.po-shop-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.po-shop-icon {
+  width: 28rpx;
+  height: 28rpx;
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.po-shop-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.po-amount-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.po-qty-wrap,
+.po-price-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.po-price-wrap {
+  align-items: flex-end;
+}
+
+.po-qty-num {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.po-price-label {
+  align-self: flex-end;
+}
+
+.po-paid-at {
+  display: block;
+  margin-top: var(--space-md);
+}
+
+.po-card-foot {
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  background: rgba(234, 179, 8, 0.06);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.po-card-foot--pending {
+  background: var(--bg-placeholder);
+}
+
+.po-foot-hint {
+  display: block;
+  margin-bottom: var(--space-md);
+  line-height: 1.5;
+}
+
+.po-book-btn {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 24rpx !important;
+  height: 88rpx !important;
+  line-height: 88rpx !important;
+  font-size: var(--fs-body) !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-md) !important;
+  box-sizing: border-box !important;
+}
+
+.po-book-btn::after {
+  border: none;
+}
+
+.po-book-btn-hover {
+  opacity: 0.92;
+}
+
+.po-loading,
+.po-empty {
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.po-paid {
+  color: #16a34a;
+}

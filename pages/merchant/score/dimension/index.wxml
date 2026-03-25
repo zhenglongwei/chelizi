@@ -1,0 +1,27 @@
+<custom-nav-bar title="{{title}}" showBack="{{true}}" />
+<view class="page-root merchant-dimension-page" style="{{pageRootStyle}}">
+  <view class="merchant-dimension-current card" wx:if="{{currentLines.length}}">
+    <text class="merchant-dimension-block-title fs-body fw-bold">当前数据摘要</text>
+    <view class="merchant-dimension-line" wx:for="{{currentLines}}" wx:for-index="lineIdx" wx:key="lineIdx">
+      <text class="text-muted fs-cap">{{item.label}}</text>
+      <text class="fs-body">{{item.value}}</text>
+    </view>
+  </view>
+
+  <view class="merchant-dimension-rules card">
+    <text class="merchant-dimension-block-title fs-body fw-bold">规则说明</text>
+    <text class="merchant-dimension-rule-p text-muted fs-cap" wx:for="{{rulesParagraphs}}" wx:for-index="ri" wx:key="ri">{{item}}</text>
+  </view>
+
+  <view class="merchant-dimension-actions">
+    <button
+      class="btn-primary merchant-dimension-btn"
+      wx:for="{{actions}}"
+      wx:key="label"
+      data-url="{{item.url}}"
+      bindtap="onActionTap"
+    >
+      {{item.label}}
+    </button>
+  </view>
+</view>

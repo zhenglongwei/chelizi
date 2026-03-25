@@ -52,6 +52,8 @@ Page({
         wx.setStorageSync('user', res.user);
       }
       ui.showSuccess('登录成功');
+      // 成功分支原先未重置 loading，会导致按钮一直显示「登录中」直到用户手动刷新
+      this.setData({ loading: false });
       const needProfile = res.user && (!res.user.avatar_url || !res.user.nickname);
       if (needProfile) {
         const redirect = this.redirect || '/pages/user/index/index';

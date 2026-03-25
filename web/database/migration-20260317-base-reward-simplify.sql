@@ -1,7 +1,7 @@
 -- 方案A：去掉维修复杂度校准系数，并入基础固定奖励
 -- 公式改为：基础奖励 = 复杂度基础固定奖励 × 车价校准系数
 --
--- 执行：mysql -u root -p chelizi < web/database/migration-20260317-base-reward-simplify.sql
+-- 执行：mysql -u root -p zhejian < web/database/migration-20260317-base-reward-simplify.sql
 
 -- 为 reward_rules.rewardRules 添加 baseReward、baseRewardInsurance
 -- 若已有 rule_value，用 JSON_SET 追加；否则需先有 rewardRules 行

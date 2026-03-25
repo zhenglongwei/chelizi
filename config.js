@@ -4,11 +4,14 @@
  *
  * 微信合法域名要求 HTTPS，BASE_URL 需与微信后台配置的 request 合法域名一致
  *
+ * 本地开发：复制 config.local.example.js 为 config.local.js，将 BASE_URL 改为
+ * http://127.0.0.1:3000（与 api-server 一致），并在开发者工具中关闭域名校验。
+ *
  * 订阅消息：在 mp.weixin.qq.com 功能->订阅消息 选用模板后，将模板 ID 填入此处
  * 同时需在 web/.env 配置对应变量（SUBSCRIBE_TEMPLATE_ORDER_UPDATE 等）
  */
 
-module.exports = {
+const defaults = {
   BASE_URL: 'https://simplewin.cn',
 
   /** 订阅消息模板 ID（在微信公众平台选用后填入，与 .env 保持一致） */
@@ -22,3 +25,12 @@ module.exports = {
     merchant_commission_alert: 'QMnR-hGBLTi1FL9602l5LU-y0mEfY667yxl9586UzS4',   // 服务商：佣金/余额提醒（可与上列共用模板）
   },
 };
+
+let local = {};
+try {
+  local = require('./config.local.js');
+} catch (e) {
+  if (e.code !== 'MODULE_NOT_FOUND') throw e;
+}
+
+module.exports = { ...defaults, ...local };

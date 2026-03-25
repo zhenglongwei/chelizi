@@ -4,7 +4,7 @@
 -- 执行前请备份数据
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- 1. 确保 settings 表可存储 rewardRules（key 已支持，value 为 TEXT 可存 JSON）
 -- 无需修改，rewardRules 通过 PUT /api/v1/admin/config 写入

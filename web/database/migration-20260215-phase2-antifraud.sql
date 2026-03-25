@@ -1,9 +1,9 @@
 -- ========================================================
 -- 第二阶段防刷 - 黑名单、防刷配置
--- 执行：mysql -u user -p chelizi < migration-20260215-phase2-antifraud.sql
+-- 执行：mysql -u user -p zhejian < migration-20260215-phase2-antifraud.sql
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- 1. 黑名单表
 CREATE TABLE IF NOT EXISTS blacklist (

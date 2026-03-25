@@ -60,6 +60,42 @@
   height: 88rpx;
 }
 
+.merchant-login-checking {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+  padding: var(--space-xl);
+}
+
+.merchant-login-wechat {
+  padding: var(--space-xl);
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-login-hint {
+  display: block;
+  margin-top: var(--space-md);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.merchant-login-divider {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.merchant-form-label-row .merchant-form-label {
+  margin-bottom: 0;
+}
+
 .merchant-login-footer {
   display: flex;
   align-items: center;

@@ -1,5 +1,5 @@
 -- 添加 AI 定损每日调用次数限制相关表与配置
--- 执行：mysql -u user -p chelizi < add_ai_limit.sql
+-- 执行：mysql -u user -p zhejian < add_ai_limit.sql
 
 -- 1. AI 调用记录表（用于统计每日调用次数）
 CREATE TABLE IF NOT EXISTS ai_call_log (

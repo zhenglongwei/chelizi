@@ -1,4 +1,4 @@
-// 车厘子 - 事故车维修平台 API 服务器
+// 辙见 - 事故车维修平台 API 服务器
 // 基于 Express + MySQL + 阿里云OSS
 
 const path = require('path');
@@ -38,7 +38,7 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'chelizi',
+  database: process.env.DB_NAME || 'zhejian',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -54,6 +54,7 @@ const biddingService = require('./services/bidding-service');
 const biddingDistribution = require('./services/bidding-distribution');
 const reviewService = require('./review-service');
 const shopSortService = require('./shop-sort-service');
+const shopScoreService = require('./shop-score');
 const appointmentService = require('./services/appointment-service');
 const damageService = require('./services/damage-service');
 const orderService = require('./services/order-service');
@@ -64,9 +65,15 @@ const reviewLikeService = require('./services/review-like-service');
 const materialAuditService = require('./services/material-audit-service');
 const merchantEvidenceService = require('./services/merchant-evidence-service');
 const shopProductService = require('./services/shop-product-service');
+const productOrderService = require('./services/product-order-service');
+const userBookingService = require('./services/user-booking-service');
 const reviewFeedService = require('./services/review-feed-service');
 const commissionWalletService = require('./services/commission-wallet-service');
 const rewardTransferService = require('./services/reward-transfer-service');
+const shopIncomeService = require('./services/shop-income-service');
+const repairOrderPaymentService = require('./services/repair-order-payment-service');
+const merchantIncomeWithdrawService = require('./services/merchant-income-withdraw-service');
+const merchantCorpIncomeWithdrawService = require('./services/merchant-corp-income-withdraw-service');
 
 // 测试数据库连接并验证 schema
 async function testDBConnection() {
@@ -108,6 +115,28 @@ app.post('/api/v1/pay/wechat/commission-notify', express.raw({ type: 'applicatio
   }
 });
 
+app.post('/api/v1/pay/wechat/product-order-notify', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const raw = req.body.toString('utf8');
+    await productOrderService.handleProductOrderNotify(pool, raw, req.headers);
+    res.status(200).json({ code: 'SUCCESS', message: '成功' });
+  } catch (e) {
+    console.error('[product-order-notify]', e.message);
+    res.status(500).json({ code: 'FAIL', message: '失败' });
+  }
+});
+
+app.post('/api/v1/pay/wechat/repair-order-notify', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const raw = req.body.toString('utf8');
+    await repairOrderPaymentService.handleRepairOrderNotify(pool, raw, req.headers);
+    res.status(200).json({ code: 'SUCCESS', message: '成功' });
+  } catch (e) {
+    console.error('[repair-order-notify]', e.message);
+    res.status(500).json({ code: 'FAIL', message: '失败' });
+  }
+});
+
 // 奖励金提现：商家转账到零钱（用户确认模式）结果通知，须 raw body 验签
 app.post('/api/v1/pay/wechat/reward-transfer-notify', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
@@ -116,6 +145,17 @@ app.post('/api/v1/pay/wechat/reward-transfer-notify', express.raw({ type: 'appli
     res.status(200).json({ code: 'SUCCESS' });
   } catch (e) {
     console.error('[reward-transfer-notify]', e.message);
+    res.status(500).json({ code: 'FAIL', message: e.message || '失败' });
+  }
+});
+
+app.post('/api/v1/pay/wechat/merchant-income-transfer-notify', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const raw = req.body.toString('utf8');
+    await merchantIncomeWithdrawService.handleMerchantIncomeTransferNotify(pool, raw, req.headers);
+    res.status(200).json({ code: 'SUCCESS' });
+  } catch (e) {
+    console.error('[merchant-income-transfer-notify]', e.message);
     res.status(500).json({ code: 'FAIL', message: e.message || '失败' });
   }
 });
@@ -149,6 +189,9 @@ if (rateLimit) {
   app.use('/api/v1/auth/login', authLimiter);
   app.use('/api/v1/merchant/login', authLimiter);
   app.use('/api/v1/merchant/register', authLimiter);
+  app.use('/api/v1/merchant/wechat-login', authLimiter);
+  app.use('/api/v1/merchant/check-openid', authLimiter);
+  app.use('/api/v1/merchant/reset-password', authLimiter);
 }
 
 // 请求日志与请求 ID（用于链路追踪）
@@ -397,6 +440,48 @@ app.post('/api/v1/merchant/login', async (req, res) => {
   }
 });
 
+// 服务商微信快捷登录（openid 已绑定 merchant_users）
+app.post('/api/v1/merchant/wechat-login', async (req, res) => {
+  try {
+    const result = await authService.merchantWechatLogin(pool, req, { JWT_SECRET, WX_APPID, WX_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '登录成功'));
+  } catch (error) {
+    console.error('服务商微信登录错误:', error);
+    res.status(500).json(errorResponse('登录失败', 500));
+  }
+});
+
+// 服务商：当前微信是否已绑定账号（仅检测，用于「我的」页展示入口）
+app.post('/api/v1/merchant/check-openid', async (req, res) => {
+  try {
+    const result = await authService.merchantCheckOpenid(pool, req, { WX_APPID, WX_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, 'ok'));
+  } catch (error) {
+    console.error('服务商 openid 检测错误:', error);
+    res.status(500).json(errorResponse('检测失败', 500));
+  }
+});
+
+// 服务商找回密码（当前微信 openid 与账号一致）
+app.post('/api/v1/merchant/reset-password', async (req, res) => {
+  try {
+    const result = await authService.merchantResetPassword(pool, req, { WX_APPID, WX_SECRET });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '密码已重置'));
+  } catch (error) {
+    console.error('服务商重置密码错误:', error);
+    res.status(500).json(errorResponse('重置失败', 500));
+  }
+});
+
 // ===================== 服务商端接口（需 merchant_token） =====================
 
 // 服务商绑定 openid（用于订阅消息推送，登录后进入工作台时调用）
@@ -449,6 +534,153 @@ app.get('/api/v1/merchant/commission/ledger', authenticateMerchant, async (req, 
     res.json(successResponse(data));
   } catch (e) {
     res.status(500).json(errorResponse(safeErrorMessage(e, '加载失败'), 500));
+  }
+});
+
+app.get('/api/v1/merchant/shop-income/ledger', authenticateMerchant, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const data = await shopIncomeService.listIncomeLedger(pool, req.shopId, { page, limit });
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '加载失败'), 500));
+  }
+});
+
+app.post('/api/v1/merchant/shop-income/withdraw', authenticateMerchant, async (req, res) => {
+  try {
+    const { amount, real_name, id_card_no } = req.body || {};
+    const result = await merchantIncomeWithdrawService.submitMerchantIncomeWithdraw(
+      pool,
+      req.shopId,
+      req.merchantId,
+      amount,
+      { realName: real_name, idCardNo: id_card_no }
+    );
+    if (result.action === 'resume_pending') {
+      let msg = '请在微信中确认收款';
+      if (result.warning === 'no_package') {
+        msg = result.hint || '请先取消待确认提现后再发起';
+      }
+      return res.json(
+        successResponse(
+          {
+            withdraw_id: result.withdraw_id,
+            transfer_mode: 'wechat',
+            action: result.action,
+            amount: result.amount,
+            warning: result.warning,
+            hint: result.hint,
+            package_info: result.package_info,
+            mch_id: result.mch_id,
+            app_id: result.app_id,
+            openid: result.openid,
+            state: result.state,
+          },
+          msg
+        )
+      );
+    }
+    return res.json(
+      successResponse(
+        {
+          withdraw_id: result.withdraw_id,
+          transfer_mode: 'wechat',
+          action: result.action,
+          amount: result.amount,
+          package_info: result.package_info,
+          mch_id: result.mch_id,
+          app_id: result.app_id,
+          openid: result.openid,
+          state: result.state,
+        },
+        '请在微信中确认收款'
+      )
+    );
+  } catch (error) {
+    if (error.code === 'VALIDATION') {
+      return res.status(error.status && error.status >= 400 ? error.status : 400).json(errorResponse(error.message));
+    }
+    if (error.code === 'CONFLICT') {
+      return res.status(409).json(errorResponse(error.message, 409));
+    }
+    const msg = error.message || '提现申请失败';
+    const status = error.status && error.status >= 400 && error.status < 500 ? error.status : 500;
+    res.status(status).json(errorResponse(msg, status));
+  }
+});
+
+app.post('/api/v1/merchant/shop-income/withdraw/reconcile', authenticateMerchant, async (req, res) => {
+  try {
+    const { withdraw_id } = req.body || {};
+    const out = await merchantIncomeWithdrawService.reconcileMerchantIncomeWithdraw(
+      pool,
+      req.shopId,
+      req.merchantId,
+      withdraw_id
+    );
+    res.json(successResponse(out));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '同步失败'), 500));
+  }
+});
+
+app.post('/api/v1/merchant/shop-income/withdraw/cancel', authenticateMerchant, async (req, res) => {
+  try {
+    const { withdraw_id } = req.body || {};
+    const out = await merchantIncomeWithdrawService.cancelPendingMerchantIncomeWithdraw(
+      pool,
+      req.shopId,
+      req.merchantId,
+      withdraw_id
+    );
+    res.json(successResponse(out));
+  } catch (error) {
+    if (error.code === 'VALIDATION') {
+      return res.status(400).json(errorResponse(error.message));
+    }
+    res.status(500).json(errorResponse(safeErrorMessage(error, '撤销失败'), 500));
+  }
+});
+
+app.post('/api/v1/merchant/shop-income/corp-withdraw', authenticateMerchant, async (req, res) => {
+  try {
+    const r = await merchantCorpIncomeWithdrawService.submitCorpWithdraw(pool, req.shopId, req.merchantId, req.body || {});
+    if (!r.success) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data, r.data.message || '已提交'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '提交失败'), 500));
+  }
+});
+
+app.get('/api/v1/merchant/shop-income/corp-withdrawals', authenticateMerchant, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const data = await merchantCorpIncomeWithdrawService.listCorpWithdrawalsForMerchant(pool, req.shopId, {
+      page,
+      limit,
+    });
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '加载失败'), 500));
+  }
+});
+
+app.post('/api/v1/merchant/shop-income/corp-withdraw/cancel', authenticateMerchant, async (req, res) => {
+  try {
+    const { request_id } = req.body || {};
+    const r = await merchantCorpIncomeWithdrawService.cancelCorpWithdrawByMerchant(
+      pool,
+      req.shopId,
+      req.merchantId,
+      request_id
+    );
+    if (!r.success) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data, '已撤销'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '撤销失败'), 500));
   }
 });
 
@@ -557,6 +789,12 @@ app.get('/api/v1/merchant/dashboard', authenticateMerchant, async (req, res) => 
       [req.merchantId]
     );
     const openidBound = !!(openidRows[0]?.openid && String(openidRows[0].openid).trim());
+    let shop_score_detail = null;
+    try {
+      shop_score_detail = await shopScoreService.getMerchantWorkbenchScore(pool, shopId);
+    } catch (e) {
+      console.warn('[merchant/dashboard] shop_score_detail', e && e.message);
+    }
     res.json(successResponse({
       pending_bidding_count: pendingBiddingCount,
       pending_order_count: pendingOrder[0]?.cnt || 0,
@@ -565,7 +803,8 @@ app.get('/api/v1/merchant/dashboard', authenticateMerchant, async (req, res) => 
       qualification_status: qualificationStatus,
       qualification_audit_reason: qualificationAuditReason,
       qualification_submitted: qualificationSubmitted,
-      openid_bound: openidBound
+      openid_bound: openidBound,
+      shop_score_detail
     }));
   } catch (error) {
     console.error('服务商工作台错误:', error);
@@ -1205,6 +1444,17 @@ app.post('/api/v1/merchant/products/:productId/off-shelf', authenticateMerchant,
   } catch (error) {
     console.error('下架商品错误:', error);
     res.status(500).json(errorResponse('下架商品失败', 500));
+  }
+});
+
+app.delete('/api/v1/merchant/products/:productId', authenticateMerchant, async (req, res) => {
+  try {
+    const result = await shopProductService.deletePending(pool, req.shopId, req.params.productId);
+    if (!result.success) return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    res.json(successResponse(result.data, '已撤回'));
+  } catch (error) {
+    console.error('撤回商品错误:', error);
+    res.status(500).json(errorResponse('撤回失败', 500));
   }
 });
 
@@ -2048,6 +2298,15 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
       order.duration_deadline_text = `${deadline.getMonth() + 1}月${deadline.getDate()}日`;
       order.quote_duration = dur;
     }
+    const ins = order.is_insurance_accident === 1 || order.is_insurance_accident === '1';
+    const rps = order.repair_payment_status;
+    order.can_pay_repair =
+      order.status === 3 &&
+      !ins &&
+      order.commission_status === 'pending_owner_repair_pay' &&
+      rps !== 'paid';
+    order.repair_pay_amount =
+      order.actual_amount != null ? parseFloat(order.actual_amount) : null;
     res.json(successResponse(order));
   } catch (error) {
     res.status(500).json(errorResponse('获取订单详情失败', 500));
@@ -2799,6 +3058,116 @@ app.post('/api/v1/appointments', authenticateToken, async (req, res) => {
   }
 });
 
+// 车主商品直购订单
+app.post('/api/v1/user/product-orders', authenticateToken, async (req, res) => {
+  try {
+    const result = await productOrderService.createOrder(pool, req.userId, req.body);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '订单已创建'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '创建订单失败'), 500));
+  }
+});
+
+app.get('/api/v1/user/product-orders', authenticateToken, async (req, res) => {
+  try {
+    const data = await productOrderService.listForUser(pool, req.userId, req.query);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '获取订单列表失败'), 500));
+  }
+});
+
+app.get('/api/v1/user/product-orders/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await productOrderService.getPaidDetailForUser(pool, req.userId, req.params.id);
+    if (!row) return res.status(404).json(errorResponse('订单不存在或未支付', 404));
+    res.json(successResponse(row));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '获取订单失败'), 500));
+  }
+});
+
+app.get('/api/v1/user/booking-summary', authenticateToken, async (req, res) => {
+  try {
+    const data = await userBookingService.bookingSummary(pool, req.userId);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '查询失败'), 500));
+  }
+});
+
+app.get('/api/v1/user/booking-options', authenticateToken, async (req, res) => {
+  try {
+    const data = await userBookingService.bookingOptionsAll(pool, req.userId);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '查询失败'), 500));
+  }
+});
+
+app.get('/api/v1/user/shops/:shopId/booking-options', authenticateToken, async (req, res) => {
+  try {
+    const shopId = (req.params.shopId || '').trim();
+    if (!shopId) return res.status(400).json(errorResponse('缺少维修厂', 400));
+    const data = await userBookingService.bookingOptionsForShop(pool, req.userId, shopId);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '查询失败'), 500));
+  }
+});
+
+app.post('/api/v1/user/product-orders/:id/prepay', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json(errorResponse('请提供微信 code'));
+    if (!WX_APPID || !WX_SECRET) return res.status(503).json(errorResponse('未配置微信小程序'));
+    const wxRes = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
+      params: { appid: WX_APPID, secret: WX_SECRET, js_code: code, grant_type: 'authorization_code' },
+    });
+    const d = wxRes.data;
+    if (d.errcode || !d.openid) return res.status(400).json(errorResponse('微信授权失败'));
+    const result = await productOrderService.createPrepay(pool, req.userId, req.params.id, d.openid);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '预支付失败'), 500));
+  }
+});
+
+app.post('/api/v1/user/orders/:id/repair-prepay', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json(errorResponse('请提供微信 code'));
+    if (!WX_APPID || !WX_SECRET) return res.status(503).json(errorResponse('未配置微信小程序'));
+    const wxRes = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
+      params: { appid: WX_APPID, secret: WX_SECRET, js_code: code, grant_type: 'authorization_code' },
+    });
+    const d = wxRes.data;
+    if (d.errcode || !d.openid) return res.status(400).json(errorResponse('微信授权失败'));
+    const result = await repairOrderPaymentService.createRepairOrderPrepay(pool, req.userId, req.params.id, d.openid);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '预支付失败'), 500));
+  }
+});
+
+app.get('/api/v1/merchant/product-orders', authenticateMerchant, async (req, res) => {
+  try {
+    const data = await productOrderService.listForMerchant(pool, req.shopId, req.query);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '获取商品订单失败'), 500));
+  }
+});
+
 // ===================== 5. 评价相关接口 =====================
 
 // 评价聚合流（全平台评价，按等级+时间排序，支持时间/距离，新鲜度3天不重复）
@@ -3304,6 +3673,45 @@ app.get('/api/v1/admin/shop-products/pending', authenticateAdmin, async (req, re
   } catch (error) {
     console.error('获取待审核商品错误:', error);
     res.status(500).json(errorResponse('获取待审核商品失败', 500));
+  }
+});
+
+app.get('/api/v1/admin/shop-income/corp-withdrawals', authenticateAdmin, async (req, res) => {
+  try {
+    const data = await merchantCorpIncomeWithdrawService.listCorpWithdrawalsForAdmin(pool, req.query);
+    res.json(successResponse(data));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '加载失败'), 500));
+  }
+});
+
+app.post('/api/v1/admin/shop-income/corp-withdrawals/:requestId/complete', authenticateAdmin, async (req, res) => {
+  try {
+    const r = await merchantCorpIncomeWithdrawService.completeCorpWithdrawByAdmin(
+      pool,
+      req.params.requestId,
+      req.body || {},
+      req.adminUserId
+    );
+    if (!r.success) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data, '已核销'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '操作失败'), 500));
+  }
+});
+
+app.post('/api/v1/admin/shop-income/corp-withdrawals/:requestId/reject', authenticateAdmin, async (req, res) => {
+  try {
+    const r = await merchantCorpIncomeWithdrawService.rejectCorpWithdrawByAdmin(
+      pool,
+      req.params.requestId,
+      req.body || {},
+      req.adminUserId
+    );
+    if (!r.success) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data, '已驳回'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '操作失败'), 500));
   }
 });
 
@@ -4154,7 +4562,7 @@ app.use((req, res) => {
 // ===================== 启动服务 =====================
 
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log('🚀 车厘子 API 服务器已启动');
+  console.log('🚀 辙见 API 服务器已启动');
   console.log(`📡 监听端口: ${PORT}`);
   console.log(`🔗 健康检查: http://localhost:${PORT}/health`);
   await testDBConnection();

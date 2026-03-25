@@ -23,6 +23,18 @@
   margin-bottom: var(--space-md);
 }
 
+.income-withdraw-mode {
+  display: block;
+  margin-top: var(--space-sm);
+}
+
+.income-withdraw-mode .radio-row {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+}
+
 .btn-primary {
   background: var(--primary);
   color: #fff;

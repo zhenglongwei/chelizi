@@ -3,7 +3,7 @@
 -- 执行前请备份数据
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 CREATE TABLE IF NOT EXISTS merchant_messages (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

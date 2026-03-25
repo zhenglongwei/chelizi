@@ -129,7 +129,11 @@ async function confirmOrder(pool, orderId, userId) {
       [orderId]
     );
     if (freshRows.length) {
-      commissionSettlement = await commissionWallet.afterOrderCompleted(pool, freshRows[0]);
+      const fr = freshRows[0];
+      const isInsurance = fr.is_insurance_accident === 1 || fr.is_insurance_accident === '1';
+      if (isInsurance) {
+        commissionSettlement = await commissionWallet.afterOrderCompleted(pool, fr);
+      }
     }
   } catch (ce) {
     console.error('[order-service] commission settlement:', ce.message);

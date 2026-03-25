@@ -2,10 +2,43 @@
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getShopDetail, getShopReviews, reportReviewReading, likeReview, dislikeReview } = require('../../../utils/api');
+const {
+  getShopDetail,
+  getShopReviews,
+  reportReviewReading,
+  likeReview,
+  dislikeReview,
+  getShopBookingOptions
+} = require('../../../utils/api');
+const { runUserBookingFlow } = require('../../../utils/user-booking-flow');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const logger = getLogger('ShopDetail');
+
+/** 客观题布尔（兼容接口 1/0、字符串） */
+function parseObjectiveBool(v) {
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === '1' || s === 'true') return true;
+    if (s === '0' || s === 'false') return false;
+  }
+  return null;
+}
+
+function buildObjectiveSummary(q1, q2, q3) {
+  const list = [q1, q2, q3].filter((x) => x !== null);
+  if (!list.length) return '';
+  const yes = list.filter((x) => x === true).length;
+  const n = list.length;
+  if (n === 3) {
+    if (yes === 3) return '三项核验均通过';
+    if (yes === 0) return '三项均未通过';
+    return `${yes} 项通过 · ${3 - yes} 项未通过`;
+  }
+  return `${yes}/${n} 项为「是」`;
+}
 
 // 有效阅读：单次最多 180 秒，总最多 300 秒
 const MAX_SESSION_SEC = 180;
@@ -71,6 +104,15 @@ Page({
       const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
       const starDisplay = scoreToStarDisplay(shop.shop_score, shop.rating);
 
+      const products = (shop.products || []).map((p) => {
+        const imgs = p.images || [];
+        return {
+          ...p,
+          cover: imgs[0] || '',
+          priceText: (parseFloat(p.price) || 0).toFixed(2)
+        };
+      });
+
       this.setData({
         shop: {
           ...shop,
@@ -78,6 +120,7 @@ Page({
           categories: shop.categories || [],
           certifications: shop.certifications || [],
           services: shop.services || [],
+          products,
           deviationRate: deviationRate.toFixed(1),
           deviationClass,
           avgRating: starDisplay.scoreText,
@@ -115,8 +158,20 @@ Page({
         const content = r.content || '';
         const amt = r.amount;
         const amountText = amt != null ? (Number.isInteger(amt) ? String(amt) : amt.toFixed(2)) : '';
+        const oa = r.objective_answers || {};
+        const objQ1 = parseObjectiveBool(oa.q1_progress_synced);
+        const objQ2 = parseObjectiveBool(oa.q2_parts_shown);
+        const objQ3 = parseObjectiveBool(oa.q3_fault_resolved);
+        const hasObjectives = objQ1 != null || objQ2 != null || objQ3 != null;
+        const objectiveSummary = hasObjectives ? buildObjectiveSummary(objQ1, objQ2, objQ3) : '';
+        const repairItems = Array.isArray(r.repair_items) ? r.repair_items : [];
+        const partPromiseLines = Array.isArray(r.part_promise_lines) ? r.part_promise_lines : [];
+        const materialPhotos = Array.isArray(r.material_photos) ? r.material_photos : [];
         return {
           ...r,
+          repair_items: repairItems,
+          part_promise_lines: partPromiseLines,
+          material_photos: materialPhotos,
           contentPreview: content.length > 60 ? content.slice(0, 60) + '...' : content,
           expanded: false,
           liked: !!r.is_liked,
@@ -127,7 +182,12 @@ Page({
           ratingText: '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating)),
           dateText: formatDate(r.created_at),
           isLowRating: rating > 0 && rating < 4,
-          amountText
+          amountText,
+          objQ1,
+          objQ2,
+          objQ3,
+          hasObjectives,
+          objectiveSummary
         };
       });
 
@@ -181,8 +241,24 @@ Page({
     });
   },
 
-  onBook() {
-    navigation.navigateTo('/pages/shop/book/index', { id: this.data.shopId });
+  async onBook() {
+    const shopId = this.data.shopId;
+    await runUserBookingFlow({
+      context: 'shop',
+      shopId,
+      fetchBookingOptions: () => getShopBookingOptions(shopId),
+      getShopProducts: () => this.data.shop?.products || [],
+      loginRedirect: '/pages/shop/detail/index?id=' + encodeURIComponent(shopId)
+    });
+  },
+
+  onProductTap(e) {
+    const id = (e.currentTarget.dataset.id || '').trim();
+    if (!id) return;
+    navigation.navigateTo('/pages/shop/product/confirm/index', {
+      shop_id: this.data.shopId,
+      product_id: id
+    });
   },
 
   onFavorite() {
@@ -197,6 +273,21 @@ Page({
     reviews[idx].expanded = true;
     this.setData({ reviews });
     setTimeout(() => this.startReadingObserver(reviews[idx].review_id), 100);
+  },
+
+  /** 车主核验区：新手阅读说明（信息架构补充，非改题意） */
+  onObjectiveReaderTip() {
+    wx.showModal({
+      title: '如何读「车主核验」',
+      content:
+        '这三项由完成订单的车主在平台必答题中确认，帮您从「过程是否透明、配件是否可信、问题是否修好」三个角度快速扫一眼。\n\n' +
+        '① 透明：进度、增项与费用是否及时同步，减少擅自加价风险。\n' +
+        '② 核对：是否当面看到换下件与装配件；本单若有「新配件留档」图为服务商完工时上传，可与订单中的配件等级承诺（如原厂、大厂件）对照包装与标识。\n' +
+        '③ 结果：针对本次送修症状是否排除，而非笼统说「车没问题」。\n\n' +
+        '请结合下方实拍、新配件留档与文字评价综合判断；单项为「否」时建议重点阅读正文与图片。',
+      showCancel: false,
+      confirmText: '知道了'
+    });
   },
 
   startReadingObserver(reviewId) {

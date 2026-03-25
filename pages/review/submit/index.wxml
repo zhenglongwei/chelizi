@@ -64,7 +64,7 @@
         </view>
         <view class="review-objective">
           <text class="fs-body">1. 维修过程中，修理厂有没有主动给你同步过维修进度？</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">比如配件到货、开始施工、发现新问题，都会提前跟你沟通</text>
+          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">包括进度、增项与费用：配件到货、开工、发现新问题是否提前沟通；费用变动是否事先说明，无先斩后奏</text>
           <radio-group bindchange="onQ1" class="review-radio-group">
             <label><radio value="true" checked="{{answers.q1_progress_synced === true}}"/>是</label>
             <label><radio value="false" checked="{{answers.q1_progress_synced === false}}"/>否</label>
@@ -72,6 +72,7 @@
         </view>
         <view class="review-objective">
           <text class="fs-body">2. 更换配件时，修理厂有没有给你展示新配件、以及换下来的旧配件？</text>
+          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">便于核对货对板与承诺是否兑现。平台还要求店端上传新配件留档图，其他车主可在店铺评价里对照订单中的配件等级（如原厂、大厂件）。</text>
           <radio-group bindchange="onQ2" class="review-radio-group">
             <label><radio value="true" checked="{{answers.q2_parts_shown === true}}"/>是</label>
             <label><radio value="false" checked="{{answers.q2_parts_shown === false}}"/>否</label>

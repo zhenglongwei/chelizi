@@ -59,10 +59,16 @@
           <text class="feed-date text-weak fs-cap">{{item.dateText}}</text>
         </view>
 
-        <!-- 维修项目、金额 -->
+        <!-- 维修项目、配件承诺、金额 -->
         <view class="feed-review-meta" wx:if="{{item.repair_items && item.repair_items.length}}">
           <text class="feed-meta-label text-muted fs-cap">维修项目：</text>
           <text class="feed-meta-val fs-cap">{{item.repair_items.join('、')}}</text>
+        </view>
+        <view class="feed-promise-block" wx:if="{{item.part_promise_lines && item.part_promise_lines.length}}">
+          <text class="feed-meta-label text-muted fs-cap">方案配件承诺</text>
+          <view class="feed-promise-tags">
+            <text class="feed-promise-tag fs-cap" wx:for="{{item.part_promise_lines}}" wx:for-item="pline" wx:for-index="pidx" wx:key="pidx">{{pline}}</text>
+          </view>
         </view>
         <view class="feed-review-meta" wx:if="{{item.amountText}}">
           <text class="feed-meta-label text-muted fs-cap">金额：</text>
@@ -73,17 +79,27 @@
 
         <!-- 客观题 -->
         <view class="feed-objectives" wx:if="{{item.objective_answers && (item.objective_answers.q1_progress_synced != null || item.objective_answers.q2_parts_shown != null || item.objective_answers.q3_fault_resolved != null)}}">
+          <text class="feed-obj-section-title text-muted fs-cap">车主核验要点</text>
           <view class="feed-obj" wx:if="{{item.objective_answers.q1_progress_synced != null}}">
-            <text class="text-muted fs-cap">维修进度同步</text>
-            <text class="fs-cap">{{item.objective_answers.q1_progress_synced ? '是' : '否'}}</text>
+            <view class="feed-obj-text">
+              <text class="feed-obj-title fs-body">方案与进度是否透明</text>
+              <text class="feed-obj-hint text-muted fs-sm">进度、增项与费用是否及时告知，无擅自加价</text>
+            </view>
+            <text class="feed-obj-ans fs-cap {{item.objective_answers.q1_progress_synced ? 'ans-yes' : 'ans-no'}}">{{item.objective_answers.q1_progress_synced ? '是' : '否'}}</text>
           </view>
           <view class="feed-obj" wx:if="{{item.objective_answers.q2_parts_shown != null}}">
-            <text class="text-muted fs-cap">展示新旧配件</text>
-            <text class="fs-cap">{{item.objective_answers.q2_parts_shown ? '是' : '否'}}</text>
+            <view class="feed-obj-text">
+              <text class="feed-obj-title fs-body">配件是否当面核对</text>
+              <text class="feed-obj-hint text-muted fs-sm">当面核对+新配件留档可对照承诺</text>
+            </view>
+            <text class="feed-obj-ans fs-cap {{item.objective_answers.q2_parts_shown ? 'ans-yes' : 'ans-no'}}">{{item.objective_answers.q2_parts_shown ? '是' : '否'}}</text>
           </view>
           <view class="feed-obj" wx:if="{{item.objective_answers.q3_fault_resolved != null}}">
-            <text class="text-muted fs-cap">故障已解决</text>
-            <text class="fs-cap">{{item.objective_answers.q3_fault_resolved ? '是' : '否'}}</text>
+            <view class="feed-obj-text">
+              <text class="feed-obj-title fs-body">本次送修问题是否修好</text>
+              <text class="feed-obj-hint text-muted fs-sm">针对本次症状是否已排除</text>
+            </view>
+            <text class="feed-obj-ans fs-cap {{item.objective_answers.q3_fault_resolved ? 'ans-yes' : 'ans-no'}}">{{item.objective_answers.q3_fault_resolved ? '是' : '否'}}</text>
           </view>
         </view>
 
@@ -94,7 +110,7 @@
         </view>
 
         <!-- 图片 -->
-        <view class="feed-images-wrap" wx:if="{{(item.before_images && item.before_images.length) || (item.after_images && item.after_images.length) || (item.completion_images && item.completion_images.length)}}">
+        <view class="feed-images-wrap" wx:if="{{(item.before_images && item.before_images.length) || (item.after_images && item.after_images.length) || (item.completion_images && item.completion_images.length) || (item.material_photos && item.material_photos.length)}}">
           <view class="feed-img-group" wx:if="{{item.before_images && item.before_images.length}}">
             <text class="feed-img-label text-muted fs-cap">维修前</text>
             <view class="feed-images">
@@ -111,6 +127,13 @@
             <text class="feed-img-label text-muted fs-cap">完工实拍</text>
             <view class="feed-images">
               <image class="feed-img" wx:for="{{item.completion_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
+            </view>
+          </view>
+          <view class="feed-img-group" wx:if="{{item.material_photos && item.material_photos.length}}">
+            <text class="feed-img-label text-muted fs-cap">新配件留档（店端）</text>
+            <text class="feed-img-sublabel text-muted fs-sm">对照方案中的配件等级承诺</text>
+            <view class="feed-images">
+              <image class="feed-img" wx:for="{{item.material_photos}}" wx:for-item="mimg" wx:for-index="midx" wx:key="midx" src="{{mimg}}" mode="aspectFill" show-menu-by-longpress="{{true}}"/>
             </view>
           </view>
         </view>

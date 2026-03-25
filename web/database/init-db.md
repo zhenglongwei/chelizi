@@ -8,7 +8,7 @@ SSH 登录阿里云服务器后执行：
 
 ```bash
 # 1. 进入项目目录（或上传 schema.sql 到服务器）
-cd /path/to/chelizi
+cd /path/to/zhejian
 
 # 2. 执行建表脚本（根据实际修改 -u 用户名 -p 会提示输入密码）
 mysql -u root -p < web/database/schema.sql
@@ -25,7 +25,7 @@ mysql -h localhost -u root -p < web/database/schema.sql
 
 ## 执行结果
 
-- 创建数据库 `chelizi`
+- 创建数据库 `zhejian`
 - 创建 15 张表：users, shops, damage_reports, biddings, quotes, orders, reviews, transactions, withdrawals, user_messages, user_favorite_shops, merchant_users, shop_penalties, appointments, settings
 - 插入默认系统配置和 3 条测试维修厂、1 条测试用户数据
 
@@ -40,7 +40,7 @@ ALTER TABLE appointments ADD COLUMN service_category VARCHAR(20) DEFAULT 'other'
 ## 验证
 
 ```sql
-USE chelizi;
+USE zhejian;
 SHOW TABLES;
 SELECT * FROM shops;
 SELECT * FROM settings;

@@ -154,12 +154,12 @@ describe('车主端 E2E', () => {
 
   describe('06-我的订单列表页', () => {
     beforeAll(async () => {
-      page = await miniProgram.reLaunch('/pages/order/list/index');
+      page = await miniProgram.reLaunch('/pages/order/hub/index');
       await page.waitFor(1000);
     });
 
     it('应显示订单页结构（含 Tab 或空态）', async () => {
-      const el = await page.$('.order-list-page, .order-tabs, .order-empty');
+      const el = await page.$('.order-hub-page, .order-list-page, .order-tabs, .order-empty');
       expect(el).toBeTruthy();
     });
   });
@@ -207,7 +207,7 @@ describe('车主端 E2E', () => {
     });
 
     it('应显示登录入口', async () => {
-      const el = await page.$('.login-content, .login-page, text=车厘子');
+      const el = await page.$('.login-content, .login-page, text=辙见');
       expect(el).toBeTruthy();
     });
 

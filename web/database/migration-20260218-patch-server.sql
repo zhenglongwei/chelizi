@@ -1,10 +1,10 @@
 -- ========================================================
 -- 服务器补丁：补齐 shops 缺失列 + blacklist 表
 -- 当 schema 未在服务器执行或执行的是旧版时使用
--- 用法：mysql -u root -p chelizi < migration-20260218-patch-server.sql
+-- 用法：mysql -u root -p zhejian < migration-20260218-patch-server.sql
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 DELIMITER $$
 

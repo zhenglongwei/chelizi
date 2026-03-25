@@ -1,0 +1,98 @@
+<custom-nav-bar title="我的订单" showBack="{{true}}" />
+<view class="page-root order-hub-page" style="{{pageRootStyle}}">
+  <view class="hub-main-tabs card">
+    <view class="hub-main-tab {{tab === 'repair' ? 'active' : ''}}" data-tab="repair" bindtap="onMainTab">维修订单</view>
+    <view class="hub-main-tab {{tab === 'product' ? 'active' : ''}}" data-tab="product" bindtap="onMainTab">标品订单</view>
+  </view>
+
+  <block wx:if="{{tab === 'repair'}}">
+    <view class="order-tabs">
+      <view class="order-tab {{status === '' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="">全部</view>
+      <view class="order-tab {{status === '0' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="0">待接单</view>
+      <view class="order-tab {{status === '1' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="1">维修中</view>
+      <view class="order-tab {{status === 'to_review' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="to_review">待评价</view>
+      <view class="order-tab {{status === 'completed' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="completed">已完成</view>
+      <view class="order-tab {{status === '4' ? 'active' : ''}}" bindtap="onRepairFilterTap" data-status="4">已取消</view>
+    </view>
+    <view class="order-empty card" wx:if="{{!repairLoading && repairList.length === 0}}">
+      <text class="text-muted fs-body">暂无维修订单</text>
+      <navigator class="order-login-link fs-cap" url="/pages/damage/upload/index">去发单竞价</navigator>
+    </view>
+    <scroll-view wx:elif="{{repairList.length > 0}}" class="order-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onRepairLoadMore">
+      <view class="order-item card" wx:for="{{repairList}}" wx:key="order_id" data-id="{{item.order_id}}" bindtap="onRepairItemTap">
+        <view class="order-item-header">
+          <text class="fs-body fw-bold">{{item.shop_name || '维修厂'}}</text>
+          <text class="order-status-badge">{{item.statusText}}</text>
+        </view>
+        <view class="order-plan-pending text-warning fs-cap" wx:if="{{item.status === 1 && item.repair_plan_status === 1}}">维修方案待确认</view>
+        <view class="order-item-body">
+          <view class="order-item-row">
+            <text class="text-muted fs-sm">订单金额：</text>
+            <text class="fs-body text-gold">¥{{item.quoted_amount}}</text>
+          </view>
+          <view class="order-item-row">
+            <text class="text-muted fs-sm">下单时间：</text>
+            <text class="fs-sm">{{item.created_at}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="order-load-more" wx:if="{{repairHasMore && !repairLoading}}">
+        <text class="text-muted fs-sm">上拉加载更多</text>
+      </view>
+      <view class="order-bottom-pad"></view>
+    </scroll-view>
+    <view class="order-loading" wx:if="{{repairLoading && repairList.length === 0}}">
+      <text class="text-muted fs-body">加载中...</text>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="text-muted fs-body po-loading" wx:if="{{productLoading}}">加载中...</view>
+    <view class="text-muted fs-body po-empty card" wx:elif="{{!productList.length}}">暂无标品订单</view>
+    <scroll-view wx:else class="po-scroll" scroll-y style="{{scrollStyle}}">
+      <view
+        class="po-card card {{item.paid ? 'po-card--bookable' : ''}}"
+        wx:for="{{productList}}"
+        wx:key="product_order_id"
+      >
+        <view class="po-card-body">
+          <view class="po-title-row">
+            <text class="po-product-name fs-body fw-bold">{{item.product_name}}</text>
+            <text class="po-status-tag fs-cap {{item.paid ? 'po-status-tag--paid' : ''}}">{{item.statusLabel}}</text>
+          </view>
+          <view class="po-shop-row">
+            <image class="po-shop-icon" src="/images/icon/location.png" mode="aspectFit" />
+            <text class="text-muted fs-cap po-shop-text">{{item.shop_name}}</text>
+          </view>
+          <view class="po-amount-row">
+            <view class="po-qty-wrap">
+              <text class="text-muted fs-cap">数量</text>
+              <text class="fs-body po-qty-num">×{{item.quantity}}</text>
+            </view>
+            <view class="po-price-wrap">
+              <text class="text-muted fs-cap po-price-label">实付</text>
+              <text class="fs-h3 fw-bold text-primary">¥{{item.amountText}}</text>
+            </view>
+          </view>
+          <text class="po-paid-at text-weak fs-sm" wx:if="{{item.paid && item.paidAtText}}">支付时间 {{item.paidAtText}}</text>
+        </view>
+        <view class="po-card-foot" wx:if="{{item.paid}}">
+          <text class="po-foot-hint text-muted fs-cap">已支付，可预约到店服务时间</text>
+          <button
+            class="po-book-btn btn-primary"
+            hover-class="po-book-btn-hover"
+            catchtap="onProductBook"
+            data-shop-id="{{item.shop_id}}"
+            data-poid="{{item.product_order_id}}"
+          >
+            预约到店
+          </button>
+        </view>
+        <view class="po-card-foot po-card-foot--pending" wx:elif="{{!item.paid}}">
+          <text class="text-muted fs-cap">完成支付后即可预约到店</text>
+        </view>
+      </view>
+      <view class="order-bottom-pad"></view>
+    </scroll-view>
+  </block>
+</view>

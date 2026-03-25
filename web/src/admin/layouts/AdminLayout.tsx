@@ -38,6 +38,11 @@ const menuItems = [
     label: '商品审核',
   },
   {
+    key: '/admin/shop-income-corp',
+    icon: <DollarOutlined />,
+    label: '货款对公提现',
+  },
+  {
     key: '/admin/orders',
     icon: <FileTextOutlined />,
     label: '订单管理',

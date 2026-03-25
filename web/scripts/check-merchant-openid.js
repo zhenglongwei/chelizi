@@ -13,7 +13,7 @@ async function main() {
     port: parseInt(process.env.DB_PORT) || 3306,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'chelizi',
+    database: process.env.DB_NAME || 'zhejian',
   });
   const [rows] = await pool.execute(
     `SELECT mu.merchant_id, mu.shop_id, mu.phone, mu.openid, s.name as shop_name

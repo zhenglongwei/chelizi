@@ -1,0 +1,36 @@
+.mpo-page {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.mpo-loading,
+.mpo-empty {
+  padding: 80rpx 32rpx;
+  text-align: center;
+}
+
+.mpo-scroll {
+  height: 100vh;
+  padding: 24rpx 32rpx 48rpx;
+  box-sizing: border-box;
+}
+
+.mpo-card {
+  padding: 24rpx 28rpx;
+  margin-bottom: 20rpx;
+}
+
+.mpo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.mpo-meta {
+  margin-top: 12rpx;
+}
+
+.mpo-paid {
+  color: #16a34a;
+}

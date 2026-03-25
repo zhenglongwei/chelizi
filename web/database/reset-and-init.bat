@@ -12,7 +12,7 @@ if not "%~1"=="" set "MYSQL=%~1"
 set "DB_DIR=%~dp0"
 cd /d "%DB_DIR%"
 
-echo [1/2] 删除数据库 chelizi...
+echo [1/2] 删除数据库 zhejian...
 "%MYSQL%" -u root -p < reset-db.sql
 if errorlevel 1 (
     echo 执行 reset-db.sql 失败，请检查 MySQL 连接

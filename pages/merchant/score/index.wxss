@@ -1,0 +1,78 @@
+.merchant-score-val-pos {
+  color: var(--success);
+}
+
+.merchant-score-val-neg {
+  color: var(--danger);
+}
+
+.merchant-score-val-zero {
+  color: var(--text-secondary);
+}
+
+.merchant-score-page {
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: var(--space-2xl);
+}
+
+.merchant-score-loading {
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.merchant-score-summary {
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+}
+
+.merchant-score-summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.merchant-score-summary-num {
+  line-height: 1.1;
+}
+
+.merchant-score-summary-stars,
+.merchant-score-summary-formula {
+  line-height: 1.45;
+}
+
+.merchant-score-list-title {
+  display: block;
+  margin-bottom: var(--space-md);
+}
+
+.merchant-score-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.merchant-score-row {
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.merchant-score-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.merchant-score-row-hint {
+  line-height: 1.45;
+}
+
+.merchant-score-row-more {
+  margin-top: var(--space-xs);
+  font-weight: 500;
+}

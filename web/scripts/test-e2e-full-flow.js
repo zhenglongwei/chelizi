@@ -66,7 +66,7 @@ function ok(step, res, msg = '') {
 }
 
 async function main() {
-  console.log('\n========== 车厘子 端到端全流程测试 ==========\n');
+  console.log('\n========== 辙见 端到端全流程测试 ==========\n');
   console.log('API:', API_BASE);
   console.log('测试服务商手机号:', TEST_PHONE);
   console.log('');

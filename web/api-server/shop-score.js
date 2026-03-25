@@ -61,9 +61,16 @@ function calcReviewWeight(params) {
  * 计算店铺综合得分（全指标 3.1 + 3.3 硬指标加减分）
  * @param {object} pool - 数据库连接池
  * @param {string} shopId - 店铺ID
+ * @param {{ bonus: number, majorViolationCount: number }|null} precomputedHard - 已算好的硬指标时可传入，避免重复查库
  * @returns {Promise<{ score: number, baseScore: number, bonus: number, count: number }>}
  */
-async function computeShopScore(pool, shopId) {
+async function computeShopScore(pool, shopId, precomputedHard = null) {
+  const resolveHard = async () => {
+    if (precomputedHard && precomputedHard.bonus != null && precomputedHard.majorViolationCount != null) {
+      return { bonus: precomputedHard.bonus, majorViolationCount: precomputedHard.majorViolationCount };
+    }
+    return calcHardBonus(pool, shopId);
+  };
   try {
     const hasQ3Excluded = await hasColumn(pool, 'reviews', 'q3_weight_excluded');
     const hasContentQuality = await hasColumn(pool, 'reviews', 'content_quality');
@@ -81,7 +88,7 @@ async function computeShopScore(pool, shopId) {
       [shopId]
     );
     if (rows.length === 0) {
-      const { bonus, majorViolationCount } = await calcHardBonus(pool, shopId);
+      const { bonus, majorViolationCount } = await resolveHard();
       const score = majorViolationCount >= 2 ? 0 : Math.max(0, bonus);
       return { score, baseScore: 0, bonus, count: 0, majorViolationCount };
     }
@@ -126,7 +133,7 @@ async function computeShopScore(pool, shopId) {
     }
 
     const baseScore = sumWeight > 0 ? (sumWeightedRating / sumWeight) * 20 : 0;
-    const { bonus, majorViolationCount } = await calcHardBonus(pool, shopId);
+    const { bonus, majorViolationCount } = await resolveHard();
     const score = majorViolationCount >= 2 ? 0 : Math.max(0, Math.min(100, Math.round((baseScore + bonus) * 10) / 10));
     return { score, baseScore, bonus, count: rows.length, majorViolationCount };
   } catch (err) {
@@ -270,58 +277,190 @@ async function countMajorViolations(pool, shopId) {
 }
 
 /**
- * 硬指标加减分（05 文档三、全指标 3.3）
- * @returns {{ bonus: number, majorViolationCount: number }}
+ * 硬指标加减分明细（与 05-店铺综合评价体系 第三章一致，供服务商工作台展示）
+ * @returns {{ items: Array<{key,label,value,hint}>, bonus: number, majorViolationCount: number }}
  */
-async function calcHardBonus(pool, shopId) {
+async function computeHardBonusBreakdown(pool, shopId) {
+  const items = [];
   try {
     const [rows] = await pool.execute(
       `SELECT qualification_level, technician_certs, compliance_rate, deviation_rate, certifications
        FROM shops WHERE shop_id = ?`,
       [shopId]
     );
-    if (rows.length === 0) return { bonus: 0, majorViolationCount: 0 };
+    if (rows.length === 0) return { items: [], bonus: 0, majorViolationCount: 0 };
     const s = rows[0];
     let bonus = 0;
 
     const majorCount = await countMajorViolations(pool, shopId);
     if (majorCount >= 2) {
-      return { bonus: 0, majorViolationCount: majorCount };
+      items.push({
+        key: 'major',
+        label: '重大违规',
+        value: 0,
+        hint: '累计2次及以上重大违规，综合得分已清零，店铺可能下架',
+      });
+      return { items, bonus: 0, majorViolationCount: majorCount };
     }
-    if (majorCount === 1) bonus -= 50;
+    if (majorCount === 1) {
+      items.push({
+        key: 'major',
+        label: '重大违规',
+        value: -50,
+        hint: '再发生1次重大违规，得分将清零',
+      });
+      bonus -= 50;
+    }
 
     const ql = (s.qualification_level || '').toString();
-    if (ql.includes('一类')) bonus += 10;
-    else if (ql.includes('二类')) bonus += 5;
+    let qv = 0;
+    if (ql.includes('一类')) qv = 10;
+    else if (ql.includes('二类')) qv = 5;
+    bonus += qv;
+    items.push({
+      key: 'qualification',
+      label: '维修资质等级',
+      value: qv,
+      hint: '一类+10、二类+5、三类不加；可在店铺资料中完善',
+    });
 
-    bonus += calcTechnicianBonus(s.technician_certs);
-    bonus += calcCertificationBonus(s.certifications);
+    const tech = calcTechnicianBonus(s.technician_certs);
+    bonus += tech;
+    items.push({
+      key: 'technician',
+      label: '持证技师',
+      value: tech,
+      hint: '高级技师/技师+8分，中级工等+3分，最高+20',
+    });
+
+    const cert = calcCertificationBonus(s.certifications);
+    bonus += cert;
+    items.push({
+      key: 'certification',
+      label: '品牌授权资质',
+      value: cert,
+      hint: '主机厂4S授权+15，配件品牌授权+5',
+    });
 
     const compliance = s.compliance_rate != null ? parseFloat(s.compliance_rate) : null;
+    let cv = 0;
+    let ch = '季度合规订单占比：≥95%+10分，低于80%-20分';
     if (compliance != null) {
-      if (compliance >= 95) bonus += 10;
-      else if (compliance < 80) bonus -= 20;
+      if (compliance >= 95) cv = 10;
+      else if (compliance < 80) cv = -20;
+      ch = `当前约${Math.round(compliance)}%。${ch}`;
+    } else {
+      ch = `暂无统计。${ch}`;
     }
+    bonus += cv;
+    items.push({
+      key: 'compliance',
+      label: '季度综合合规率',
+      value: cv,
+      hint: ch,
+    });
 
     const deviation = s.deviation_rate != null ? parseFloat(s.deviation_rate) : null;
+    let dv = 0;
+    let dh = '报价偏差率：≤10%+5分，＞30%-20分';
     if (deviation != null) {
-      if (deviation <= 10) bonus += 5;
-      else if (deviation > 30) bonus -= 20;
+      if (deviation <= 10) dv = 5;
+      else if (deviation > 30) dv = -20;
+      dh = `当前约${Math.round(deviation)}%。${dh}`;
+    } else {
+      dh = `暂无统计。${dh}`;
     }
+    bonus += dv;
+    items.push({
+      key: 'deviation',
+      label: '报价准确度',
+      value: dv,
+      hint: dh,
+    });
 
     const timeliness = await calcTimelinessRate(pool, shopId);
+    let tv = 0;
+    let th = '本季度完工订单：履约100%+5分，低于70%-20分';
     if (timeliness != null) {
-      if (timeliness >= 100) bonus += 5;
-      else if (timeliness < 70) bonus -= 20;
+      if (timeliness >= 100) tv = 5;
+      else if (timeliness < 70) tv = -20;
+      th = `当前约${timeliness}%。${th}`;
+    } else {
+      th = `本季度暂无已完成订单时不计分。${th}`;
     }
+    bonus += tv;
+    items.push({
+      key: 'timeliness',
+      label: '维修时效履约',
+      value: tv,
+      hint: th,
+    });
 
     const partsBonus = await calcPartsComplianceBonus(pool, shopId);
-    if (partsBonus != null) bonus += partsBonus;
+    let pv = 0;
+    let ph = '本季度：全合规+10分，出现不合规-20分';
+    if (partsBonus != null) {
+      pv = partsBonus;
+      ph = partsBonus > 0 ? `当前无配件不合规记录。${ph}` : `存在配件不合规记录。${ph}`;
+    } else {
+      ph = `本季度暂无已完成订单参考。${ph}`;
+    }
+    bonus += pv;
+    items.push({
+      key: 'parts',
+      label: '配件合规',
+      value: pv,
+      hint: ph,
+    });
 
-    return { bonus, majorViolationCount: majorCount };
+    return { items, bonus, majorViolationCount: majorCount };
   } catch {
-    return { bonus: 0, majorViolationCount: 0 };
+    return { items: [], bonus: 0, majorViolationCount: 0 };
   }
+}
+
+/**
+ * 硬指标加减分（05 文档三、全指标 3.3）
+ * @returns {{ bonus: number, majorViolationCount: number }}
+ */
+async function calcHardBonus(pool, shopId) {
+  const b = await computeHardBonusBreakdown(pool, shopId);
+  return { bonus: b.bonus, majorViolationCount: b.majorViolationCount };
+}
+
+/**
+ * 展示星级（与 05 文档第四章一致）
+ */
+function scoreToStarDisplay(score) {
+  const n = Number(score);
+  const s = Number.isFinite(n) ? n : 0;
+  if (s >= 90) return { stars: '★★★★★', short: '五星' };
+  if (s >= 80) return { stars: '★★★★☆', short: '四星半' };
+  if (s >= 70) return { stars: '★★★★', short: '四星' };
+  if (s >= 60) return { stars: '★★★☆', short: '三星半' };
+  return { stars: '★★★', short: '三星及以下' };
+}
+
+/**
+ * 服务商工作台：实时综合得分 + 口碑分 + 硬指标构成（每次打开工作台重算）
+ */
+async function getMerchantWorkbenchScore(pool, shopId) {
+  const hard = await computeHardBonusBreakdown(pool, shopId);
+  const computed = await computeShopScore(pool, shopId, hard);
+  const star = scoreToStarDisplay(computed.score);
+  return {
+    score: computed.score,
+    base_score: Math.round(computed.baseScore * 10) / 10,
+    hard_bonus: computed.bonus,
+    effective_review_count: computed.count,
+    major_violation_count: computed.majorViolationCount,
+    star_display: star.stars,
+    star_short: star.short,
+    base_hint:
+      '来自有效评价的星级、单条权重与时间衰减（近3月全计、3–6月半计、6–12月低计，超12月不计入）；与《店铺综合评价体系》一致',
+    hard_items: hard.items,
+    formula_hint: '最终得分 = 口碑基础分 + 硬指标加减分，封顶100分；重大违规另有清零规则',
+  };
 }
 
 /**
@@ -370,6 +509,9 @@ module.exports = {
   calcReviewWeight,
   computeShopScore,
   calcHardBonus,
+  computeHardBonusBreakdown,
+  getMerchantWorkbenchScore,
+  scoreToStarDisplay,
   updateShopScoreAfterReview,
   recomputeAndUpdateShopScore,
   countMajorViolations,

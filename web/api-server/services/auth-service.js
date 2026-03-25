@@ -21,6 +21,30 @@ function verifyPassword(password, stored) {
 }
 
 /**
+ * 小程序 wx.login 的 code 换 openid
+ */
+async function resolveOpenidFromCode(code, options = {}) {
+  const { WX_APPID, WX_SECRET } = options;
+  if (!code || !String(code).trim()) {
+    return { success: false, error: '授权码不能为空', statusCode: 400 };
+  }
+  if (!WX_APPID || !WX_SECRET) {
+    return { success: false, error: '未配置微信小程序', statusCode: 503 };
+  }
+  const wxRes = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
+    params: { appid: WX_APPID, secret: WX_SECRET, js_code: String(code).trim(), grant_type: 'authorization_code' },
+  });
+  const d = wxRes.data;
+  if (d.errcode) {
+    return { success: false, error: '微信授权失败: ' + (d.errmsg || d.errcode), statusCode: 400 };
+  }
+  if (!d.openid) {
+    return { success: false, error: '未获取到 openid', statusCode: 400 };
+  }
+  return { success: true, openid: d.openid };
+}
+
+/**
  * 用户微信登录
  */
 async function userLogin(pool, req, options = {}) {
@@ -191,12 +215,23 @@ async function merchantRegister(pool, req, options = {}) {
     [shopId, String(name).trim(), addr, lat, lng, phoneStr, certs, qualAiRecognized, qualAiResult]
   );
 
+  let openidToSave = null;
+  if (body.code && String(body.code).trim()) {
+    const oid = await resolveOpenidFromCode(body.code, options);
+    if (!oid.success) return oid;
+    openidToSave = oid.openid;
+    const [dupOpenid] = await pool.execute('SELECT merchant_id FROM merchant_users WHERE openid = ?', [openidToSave]);
+    if (dupOpenid.length > 0) {
+      return { success: false, error: '该微信已绑定其他服务商账号', statusCode: 400 };
+    }
+  }
+
   const merchantId = 'M' + Date.now();
   const passwordHash = hashPassword(String(password));
   await pool.execute(
-    `INSERT INTO merchant_users (merchant_id, shop_id, phone, password_hash, status)
-     VALUES (?, ?, ?, ?, 1)`,
-    [merchantId, shopId, phoneStr, passwordHash]
+    `INSERT INTO merchant_users (merchant_id, shop_id, phone, password_hash, status, openid)
+     VALUES (?, ?, ?, ?, 1, ?)`,
+    [merchantId, shopId, phoneStr, passwordHash, openidToSave]
   );
 
   const token = jwt.sign({ merchantId, shopId }, JWT_SECRET, { expiresIn: '7d' });
@@ -260,6 +295,138 @@ async function merchantLogin(pool, req, options = {}) {
       },
     },
   };
+}
+
+/**
+ * 服务商微信快捷登录（merchant_users.openid 与当前小程序 openid 一致）
+ */
+async function merchantWechatLogin(pool, req, options = {}) {
+  const { code } = req.body || {};
+  const { JWT_SECRET } = options;
+
+  const oid = await resolveOpenidFromCode(code, options);
+  if (!oid.success) return oid;
+  const openid = oid.openid;
+
+  const [rows] = await pool.execute(
+    `SELECT mu.merchant_id, mu.shop_id, mu.phone, mu.status, s.name as shop_name
+     FROM merchant_users mu
+     LEFT JOIN shops s ON mu.shop_id = s.shop_id
+     WHERE mu.openid = ?`,
+    [openid]
+  );
+  if (rows.length === 0) {
+    return { success: false, error: '当前微信未绑定服务商账号，请使用手机号登录', statusCode: 401 };
+  }
+  if (rows.length > 1) {
+    return { success: false, error: '账号数据异常，请联系平台', statusCode: 500 };
+  }
+  const m = rows[0];
+  if (m.status === 0) {
+    return { success: false, error: '账号审核中，请耐心等待', statusCode: 403 };
+  }
+
+  const token = jwt.sign({ merchantId: m.merchant_id, shopId: m.shop_id }, JWT_SECRET, { expiresIn: '7d' });
+
+  return {
+    success: true,
+    data: {
+      token,
+      user: {
+        merchant_id: m.merchant_id,
+        shop_id: m.shop_id,
+        phone: m.phone,
+        shop_name: m.shop_name || '',
+      },
+    },
+  };
+}
+
+/**
+ * 检测当前小程序 openid 是否已绑定服务商（不发 token，供「我的」页展示入口）
+ */
+async function merchantCheckOpenid(pool, req, options = {}) {
+  const { code } = req.body || {};
+
+  const oid = await resolveOpenidFromCode(code, options);
+  if (!oid.success) return oid;
+  const openid = oid.openid;
+
+  const [rows] = await pool.execute(
+    `SELECT mu.status, s.name as shop_name
+     FROM merchant_users mu
+     LEFT JOIN shops s ON mu.shop_id = s.shop_id
+     WHERE mu.openid = ?`,
+    [openid]
+  );
+  if (rows.length === 0) {
+    return { success: true, data: { is_merchant: false } };
+  }
+  if (rows.length > 1) {
+    return { success: false, error: '账号数据异常', statusCode: 500 };
+  }
+  const m = rows[0];
+  return {
+    success: true,
+    data: {
+      is_merchant: true,
+      shop_name: m.shop_name || '',
+      merchant_status: m.status,
+      can_login: m.status !== 0,
+    },
+  };
+}
+
+/**
+ * 找回密码：校验手机号对应账号的 openid 与当前微信一致后重置密码
+ */
+async function merchantResetPassword(pool, req, options = {}) {
+  const { phone, new_password, code } = req.body || {};
+
+  if (!phone || !new_password || !code) {
+    return { success: false, error: '请填写手机号、新密码并完成微信校验', statusCode: 400 };
+  }
+  const phoneStr = String(phone).trim();
+  if (!/^1\d{10}$/.test(phoneStr)) {
+    return { success: false, error: '手机号格式不正确', statusCode: 400 };
+  }
+  if (String(new_password).length < 6) {
+    return { success: false, error: '新密码至少 6 位', statusCode: 400 };
+  }
+
+  const oid = await resolveOpenidFromCode(code, options);
+  if (!oid.success) return oid;
+  const openid = oid.openid;
+
+  const [rows] = await pool.execute(
+    'SELECT merchant_id, openid, status FROM merchant_users WHERE phone = ?',
+    [phoneStr]
+  );
+  if (rows.length === 0) {
+    return { success: false, error: '该手机号未注册服务商', statusCode: 404 };
+  }
+  const m = rows[0];
+  if (m.status === 0) {
+    return { success: false, error: '账号审核中，暂不可修改密码', statusCode: 403 };
+  }
+  if (!m.openid || !String(m.openid).trim()) {
+    return {
+      success: false,
+      error: '该账号尚未绑定微信，请使用原密码登录一次，登录成功后会自动绑定微信',
+      statusCode: 400,
+    };
+  }
+  if (m.openid !== openid) {
+    return { success: false, error: '当前微信与账号绑定不一致，请使用注册时使用的微信重试', statusCode: 403 };
+  }
+
+  const passwordHash = hashPassword(String(new_password));
+  await pool.execute('UPDATE merchant_users SET password_hash = ?, updated_at = NOW() WHERE merchant_id = ?', [
+    passwordHash,
+    m.merchant_id,
+  ]);
+
+  return { success: true, data: { ok: true } };
 }
 
 /**
@@ -330,4 +497,7 @@ module.exports = {
   verifyPhoneBySms,
   merchantRegister,
   merchantLogin,
+  merchantWechatLogin,
+  merchantCheckOpenid,
+  merchantResetPassword,
 };

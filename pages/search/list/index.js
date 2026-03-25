@@ -51,7 +51,8 @@ function mapShopItem(s, idx) {
     badgeClass,
     locationText,
     latestReviewSummary: s.latest_review_summary || null,
-    latestReviewNegative: !!s.latest_review_negative
+    latestReviewNegative: !!s.latest_review_negative,
+    productSnippetText: s.product_snippet_text || null
   };
 }
 

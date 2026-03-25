@@ -1,9 +1,9 @@
 -- ========================================================
 -- 第三阶段防刷 - 违规处理、审计日志、防刷报表
--- 执行：mysql -u user -p chelizi < migration-20260215-phase3-antifraud.sql
+-- 执行：mysql -u user -p zhejian < migration-20260215-phase3-antifraud.sql
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- 1. 违规记录表
 CREATE TABLE IF NOT EXISTS violation_records (

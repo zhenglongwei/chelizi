@@ -23,7 +23,8 @@ function mapShopItem(s, idx) {
     starsDisplay: starDisplay.stars,
     scoreNum: starDisplay.score,
     orderCount: s.total_orders || s.rating_count || 0,
-    rank: idx + 1
+    rank: idx + 1,
+    productSnippetText: s.product_snippet_text || null
   };
 }
 

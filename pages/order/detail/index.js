@@ -1,8 +1,18 @@
 // 订单详情 - 07-订单详情页
-const { getToken, getUserOrder, getRewardPreview, cancelOrder, confirmOrder, escalateCancelRequest, approveRepairPlan } = require('../../../utils/api');
+const {
+  getToken,
+  getUserOrder,
+  getRewardPreview,
+  cancelOrder,
+  confirmOrder,
+  escalateCancelRequest,
+  approveRepairPlan,
+  prepayUserRepairOrder,
+} = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
 const { requestUserSubscribe } = require('../../../utils/subscribe');
+const navigation = require('../../../utils/navigation');
 
 const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认完成', 3: '待评价', 4: '已取消' };
 
@@ -78,7 +88,8 @@ Page({
     completionEvidence: { repair_photos: [], settlement_photos: [], material_photos: [] },
     approving: false,
     durationCountdownText: '',
-    durationCountdownExpired: false
+    durationCountdownExpired: false,
+    repairPaying: false
   },
 
   _durationTimer: null,
@@ -211,7 +222,7 @@ Page({
         try {
           await confirmOrder(order.order_id);
           ui.showSuccess('已确认完成');
-          wx.navigateTo({ url: '/pages/review/submit/index?order_id=' + order.order_id });
+          await this.loadOrder(order.order_id);
         } catch (e) {
           ui.showError(e.message || '操作失败');
         }
@@ -298,6 +309,49 @@ Page({
       this.loadOrder(order.order_id);
     } catch (e) {
       ui.showError(e.message || '提交失败');
+    }
+  },
+
+  onBookAppointment() {
+    const { order } = this.data;
+    if (!order || order.status < 1 || order.status === 4) return;
+    navigation.navigateTo('/pages/shop/book/index', {
+      id: order.shop_id,
+      order_id: order.order_id
+    });
+  },
+
+  async runRepairJsapiPay(prepayPayload) {
+    const { timeStamp, nonceStr, package: pkg, signType, paySign } = prepayPayload;
+    return new Promise((resolve, reject) => {
+      wx.requestPayment({
+        timeStamp,
+        nonceStr,
+        package: pkg,
+        signType: signType || 'RSA',
+        paySign,
+        success: () => resolve(),
+        fail: (err) => reject(new Error(err.errMsg || '支付取消'))
+      });
+    });
+  },
+
+  async onPayRepair() {
+    const { order, repairPaying } = this.data;
+    if (!order || !order.can_pay_repair || repairPaying) return;
+    this.setData({ repairPaying: true });
+    try {
+      const login = await new Promise((resolve, reject) => {
+        wx.login({ success: (r) => resolve(r.code), fail: reject });
+      });
+      const prepay = await prepayUserRepairOrder(order.order_id, login);
+      await this.runRepairJsapiPay(prepay);
+      ui.showSuccess('支付成功');
+      await this.loadOrder(order.order_id);
+    } catch (e) {
+      ui.showError(e.message || '支付失败');
+    } finally {
+      this.setData({ repairPaying: false });
     }
   }
 });

@@ -1,4 +1,4 @@
-// app.js - 车厘子小程序入口
+// app.js - 辙见小程序入口
 const { getLogger } = require('./utils/logger');
 const { setToken } = require('./utils/api');
 

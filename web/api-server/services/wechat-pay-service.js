@@ -135,7 +135,7 @@ async function requestV3(method, urlPath, bodyObj, extraHeaders = {}) {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: auth,
-      'User-Agent': 'chelizi-api-server',
+      'User-Agent': 'zhejian-api-server',
       ...extraHeaders,
     },
     validateStatus: () => true,
@@ -159,7 +159,7 @@ async function jsapiPrepay({ description, outTradeNo, amountFen, openid, notifyU
   const body = {
     appid,
     mchid,
-    description: (description || '车厘子佣金').slice(0, 127),
+    description: (description || '辙见佣金').slice(0, 127),
     out_trade_no: outTradeNo,
     notify_url: notifyUrl,
     amount: { total: amountFen, currency: 'CNY' },

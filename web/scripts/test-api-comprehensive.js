@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 车厘子 API 完整功能测试
+ * 辙见 API 完整功能测试
  * 覆盖公开接口、管理员、服务商、用户端、异常路径
  *
  * 用法：node web/scripts/test-api-comprehensive.js [API_BASE]
@@ -324,7 +324,7 @@ async function runErrorTests() {
 }
 
 async function main() {
-  console.log('车厘子 API 完整功能测试');
+  console.log('辙见 API 完整功能测试');
   console.log('API_BASE:', API_BASE);
   console.log('管理员:', ADMIN_USERNAME, '(密码通过环境变量 ADMIN_PASSWORD 配置)');
 

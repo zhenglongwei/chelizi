@@ -1,0 +1,33 @@
+<custom-nav-bar title="支付成功" showBack="{{true}}" />
+<view class="page-root product-success-page" style="{{pageRootStyle}}">
+  <view class="detail-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
+  <block wx:elif="{{loadError}}">
+    <view class="card ps-card">
+      <text class="fs-body text-muted">订单信息暂未同步，可稍后再试或从「我的订单」查看。</text>
+      <button class="btn-secondary ps-btn ps-btn-second" bindtap="loadOrder">刷新</button>
+      <button class="btn-primary ps-btn" bindtap="onGoHub">查看订单</button>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="ps-hero">
+      <view class="ps-icon-wrap">✓</view>
+      <text class="ps-title fs-h3 fw-bold text-primary">支付成功</text>
+      <text class="text-muted fs-cap ps-sub">款项已付清，可预约到店或稍后在订单里查看</text>
+    </view>
+    <view class="card ps-card">
+      <text class="text-muted fs-cap ps-label">维修厂</text>
+      <text class="fs-body fw-bold">{{shopName}}</text>
+      <text class="text-muted fs-cap ps-label ps-gap">商品</text>
+      <text class="fs-body">{{productName}}</text>
+      <view class="ps-row">
+        <text class="text-muted fs-cap">数量 ×{{quantity}}</text>
+        <text class="fs-h3 fw-bold text-primary">¥{{amountText}}</text>
+      </view>
+      <text class="text-weak fs-sm" wx:if="{{paidAtText}}">支付时间 {{paidAtText}}</text>
+    </view>
+    <view class="ps-actions">
+      <button class="btn-primary ps-btn" bindtap="onBook">预约到店</button>
+      <button class="btn-secondary ps-btn ps-btn-second" bindtap="onGoHub">查看订单</button>
+    </view>
+  </block>
+</view>

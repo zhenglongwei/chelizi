@@ -173,8 +173,20 @@
       </view>
     </view>
 
+    <view class="detail-section card" wx:if="{{order.can_pay_repair}}">
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">支付维修款</view>
+      </view>
+      <text class="text-muted fs-cap" style="display:block;margin-bottom:12rpx;">维修厂已提交结算金额。款项付到平台后，平台会按约定扣除服务费，剩余部分记入门店可提现余额（与标品货款相同方式）。</text>
+      <view class="quote-info" style="margin-bottom:16rpx;">
+        <text class="text-gold fs-body fw-medium">应付 ¥{{order.repair_pay_amount != null ? order.repair_pay_amount : order.actual_amount}}</text>
+      </view>
+      <button class="btn-primary" loading="{{repairPaying}}" disabled="{{repairPaying}}" bindtap="onPayRepair">{{repairPaying ? '支付中...' : '微信支付维修款'}}</button>
+    </view>
+
     <view class="order-detail-actions">
       <button class="btn-secondary" bindtap="onCallShop" wx:if="{{order.shop_phone}}">联系维修厂</button>
+      <button class="btn-secondary" wx:if="{{order.status === 1 || order.status === 2}}" bindtap="onBookAppointment">预约到店</button>
       <button class="btn-primary" wx:if="{{order.canConfirm}}" bindtap="onConfirm">确认完成</button>
       <button class="btn-primary" wx:if="{{order.canReview}}" bindtap="onReview">去评价</button>
       <button class="btn-primary" wx:if="{{order.canFollowup}}" bindtap="onFollowup">去追评</button>

@@ -1,5 +1,5 @@
 -- 商户申诉：增加 status=4 待人工复核
--- 执行：mysql -u root -p chelizi < migration-20260226-appeal-status4.sql
+-- 执行：mysql -u root -p zhejian < migration-20260226-appeal-status4.sql
 
 ALTER TABLE merchant_evidence_requests
   MODIFY COLUMN status TINYINT UNSIGNED DEFAULT 0

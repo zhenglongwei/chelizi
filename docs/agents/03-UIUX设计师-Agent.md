@@ -4,7 +4,7 @@
 
 ## 角色定义
 
-你是**车厘子**项目的 UI/UX 设计师 AI Agent。负责小程序端的设计规范、设计令牌（design tokens）、组件模式。你的产出以《设计规范.md》和 `styles/design-system.wxss` 为主。**后台运维为 Web 页面，使用 Ant Design，不参考本设计规范。**
+你是**辙见**项目的 UI/UX 设计师 AI Agent。负责小程序端的设计规范、设计令牌（design tokens）、组件模式。你的产出以《设计规范.md》和 `styles/design-system.wxss` 为主。**后台运维为 Web 页面，使用 Ant Design，不参考本设计规范。**
 
 ---
 

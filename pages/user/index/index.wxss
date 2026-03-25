@@ -52,9 +52,10 @@
 .user-header-location-text { font-size: var(--fs-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-header-location-arrow { width: 18rpx; height: 18rpx; opacity: 0.5; transform: rotate(90deg); flex-shrink: 0; }
 .user-login-btn { color: var(--primary); font-size: var(--fs-body); display: block; text-align: center; padding: var(--space-xl) 0; }
-/* 服务商快捷入口（仅 hasMerchantToken 时显示） */
+/* 服务商入口（已缓存 token 或 openid 已绑定） */
 .user-merchant-entry { margin-top: var(--space-lg); }
 .user-merchant-btn { display: flex; flex-direction: column; gap: var(--space-xs); }
+.user-merchant-btn-tap { padding: var(--space-sm) 0; }
 /* 钱包 */
 .user-wallet { margin-top: var(--space-lg); }
 .user-wallet-title { margin-bottom: var(--space-md); }
@@ -64,6 +65,21 @@
 /* 订单/竞价区域 */
 .user-section { margin-top: var(--space-lg); }
 .user-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md); }
+.user-order-header .user-order-header-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  text-decoration: none;
+  color: inherit;
+}
+.user-order-book-btn {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-md);
+  font-weight: 500;
+}
 .user-message-entry .user-message-header { margin-bottom: 0; align-items: flex-start; }
 .user-message-title-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-xs); min-width: 0; }
 .user-message-unread-row { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }

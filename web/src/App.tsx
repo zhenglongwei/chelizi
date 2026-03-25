@@ -19,6 +19,7 @@ import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
 import OrderCancelRequests from './admin/pages/OrderCancelRequests';
 import ShopProductAudit from './admin/pages/ShopProductAudit';
+import CorpIncomeWithdraw from './admin/pages/CorpIncomeWithdraw';
 import { useAuth } from './admin/hooks/useAuth';
 
 function App() {
@@ -54,6 +55,7 @@ function App() {
         <Route path="complexity-upgrade" element={<ComplexityUpgrade />} />
         <Route path="antifraud" element={<AntiFraudManagement />} />
         <Route path="shop-products" element={<ShopProductAudit />} />
+        <Route path="shop-income-corp" element={<CorpIncomeWithdraw />} />
       </Route>
     </Routes>
   );

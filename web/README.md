@@ -1,4 +1,4 @@
-# 车厘子 - 事故车维修平台 后端服务
+# 辙见 - 事故车维修平台 后端服务
 
 ## 项目概述
 
@@ -44,7 +44,7 @@ npm install
 # MySQL数据库配置
 DB_HOST=your_aliyun_ecs_ip
 DB_PORT=3306
-DB_NAME=chelizi
+DB_NAME=zhejian
 DB_USER=root
 DB_PASSWORD=your_password
 
@@ -156,7 +156,7 @@ npm start
 
 ```bash
 npm install -g pm2
-pm2 start server.js --name chelizi-api
+pm2 start server.js --name zhejian-api
 pm2 startup
 pm2 save
 ```

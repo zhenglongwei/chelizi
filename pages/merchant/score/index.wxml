@@ -1,0 +1,33 @@
+<custom-nav-bar title="得分构成" showBack="{{true}}" />
+<view class="page-root merchant-score-page" style="{{pageRootStyle}}">
+  <view wx:if="{{loading}}" class="merchant-score-loading text-muted fs-cap">加载中...</view>
+  <block wx:else>
+    <view class="merchant-score-summary card">
+      <text class="text-muted fs-cap">综合得分（满分100）</text>
+      <view class="merchant-score-summary-row">
+        <text class="merchant-score-summary-num fs-h1 fw-bold text-primary">{{summaryScore}}</text>
+        <text class="fs-body text-muted">分</text>
+      </view>
+      <text class="merchant-score-summary-stars fs-cap text-muted" wx:if="{{starDisplay}}">{{starDisplay}} · {{starShort}}</text>
+      <text class="merchant-score-summary-formula text-muted fs-cap" wx:if="{{formulaHint}}">{{formulaHint}}</text>
+      <text class="text-muted fs-cap" wx:if="{{effectiveReviewCount != null}}">有效评价条数：{{effectiveReviewCount}}</text>
+    </view>
+    <text class="merchant-score-list-title fs-body fw-bold">分项说明（点击查看规则与操作）</text>
+    <view class="merchant-score-list">
+      <view
+        class="merchant-score-row card"
+        wx:for="{{scoreRows}}"
+        wx:key="key"
+        data-key="{{item.key}}"
+        bindtap="onRowTap"
+      >
+        <view class="merchant-score-row-top">
+          <text class="fs-body fw-bold">{{item.label}}</text>
+          <text class="fs-body fw-bold {{item.valueClass}}">{{item.valueText}}{{item.subText}}</text>
+        </view>
+        <text class="merchant-score-row-hint text-muted fs-cap">{{item.hint}}</text>
+        <text class="merchant-score-row-more fs-cap text-primary">规则与操作 ›</text>
+      </view>
+    </view>
+  </block>
+</view>

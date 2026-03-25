@@ -66,30 +66,14 @@
   padding: var(--space-xl);
 }
 
+.book-link-meta {
+  display: block;
+  margin-top: 8rpx;
+}
+
 .book-section-title {
   margin-bottom: var(--space-lg);
   color: var(--text-primary);
-}
-
-/* ========== 服务类型 ========== */
-.book-categories {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: var(--space-md);
-}
-
-.book-cat {
-  padding: var(--space-md) var(--space-xl);
-  background: var(--bg-page);
-  border-radius: var(--radius-md);
-  border: 2rpx solid var(--border);
-}
-
-.book-cat.selected {
-  background: rgba(37, 99, 235, 0.06);
-  border-color: var(--primary);
-  color: var(--primary);
 }
 
 /* ========== 选择器 ========== */
@@ -102,8 +86,8 @@
 }
 
 .book-picker-arrow {
-  width: 28rpx;
-  height: 28rpx;
+  width: 42rpx;
+  height: 42rpx;
   opacity: 0.5;
 }
 

@@ -5,7 +5,7 @@
 -- 依赖：migration-20260216-qualification-audit.sql、migration-20260216-qualification-audit-reason.sql
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- 若列已存在会报 Duplicate column，可忽略或先 DROP COLUMN 再执行
 -- 1. qualification_ai_recognized：AI 识别的资质等级（null 表示未识别）

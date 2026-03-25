@@ -1,8 +1,8 @@
 -- 4级爆款前置：车型+维修项目结构化
 -- 用于「同车型同项目≤10条」统计
--- 执行：mysql -u root -p chelizi < migration-20260226-review-level4-keys.sql
+-- 执行：mysql -u root -p zhejian < migration-20260226-review-level4-keys.sql
 
-USE chelizi;
+USE zhejian;
 
 DELIMITER $$
 

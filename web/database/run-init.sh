@@ -11,7 +11,7 @@ if [ ! -f "$SQL_FILE" ]; then
   exit 1
 fi
 
-echo "正在初始化车厘子数据库..."
+echo "正在初始化辙见数据库..."
 mysql -u root -p < "$SQL_FILE"
 if [ $? -eq 0 ]; then
   echo "数据库初始化成功"

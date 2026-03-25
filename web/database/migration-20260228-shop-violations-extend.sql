@@ -1,5 +1,5 @@
 -- 扩展 shop_violations 支持系统核验违规类型（05 文档、评价内容设置规范）
--- 执行：mysql -u root -p chelizi < migration-20260228-shop-violations-extend.sql
+-- 执行：mysql -u root -p zhejian < migration-20260228-shop-violations-extend.sql
 -- 表结构无需变更（violation_type VARCHAR(50)、penalty INT 已支持），仅更新注释
 
 ALTER TABLE shop_violations

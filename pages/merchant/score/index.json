@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "得分构成",
+  "navigationStyle": "custom",
+  "usingComponents": { "custom-nav-bar": "/components/custom-nav-bar/index" }
+}

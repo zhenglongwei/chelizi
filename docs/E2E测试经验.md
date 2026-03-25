@@ -1,6 +1,6 @@
 # E2E 测试经验文档
 
-本文档整理车厘子项目**网页端（后台运维）**与**小程序端**的 E2E 测试经验，供后续开发与排查时备查。
+本文档整理辙见项目**网页端（后台运维）**与**小程序端**的 E2E 测试经验，供后续开发与排查时备查。
 
 ---
 
@@ -87,7 +87,7 @@ npm run test:e2e
 
 ```bash
 # 终端 1：手动启动自动化窗口
-& "C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat" auto --project "C:\Users\longwei\WeChatProjects\chelizi" --auto-port 9420
+& "C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat" auto --project "C:\Users\longwei\WeChatProjects\zhejian" --auto-port 9420
 
 # 终端 2：等窗口打开后运行测试（跳过 launch）
 cd web
@@ -115,7 +115,7 @@ npm run test:miniprogram
 | `WEAPP_SKIP_LAUNCH` | 设为 1 时跳过 launch，仅 connect（需已手动启动） |
 | `WEAPP_AUTO_PORT` | 自动化端口，默认 9420 |
 | `WEAPP_CLI_PATH` | CLI 路径，默认 `C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat` |
-| `WEAPP_PROJECT_PATH` | 项目路径，默认 `C:\Users\longwei\WeChatProjects\chelizi` |
+| `WEAPP_PROJECT_PATH` | 项目路径，默认 `C:\Users\longwei\WeChatProjects\zhejian` |
 
 ### 2.7 选择器与操作
 

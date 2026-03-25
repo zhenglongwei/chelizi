@@ -1,0 +1,29 @@
+<custom-nav-bar title="确认订单" showBack="{{true}}" />
+<view class="page-root product-confirm-page" style="{{pageRootStyle}}">
+  <view class="detail-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
+  <block wx:elif="{{product}}">
+    <view class="card pc-card">
+      <text class="pc-shop text-muted fs-cap">{{shopName}}</text>
+      <text class="pc-name fs-body fw-bold">{{product.name}}</text>
+      <text class="pc-cat text-muted fs-cap">{{product.category}}</text>
+      <text class="pc-price fs-h3 fw-bold text-primary">¥{{product.priceText}}</text>
+      <text class="pc-desc text-muted fs-body" wx:if="{{product.description}}">{{product.description}}</text>
+    </view>
+    <view class="card pc-card pc-qty-row">
+      <text class="fs-body">数量</text>
+      <view class="pc-stepper">
+        <button class="pc-step-btn" size="mini" bindtap="onQtyMinus" disabled="{{quantity <= 1}}">−</button>
+        <text class="pc-qty-num">{{quantity}}</text>
+        <button class="pc-step-btn" size="mini" bindtap="onQtyPlus" disabled="{{quantity >= 99}}">+</button>
+      </view>
+    </view>
+    <view class="pc-total card">
+      <text class="fs-body">合计</text>
+      <text class="fs-h3 fw-bold text-primary">¥{{totalText}}</text>
+    </view>
+    <view class="pc-pay-wrap">
+      <button class="btn-primary pc-pay-btn" loading="{{paying}}" disabled="{{paying}}" bindtap="onPay">微信支付</button>
+    </view>
+  </block>
+  <view class="detail-loading text-muted fs-body" wx:else>商品不可用</view>
+</view>

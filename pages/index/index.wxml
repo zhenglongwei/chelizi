@@ -70,6 +70,7 @@
                 <text class="idx-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
               </view>
               <text class="idx-shop-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
+              <text class="idx-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
               <view class="idx-shop-foot">
                 <view class="idx-badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
                   <text class="fs-cap">{{item.badgeText}}</text>

@@ -577,7 +577,7 @@ function mapReviewAuditResponse(raw) {
 
 // ========== 材料审核（维修完成凭证） ==========
 
-const MATERIAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的维修完成材料审核专家。根据订单维修方案、报价金额、车辆信息，审核服务商上传的维修完成凭证（修复后照片、结算单、物料照片），判断材料是否真实、与订单匹配、合规。
+const MATERIAL_AUDIT_SYSTEM_PROMPT = `你是汽车维修领域的专家，专门负责审核维修完成材料。根据订单维修方案、报价金额、车辆信息，审核服务商上传的维修完成凭证（修复后照片、结算单、物料照片），判断材料是否真实、与订单匹配、合规。
 
 审核原则：
 1. 车辆一致性：照片中的车辆必须与订单车辆一致（车牌、品牌、车型、颜色）。若订单有车牌且照片中可见车牌，必须一致；否则判不通过，防止上传其他车辆照片冒充。
@@ -722,7 +722,7 @@ function mapMaterialAuditResponse(raw) {
 
 // ========== 商户申诉材料 AI 初审 ==========
 
-const APPEAL_AUDIT_SYSTEM_PROMPT = `你是车厘子平台的商户申诉材料审核专家。车主在评价中对某题选「否」，商户提交材料申诉。请根据题目含义，判断商户上传的材料是否有效证明其合规。`;
+const APPEAL_AUDIT_SYSTEM_PROMPT = `你是专门审核商户申诉材料审核专家。车主在评价中对某题选「否」，商户提交材料申诉。请根据题目含义，判断商户上传的材料是否有效证明其合规。`;
 
 function buildAppealAuditUserPrompt(questionKey, questionLabel) {
   const requirements = {
@@ -791,6 +791,63 @@ async function analyzeAppealEvidenceWithQwen({ questionKey, questionLabel, evide
   return { pass, rejectReason, needHumanReview, note: parsed.note || '' };
 }
 
+// ========== 服务商商品（标品）智能审核 ==========
+
+const SHOP_PRODUCT_AUDIT_SYSTEM_PROMPT = `你是汽车维修/服务电商平台的商品审核员。根据商家填写的标题、分类、描述以及商品配图（若有），判断是否允许自动上架。
+
+## 必须通过的条件（同时满足）
+1. **合法合规**：无违法违规、色情、赌博、诈骗、政治敏感、人身攻击等内容；无「包过」「内部关系」等明显虚假宣传。
+2. **汽车服务领域**：商品必须是面向汽车（含新能源车）的维修、保养、洗美、装潢、轮胎、钣金喷漆、机修、电路、事故车相关服务或套餐。禁止：纯食品、数码 unrelated、房产、招聘、金融理财等与到店汽车服务无关的商品。
+3. **图文一致**：若上传了图片，图片应大致与汽车服务相关（车间、车辆、配件、工具、施工场景、服务环境等）。若图片明显为无关内容（如风景、人物自拍、其他商品广告），则不通过。若**未上传图片**，仅根据文字判断，文字合规且在汽车服务域内即可通过。
+4. **与所选分类一致**：商家选择的平台分类为「钣金喷漆、发动机维修、电路维修、保养服务」之一，标题/描述应与该分类相符或合理相关（如保养类可含小保养、机油机滤等）。
+
+## 输出
+仅输出一个 JSON 对象，不要其他文字：
+{"pass":true} 或 {"pass":false,"reason":"简短中文原因，供运营参考"}`;
+
+function buildShopProductAuditUserPrompt(name, category, description) {
+  const n = String(name || '').trim().slice(0, 200);
+  const c = String(category || '').trim();
+  const d = String(description || '').trim().slice(0, 2000);
+  return `## 商家提交的商品信息
+- 标题：${n}
+- 平台分类：${c}
+- 描述：${d || '（无）'}
+
+请按系统规则判断是否自动通过（pass=true）或转人工（pass=false 并写 reason）。`;
+}
+
+/**
+ * 服务商商品智能审核（千问视觉，图片为可选）
+ * @returns {Promise<{pass: boolean, reason?: string}>}
+ */
+async function auditShopProductWithQwen({ name, category, description, imageUrls, apiKey }) {
+  if (!apiKey || !String(apiKey).trim()) {
+    throw new Error('未配置千问 API Key');
+  }
+  const content = [];
+  const urls = Array.isArray(imageUrls) ? imageUrls : [];
+  const maxImages = 4;
+  let added = 0;
+  for (const u of urls) {
+    if (added >= maxImages) break;
+    const url = String(u || '').trim();
+    if (!url.startsWith('http')) continue;
+    content.push({ type: 'image_url', image_url: { url } });
+    added++;
+  }
+  content.push({ type: 'text', text: buildShopProductAuditUserPrompt(name, category, description) });
+  const raw = await callQwenVision(content, apiKey, SHOP_PRODUCT_AUDIT_SYSTEM_PROMPT);
+  let parsed = {};
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+  } catch (_) {}
+  const pass = parsed.pass === true;
+  const reason = String(parsed.reason || parsed.rejectReason || '').trim() || '未通过自动审核';
+  return { pass, reason: pass ? undefined : reason };
+}
+
 module.exports = {
   analyzeWithQwen,
   analyzeLicenseWithQwen,
@@ -798,5 +855,6 @@ module.exports = {
   analyzeQualificationCertificateWithQwen,
   analyzeReviewWithQwen,
   analyzeCompletionEvidenceWithQwen,
-  analyzeAppealEvidenceWithQwen
+  analyzeAppealEvidenceWithQwen,
+  auditShopProductWithQwen
 };

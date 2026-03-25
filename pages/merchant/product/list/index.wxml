@@ -3,16 +3,25 @@
 <view class="page-root merchant-product-list" style="{{pageRootStyle}}">
   <view class="product-list" wx:if="{{list.length}}">
     <view class="product-card card" wx:for="{{list}}" wx:key="product_id">
+      <image wx:if="{{item.cover}}" class="product-thumb" src="{{item.cover}}" mode="aspectFill"/>
+      <view class="product-thumb product-thumb-ph" wx:else></view>
       <view class="product-main">
         <text class="product-name fs-body fw-bold">{{item.name}}</text>
         <text class="product-category text-muted fs-cap">{{item.category}}</text>
-        <text class="product-price text-primary fs-body">¥{{item.price}}</text>
+        <text class="product-price text-primary fs-body">¥{{item.priceText}}</text>
         <view class="product-status product-status-{{item.status}} fs-cap">{{item.statusLabel}}</view>
+        <text class="product-hint text-muted fs-cap" wx:if="{{item.status === 'off_shelf'}}">已下架，编辑后可重新提交审核</text>
+        <text class="product-reject text-warning fs-cap" wx:if="{{item.status === 'rejected' && item.audit_reason}}">驳回：{{item.audit_reason}}</text>
       </view>
       <view class="product-actions">
         <text class="product-action" wx:if="{{item.status === 'approved'}}" data-id="{{item.product_id}}" bindtap="onOffShelf">下架</text>
-        <text class="product-action" wx:if="{{item.status === 'pending' || item.status === 'rejected'}}" data-id="{{item.product_id}}" bindtap="onOffShelf">撤回</text>
-        <text class="product-action" wx:if="{{item.status === 'pending' || item.status === 'rejected'}}" data-id="{{item.product_id}}" bindtap="onEdit">编辑</text>
+        <text class="product-action" wx:if="{{item.status === 'pending'}}" data-id="{{item.product_id}}" bindtap="onWithdrawPending">撤回</text>
+        <text
+          class="product-action"
+          wx:if="{{item.status === 'pending' || item.status === 'rejected' || item.status === 'off_shelf'}}"
+          data-id="{{item.product_id}}"
+          bindtap="onEdit"
+        >编辑</text>
       </view>
     </view>
   </view>

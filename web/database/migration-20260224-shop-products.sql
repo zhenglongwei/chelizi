@@ -1,5 +1,5 @@
 -- 服务商商品表：支持上架/下架，上架需后台审核通过
--- 执行：mysql -u root -p chelizi < migration-20260224-shop-products.sql
+-- 执行：mysql -u root -p zhejian < migration-20260224-shop-products.sql
 
 CREATE TABLE IF NOT EXISTS shop_products (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

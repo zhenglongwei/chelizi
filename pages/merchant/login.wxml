@@ -1,15 +1,34 @@
 <!-- 服务商登录 - M01 -->
 <custom-nav-bar title="服务商登录" showBack="{{true}}" />
 <view class="page-root merchant-login-page" style="{{pageRootStyle}}">
-  <view class="merchant-login-content">
-    
+  <view wx:if="{{checkingWechat}}" class="merchant-login-checking">
+    <text class="fs-body text-muted">正在使用微信验证登录...</text>
+  </view>
+  <view wx:else class="merchant-login-content">
+    <view class="merchant-login-wechat card">
+      <button
+        class="btn-primary merchant-login-btn"
+        loading="{{wechatLoading}}"
+        disabled="{{wechatLoading}}"
+        bindtap="onWechatQuickLogin"
+      >
+        {{wechatLoading ? '登录中...' : '微信一键登录'}}
+      </button>
+      <text class="text-muted fs-cap merchant-login-hint">与注册时绑定的微信一致时，无需输入手机号与密码</text>
+    </view>
+
+    <view class="merchant-login-divider fs-cap text-muted">或使用手机号登录</view>
+
     <view class="merchant-login-form card">
       <view class="merchant-form-item">
         <text class="merchant-form-label fs-body">手机号</text>
         <input class="merchant-form-input" type="number" placeholder="请输入手机号" value="{{phone}}" bindinput="onPhoneInput" maxlength="11"/>
       </view>
       <view class="merchant-form-item">
-        <text class="merchant-form-label fs-body">密码</text>
+        <view class="merchant-form-label-row">
+          <text class="merchant-form-label fs-body">密码</text>
+          <text class="merchant-login-link fs-cap" bindtap="onForgotPassword">忘记密码</text>
+        </view>
         <input class="merchant-form-input" type="password" placeholder="请输入密码" value="{{password}}" bindinput="onPasswordInput"/>
       </view>
       <button class="btn-primary merchant-login-btn" disabled="{{loading}}" bindtap="onSubmit">

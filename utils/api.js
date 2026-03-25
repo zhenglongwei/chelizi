@@ -192,6 +192,20 @@ module.exports = {
   getShopDetail: (id) => api.get('/api/v1/shops/' + id),
   getShopReviews: (id, params) => api.get('/api/v1/shops/' + id + '/reviews', params),
   createAppointment: (data) => api.post('/api/v1/appointments', data),
+  /** 车主商品直购 */
+  createUserProductOrder: (data) => api.post('/api/v1/user/product-orders', data),
+  getUserProductOrders: (params) => api.get('/api/v1/user/product-orders', params),
+  /** 已支付标品单详情（预约展示）；未支付返回 404 */
+  getUserProductOrder: (id) => api.get('/api/v1/user/product-orders/' + id),
+  getShopBookingOptions: (shopId) => api.get('/api/v1/user/shops/' + shopId + '/booking-options'),
+  /** 全平台可预约项（不限店），供「我的」预约入口 */
+  getUserBookingOptionsAll: () => api.get('/api/v1/user/booking-options'),
+  getUserBookingSummary: () => api.get('/api/v1/user/booking-summary'),
+  prepayUserProductOrder: (productOrderId, code) =>
+    api.post('/api/v1/user/product-orders/' + productOrderId + '/prepay', { code }),
+  /** 竞价自费单：维修款 JSAPI 预支付 */
+  prepayUserRepairOrder: (orderId, code) =>
+    api.post('/api/v1/user/orders/' + orderId + '/repair-prepay', { code }),
   uploadImage: (filePath) => {
     const token = getToken();
     return new Promise((resolve, reject) => {
@@ -331,6 +345,12 @@ module.exports = {
   markMessagesRead: (data) => api.post('/api/v1/user/messages/read', data),
   getUnreadCount: () => api.get('/api/v1/user/messages/unread-count'),
   merchantLogin: (data) => api.post('/api/v1/merchant/login', data),
+  /** 服务商微信快捷登录（需 merchant_users 已绑定当前小程序 openid） */
+  merchantWechatLogin: (data) => api.post('/api/v1/merchant/wechat-login', data),
+  /** 检测当前微信是否已绑定服务商（不发 token） */
+  merchantCheckOpenid: (data) => api.post('/api/v1/merchant/check-openid', data),
+  /** 找回密码：手机号 + 新密码 + wx.login 的 code，服务端校验 openid 与账号一致 */
+  merchantResetPassword: (data) => api.post('/api/v1/merchant/reset-password', data),
   merchantRegister: (data) => api.post('/api/v1/merchant/register', data),
   ocrBusinessLicense: (imgUrl) => api.post('/api/v1/merchant/ocr-license', { img_url: imgUrl }),
   // 服务商端接口（需 merchant_token）
@@ -348,6 +368,8 @@ module.exports = {
   createMerchantProduct: (data) => merchantRequest({ url: '/api/v1/merchant/products', method: 'POST', data }),
   updateMerchantProduct: (productId, data) => merchantRequest({ url: '/api/v1/merchant/products/' + productId, method: 'PUT', data }),
   offShelfMerchantProduct: (productId) => merchantRequest({ url: '/api/v1/merchant/products/' + productId + '/off-shelf', method: 'POST' }),
+  deleteMerchantProductPending: (productId) =>
+    merchantRequest({ url: '/api/v1/merchant/products/' + productId, method: 'DELETE' }),
   getMerchantShop: () => merchantRequest({ url: '/api/v1/merchant/shop', method: 'GET' }),
   updateMerchantShop: (data) => merchantRequest({ url: '/api/v1/merchant/shop', method: 'PUT', data }),
   withdrawMerchantQualification: () => merchantRequest({ url: '/api/v1/merchant/shop/withdraw-qualification', method: 'POST' }),
@@ -378,5 +400,23 @@ module.exports = {
   merchantCommissionFinalize: (orderId, data) =>
     merchantRequest({ url: '/api/v1/merchant/orders/' + orderId + '/commission-finalize', method: 'POST', data }),
   merchantCommissionRefund: (amount) =>
-    merchantRequest({ url: '/api/v1/merchant/commission/refund', method: 'POST', data: { amount } })
+    merchantRequest({ url: '/api/v1/merchant/commission/refund', method: 'POST', data: { amount } }),
+  /** 标品货款流水 */
+  getMerchantShopIncomeLedger: (params) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/ledger', method: 'GET', data: params }),
+  merchantShopIncomeWithdraw: (data) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/withdraw', method: 'POST', data }),
+  merchantShopIncomeWithdrawReconcile: (data) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/withdraw/reconcile', method: 'POST', data }),
+  merchantShopIncomeWithdrawCancel: (data) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/withdraw/cancel', method: 'POST', data }),
+  merchantShopIncomeCorpWithdraw: (data) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/corp-withdraw', method: 'POST', data }),
+  getMerchantShopIncomeCorpWithdrawals: (params) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/corp-withdrawals', method: 'GET', data: params }),
+  merchantShopIncomeCorpWithdrawCancel: (data) =>
+    merchantRequest({ url: '/api/v1/merchant/shop-income/corp-withdraw/cancel', method: 'POST', data }),
+  /** 服务商：车主商品订单 */
+  getMerchantProductOrders: (params) =>
+    merchantRequest({ url: '/api/v1/merchant/product-orders', method: 'GET', data: params })
 };

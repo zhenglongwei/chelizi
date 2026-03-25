@@ -1,0 +1,49 @@
+.merchant-dimension-page {
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.merchant-dimension-block-title {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.merchant-dimension-current,
+.merchant-dimension-rules {
+  padding: var(--space-xl);
+}
+
+.merchant-dimension-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.merchant-dimension-line:last-child {
+  margin-bottom: 0;
+}
+
+.merchant-dimension-rule-p {
+  display: block;
+  margin-bottom: var(--space-md);
+  line-height: 1.55;
+}
+
+.merchant-dimension-rule-p:last-child {
+  margin-bottom: 0;
+}
+
+.merchant-dimension-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.merchant-dimension-btn {
+  width: 100%;
+}

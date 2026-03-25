@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 车厘子项目完成度测试工具
- * 按《协作规范》与《车厘子-全流程需求梳理》检查项目整体是否完成
+ * 辙见项目完成度测试工具
+ * 按《协作规范》与《辙见-全流程需求梳理》检查项目整体是否完成
  *
  * 用法：node scripts/check-completeness.js [API_BASE_URL]
  * 示例：node scripts/check-completeness.js http://localhost:3000
@@ -14,7 +14,7 @@ const http = require('http');
 const https = require('https');
 
 const ROOT = path.resolve(__dirname, '..');
-const API_BASE = process.argv[2] || process.env.CHELIZI_API_URL || 'http://localhost:3000';
+const API_BASE = process.argv[2] || process.env.ZHEJIAN_API_URL || 'http://localhost:3000';
 
 // 期望的页面（按《00-页面索引》）
 const EXPECTED_OWNER_PAGES = [
@@ -24,7 +24,9 @@ const EXPECTED_OWNER_PAGES = [
   'pages/bidding/list/index',
   'pages/shop/detail/index',
   'pages/shop/book/index',
+  'pages/shop/product/success/index',
   'pages/order/list/index',
+  'pages/order/hub/index',
   'pages/order/detail/index',
   'pages/auth/login/index',
   'pages/review/submit/index',
@@ -326,7 +328,7 @@ function printSummary() {
 }
 
 async function main() {
-  console.log('车厘子项目完成度测试工具');
+  console.log('辙见项目完成度测试工具');
   console.log('API 地址:', API_BASE);
   console.log('项目根目录:', ROOT);
 

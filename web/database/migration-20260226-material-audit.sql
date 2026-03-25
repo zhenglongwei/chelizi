@@ -1,5 +1,5 @@
 -- 材料 AI 审核任务表（1→2 异步审核）
--- 执行：mysql -u root -p chelizi < migration-20260226-material-audit.sql
+-- 执行：mysql -u root -p zhejian < migration-20260226-material-audit.sql
 
 -- 1. 材料审核任务表
 CREATE TABLE IF NOT EXISTS material_audit_tasks (

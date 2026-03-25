@@ -20,6 +20,7 @@
           <text class="rank-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
           <text class="rank-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
         </view>
+        <text class="rank-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
       </view>
       <image class="rank-arrow" src="/images/icon/right.png" mode="aspectFit"/>
     </view>

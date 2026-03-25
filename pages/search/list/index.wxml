@@ -77,6 +77,7 @@
                 <text class="rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
               </view>
               <text class="search-card-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
+              <text class="search-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
               <view class="search-card-foot">
                 <view class="badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
                   <text class="fs-cap">{{item.badgeText}}</text>

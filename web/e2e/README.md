@@ -76,7 +76,7 @@ npm run test:miniprogram
 
 ```bash
 # 终端 1：手动启动自动化窗口
-"C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat" auto --project C:\Users\longwei\WeChatProjects\chelizi --auto-port 9420
+"C:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat" auto --project C:\Users\longwei\WeChatProjects\zhejian --auto-port 9420
 
 # 终端 2：等窗口打开后运行测试（跳过 launch）
 set WEAPP_SKIP_LAUNCH=1

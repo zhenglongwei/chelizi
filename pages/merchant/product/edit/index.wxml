@@ -1,7 +1,23 @@
 <!-- 服务商上架/编辑商品 -->
 <custom-nav-bar title="{{productId ? '编辑商品' : '上架商品'}}" showBack="{{true}}" />
 <view class="page-root merchant-product-edit" style="{{pageRootStyle}}">
+  <view class="edit-tip card text-muted fs-cap">
+    审核通过后将展示在车主端店铺详情并可搜索：名称与描述建议含服务项目关键词；首张图作为列表/详情封面；价格须 ≥ 0.01 元（与线上下单一致）。
+  </view>
   <view class="edit-form card">
+    <view class="edit-item">
+      <text class="edit-label fs-body">商品图片（最多{{maxImages}}张）</text>
+      <view class="edit-images">
+        <view class="edit-img-cell" wx:for="{{images}}" wx:for-index="imgIdx" wx:key="imgIdx">
+          <image class="edit-img-preview" src="{{item}}" mode="aspectFill"/>
+          <view class="edit-img-remove" data-index="{{index}}" bindtap="onRemoveImage">×</view>
+        </view>
+        <view class="edit-img-add" wx:if="{{images.length < maxImages}}" bindtap="onAddImages">
+          <text class="edit-img-add-plus">+</text>
+          <text class="text-muted fs-cap">{{uploadingImage ? '上传中…' : '添加'}}</text>
+        </view>
+      </view>
+    </view>
     <view class="edit-item">
       <text class="edit-label fs-body">商品名称<text class="text-error">*</text></text>
       <input class="edit-input" placeholder="如：小保养套餐" value="{{name}}" bindinput="onNameInput"/>
@@ -14,11 +30,11 @@
     </view>
     <view class="edit-item">
       <text class="edit-label fs-body">价格（元）<text class="text-error">*</text></text>
-      <input class="edit-input" type="digit" placeholder="如：299" value="{{price}}" bindinput="onPriceInput"/>
+      <input class="edit-input" type="digit" placeholder="最低 0.01，如：299" value="{{price}}" bindinput="onPriceInput"/>
     </view>
     <view class="edit-item">
       <text class="edit-label fs-body">描述</text>
-      <textarea class="edit-textarea" placeholder="选填，如：含机油、机滤、工时" value="{{description}}" bindinput="onDescInput"/>
+      <textarea class="edit-textarea" placeholder="建议填写服务内容、套餐明细等，便于车主搜索到本商品" value="{{description}}" bindinput="onDescInput"/>
     </view>
   </view>
   <view class="edit-footer">

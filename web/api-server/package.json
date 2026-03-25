@@ -1,7 +1,7 @@
 {
-  "name": "chelizi-api-server",
+  "name": "zhejian-api-server",
   "version": "2.0.0",
-  "description": "车厘子事故车维修平台API服务 - 基于Express + MySQL + 阿里云",
+  "description": "辙见事故车维修平台API服务 - 基于Express + MySQL + 阿里云",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

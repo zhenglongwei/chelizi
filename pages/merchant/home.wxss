@@ -1,6 +1,15 @@
 /* 服务商工作台 - M03，按《设计规范.md》 */
 .merchant-home {
   padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: var(--space-2xl);
+}
+
+.merchant-home-section {
+  margin-bottom: var(--space-2xl);
+}
+
+.merchant-home-section-last {
+  margin-bottom: 0;
 }
 
 /* 资质未完善提示条：醒目、可点击 */
@@ -18,7 +27,7 @@
   height: 48rpx;
   border-radius: var(--radius-full);
   background: var(--warning);
-  color: #fff;
+  color: var(--bg-card);
   font-size: var(--fs-body);
   font-weight: 700;
   display: flex;
@@ -60,23 +69,132 @@
   background: var(--danger);
 }
 
-.merchant-welcome {
-  margin-bottom: var(--space-xl);
+/* 店铺身份条 */
+.merchant-identity-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
 }
 
-.merchant-welcome text {
-  display: block;
+.merchant-identity-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
 }
 
-.merchant-shop-name-row {
+.merchant-identity-title-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-sm);
-  margin-bottom: var(--space-xs);
 }
 
-/* 店铺名旁状态标签：胶囊形，使用设计系统变量 */
+.merchant-identity-name {
+  max-width: 100%;
+}
+
+.merchant-identity-wallet,
+.merchant-identity-hint {
+  display: block;
+  line-height: 1.45;
+}
+
+.merchant-identity-arrow {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+/* 店铺综合得分（首页精简） */
+.merchant-score-compact {
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  border-left: 6rpx solid var(--border);
+}
+
+.merchant-score-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.merchant-score-compact-main {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.merchant-score-compact-num {
+  line-height: 1.1;
+}
+
+.merchant-score-compact-suffix {
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.merchant-score-compact-chevron {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.merchant-score-compact-stars {
+  color: var(--accent);
+  letter-spacing: 2rpx;
+}
+
+.merchant-score-compact-tip {
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.merchant-score-tier-high {
+  border-left-color: var(--success);
+}
+
+.merchant-score-tier-high .merchant-score-compact-num {
+  color: var(--success);
+}
+
+.merchant-score-tier-high .merchant-score-compact-tip {
+  color: var(--text-secondary);
+}
+
+.merchant-score-tier-mid {
+  border-left-color: var(--warning);
+}
+
+.merchant-score-tier-mid .merchant-score-compact-num {
+  color: var(--warning);
+}
+
+.merchant-score-tier-low {
+  border-left-color: var(--danger);
+}
+
+.merchant-score-tier-low .merchant-score-compact-num {
+  color: var(--danger);
+}
+
+/* 得分详情页分项着色 */
+.merchant-score-val-pos {
+  color: var(--success);
+}
+
+.merchant-score-val-neg {
+  color: var(--danger);
+}
+
+.merchant-score-val-zero {
+  color: var(--text-secondary);
+}
+
+/* 店铺名旁状态标签 */
 .merchant-qual-badge {
   padding: 4rpx var(--space-sm);
   border-radius: var(--radius-sm);
@@ -100,12 +218,22 @@
   color: var(--success);
 }
 
+.merchant-section-title {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.merchant-section-sub {
+  display: block;
+  margin-bottom: var(--space-md);
+  line-height: 1.5;
+}
 
 .merchant-stats {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-md);
-  margin-bottom: var(--space-2xl);
 }
 
 .merchant-stat-card {
@@ -115,7 +243,6 @@
   text-align: center;
 }
 
-/* 统一用主色，避免四色凌乱 */
 .merchant-stat-card .stat-num {
   color: var(--primary);
 }
@@ -128,11 +255,6 @@
 
 .stat-label {
   color: var(--text-secondary);
-}
-
-.merchant-section-title {
-  margin-bottom: var(--space-md);
-  color: var(--text-primary);
 }
 
 .merchant-actions {
@@ -148,7 +270,6 @@
   padding: var(--space-xl);
 }
 
-/* 快捷入口图标：背景用 accent 浅色，图标色用 #EAB308，符合设计规范 7.3 */
 .merchant-action-icon {
   width: 88rpx;
   height: 88rpx;
@@ -177,7 +298,7 @@
   padding: 0 8rpx;
   border-radius: var(--radius-full);
   background: var(--danger);
-  color: #fff;
+  color: var(--bg-card);
   font-size: 20rpx;
   font-weight: 600;
   display: flex;

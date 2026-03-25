@@ -159,6 +159,14 @@ Page({
 
     this.setData({ submitting: true });
     try {
+      let wxCode = '';
+      try {
+        wxCode = await new Promise((resolve, reject) => {
+          wx.login({ success: (r) => resolve((r && r.code) || ''), fail: reject });
+        });
+      } catch (e) {
+        logger.warn('注册前 wx.login 失败', e);
+      }
       const res = await merchantRegister({
         name,
         license_id: licenseID,
@@ -171,7 +179,8 @@ Page({
         password,
         license_url: licenseUrl || undefined,
         qualification_ai_recognized: this.data.qualification_ai_recognized || undefined,
-        qualification_ai_result: this.data.qualification_ai_result || undefined
+        qualification_ai_result: this.data.qualification_ai_result || undefined,
+        code: wxCode || undefined
       });
       this.setData({ submitting: false });
       setMerchantToken(res.token);

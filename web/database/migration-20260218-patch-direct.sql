@@ -1,11 +1,11 @@
 -- ========================================================
 -- 直接补丁（无存储过程）：补齐 shops 缺失列 + blacklist 表
 -- 若 patch-server.sql 执行失败，可尝试本脚本
--- 用法：mysql -u root -p chelizi < migration-20260218-patch-direct.sql
+-- 用法：mysql -u root -p zhejian < migration-20260218-patch-direct.sql
 -- 注意：若列/表已存在会报错，可忽略
 -- ========================================================
 
-USE chelizi;
+USE zhejian;
 
 -- shops 缺失列（逐条执行，某条报 Duplicate column 可忽略）
 ALTER TABLE shops ADD COLUMN shop_images JSON DEFAULT NULL COMMENT '服务商/店铺环境照片' AFTER logo;

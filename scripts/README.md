@@ -1,6 +1,6 @@
-# 车厘子 - 项目完成度测试工具
+# 辙见 - 项目完成度测试工具
 
-按《协作规范》与《车厘子-全流程需求梳理》检查项目整体是否完成。
+按《协作规范》与《辙见-全流程需求梳理》检查项目整体是否完成。
 
 ## 用法
 
@@ -13,7 +13,7 @@ node scripts/check-completeness.js http://localhost:3000
 node scripts/check-completeness.js https://simplewin.cn/api
 
 # 使用环境变量
-set CHELIZI_API_URL=http://localhost:3000
+set ZHEJIAN_API_URL=http://localhost:3000
 node scripts/check-completeness.js
 ```
 

@@ -1,4 +1,4 @@
-// 车厘子 - 事故车维修平台 API 服务器
+// 辙见 - 事故车维修平台 API 服务器
 // 基于 Express + MySQL + 阿里云OSS
 
 require('dotenv').config({ path: '../.env' });
@@ -32,7 +32,7 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'chelizi',
+  database: process.env.DB_NAME || 'zhejian',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -3956,7 +3956,7 @@ app.use((req, res) => {
 // ===================== 启动服务 =====================
 
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log('🚀 车厘子 API 服务器已启动');
+  console.log('🚀 辙见 API 服务器已启动');
   console.log(`📡 监听端口: ${PORT}`);
   console.log(`🔗 健康检查: http://localhost:${PORT}/health`);
   await testDBConnection();

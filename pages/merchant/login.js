@@ -2,7 +2,7 @@
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
 const { getNavBarHeight } = require('../../utils/util');
-const { merchantLogin, setMerchantToken, setMerchantUser } = require('../../utils/api');
+const { merchantLogin, merchantWechatLogin, setMerchantToken, setMerchantUser } = require('../../utils/api');
 
 const logger = getLogger('MerchantLogin');
 
@@ -11,12 +11,71 @@ Page({
     pageRootStyle: 'padding-top: 88px',
     phone: '',
     password: '',
-    loading: false
+    loading: false,
+    checkingWechat: true,
+    wechatLoading: false
   },
 
   onLoad(options) {
     this.setData({ pageRootStyle: 'padding-top: ' + getNavBarHeight() + 'px' });
     this.redirect = options.redirect ? decodeURIComponent(options.redirect) : '';
+    this.attemptWechatAutoLogin();
+  },
+
+  redirectTarget() {
+    return this.redirect && this.redirect.startsWith('/') ? this.redirect : '/pages/merchant/home';
+  },
+
+  /** 进入页时若 merchant_users.openid 与当前微信一致则直接登录 */
+  async attemptWechatAutoLogin() {
+    this.setData({ checkingWechat: true });
+    try {
+      const code = await new Promise((resolve, reject) => {
+        wx.login({ success: (r) => resolve((r && r.code) || ''), fail: reject });
+      });
+      if (!code) {
+        this.setData({ checkingWechat: false });
+        return;
+      }
+      const res = await merchantWechatLogin({ code });
+      setMerchantToken(res.token);
+      if (res.user) setMerchantUser(res.user);
+      ui.showSuccess('登录成功');
+      const target = this.redirectTarget();
+      setTimeout(() => {
+        wx.redirectTo({ url: target });
+      }, 800);
+    } catch (err) {
+      logger.warn('服务商微信自动登录未命中', err);
+      this.setData({ checkingWechat: false });
+    }
+  },
+
+  async onWechatQuickLogin() {
+    if (this.data.wechatLoading || this.data.loading) return;
+    this.setData({ wechatLoading: true });
+    try {
+      const code = await new Promise((resolve, reject) => {
+        wx.login({ success: (r) => resolve((r && r.code) || ''), fail: reject });
+      });
+      if (!code) {
+        ui.showError('获取登录码失败');
+        return;
+      }
+      const res = await merchantWechatLogin({ code });
+      setMerchantToken(res.token);
+      if (res.user) setMerchantUser(res.user);
+      ui.showSuccess('登录成功');
+      const target = this.redirectTarget();
+      setTimeout(() => {
+        wx.redirectTo({ url: target });
+      }, 800);
+    } catch (err) {
+      logger.error('服务商微信登录失败', err);
+      ui.showError(err.message || '登录失败');
+    } finally {
+      this.setData({ wechatLoading: false });
+    }
   },
 
   onPhoneInput(e) {
@@ -45,7 +104,7 @@ Page({
       setMerchantToken(res.token);
       if (res.user) setMerchantUser(res.user);
       ui.showSuccess('登录成功');
-      const target = this.redirect && this.redirect.startsWith('/') ? this.redirect : '/pages/merchant/home';
+      const target = this.redirectTarget();
       setTimeout(() => {
         wx.redirectTo({ url: target });
       }, 800);
@@ -58,5 +117,9 @@ Page({
 
   onToRegister() {
     wx.navigateTo({ url: '/pages/merchant/register' });
+  },
+
+  onForgotPassword() {
+    wx.navigateTo({ url: '/pages/merchant/forgot-password' });
   }
 });

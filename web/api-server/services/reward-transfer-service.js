@@ -32,7 +32,7 @@ function defaultSceneReportInfos() {
   return [
     {
       info_type: '活动名称',
-      info_content: String(process.env.WECHAT_TRANSFER_SCENE_ACTIVITY || '车厘子评价激励').slice(0, 32),
+      info_content: String(process.env.WECHAT_TRANSFER_SCENE_ACTIVITY || '辙见评价激励').slice(0, 32),
     },
     {
       info_type: '奖励说明',

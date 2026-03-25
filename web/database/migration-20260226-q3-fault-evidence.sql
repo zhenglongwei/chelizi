@@ -1,5 +1,5 @@
 -- 第 3 题用户举证 + q3 权重剔除
--- 执行：mysql -u root -p chelizi < migration-20260226-q3-fault-evidence.sql
+-- 执行：mysql -u root -p zhejian < migration-20260226-q3-fault-evidence.sql
 -- 若列已存在会报错，可忽略
 
 -- 1. reviews 表：用户故障凭证

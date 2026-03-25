@@ -4,6 +4,7 @@
  */
 
 const reviewLikeService = require('./review-like-service');
+const { parseCompletionEvidence, parseRepairPlanEnrichment } = require('../utils/review-order-display');
 
 const LEVEL_NAMES = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
 
@@ -151,7 +152,7 @@ async function getReviewFeed(pool, query) {
     `SELECT r.*, u.nickname, u.avatar_url, u.level as user_level,
        s.shop_id, s.name as shop_name, s.logo as shop_logo, s.address as shop_address, s.district as shop_district,
        s.latitude as shop_lat, s.longitude as shop_lng,
-       o.repair_plan, o.quoted_amount, o.actual_amount
+       o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence
      FROM reviews r
      JOIN users u ON r.user_id = u.user_id
      JOIN orders o ON r.order_id = o.order_id
@@ -200,14 +201,9 @@ async function getReviewFeed(pool, query) {
     data: {
       list: reviews.map(r => {
         const stats = likeStats[r.review_id] || {};
-        let repairItems = [];
         let amount = r.actual_amount != null ? parseFloat(r.actual_amount) : (r.quoted_amount != null ? parseFloat(r.quoted_amount) : null);
-        if (r.repair_plan) {
-          try {
-            const rp = typeof r.repair_plan === 'string' ? JSON.parse(r.repair_plan) : r.repair_plan;
-            repairItems = (rp?.items || []).map(i => i.name || i.damage_part || '').filter(Boolean);
-          } catch (_) {}
-        }
+        const { material_photos } = parseCompletionEvidence(r.completion_evidence);
+        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key);
         const objAnswers = (() => {
           try {
             return typeof r.objective_answers === 'string' ? JSON.parse(r.objective_answers || '{}') : (r.objective_answers || {});
@@ -251,6 +247,8 @@ async function getReviewFeed(pool, query) {
           },
           content: r.content,
           repair_items: repairItems,
+          part_promise_lines: part_promise_lines,
+          material_photos,
           amount,
           before_images: beforeImgs,
           after_images: afterImgs,

@@ -1,6 +1,6 @@
 <custom-nav-bar title="服务商工作台" showBack="{{true}}" />
 <view class="page-root merchant-home" style="{{pageRootStyle}}">
-  <!-- 资质未补充提示：仅当未提交时显示 -->
+  <!-- 资质阻断 -->
   <view class="merchant-qualification-alert card" wx:if="{{qualificationStatus === 0 && !qualificationSubmitted}}" bindtap="onShopTap">
     <view class="qualification-alert-icon">!</view>
     <view class="qualification-alert-content">
@@ -9,7 +9,6 @@
     </view>
     <text class="qualification-alert-arrow">去完善 ›</text>
   </view>
-  <!-- 资质驳回提示 -->
   <view class="merchant-qualification-alert card merchant-qualification-rejected" wx:if="{{qualificationStatus === 2}}" bindtap="onShopTap">
     <view class="qualification-alert-icon">×</view>
     <view class="qualification-alert-content">
@@ -18,105 +17,136 @@
     </view>
     <text class="qualification-alert-arrow">去修改 ›</text>
   </view>
-  <view class="merchant-welcome card" wx:if="{{shopName}}">
-    <view class="merchant-shop-name-row">
-      <text class="fs-h3 fw-bold text-primary">{{shopName}}</text>
-      <view class="merchant-qual-badge merchant-qual-badge-pending" wx:if="{{qualificationStatus === 0 && qualificationSubmitted}}">审核中</view>
-      <view class="merchant-qual-badge merchant-qual-badge-rejected" wx:elif="{{qualificationStatus === 2}}">待修改</view>
-      <view class="merchant-qual-badge merchant-qual-badge-approved" wx:elif="{{qualificationStatus === 1}}">已认证</view>
-    </view>
-    <text class="text-muted fs-cap">欢迎使用车厘子服务商端</text>
-  </view>
-  <view class="merchant-stats">
-    <view class="merchant-stat-card card merchant-stat-bidding" data-status="pending" bindtap="onBiddingTap">
-      <text class="stat-num">{{pendingBidding}}</text>
-      <text class="stat-label fs-cap">待报价</text>
-    </view>
-    <view class="merchant-stat-card card merchant-stat-order" bindtap="onOrderTap">
-      <text class="stat-num">{{pendingOrder}}</text>
-      <text class="stat-label fs-cap">待接单</text>
-    </view>
-    <view class="merchant-stat-card card merchant-stat-repair" bindtap="onOrderTap">
-      <text class="stat-num">{{repairing}}</text>
-      <text class="stat-label fs-cap">维修中</text>
-    </view>
-    <view class="merchant-stat-card card merchant-stat-confirm" bindtap="onOrderTap">
-      <text class="stat-num">{{pendingConfirm}}</text>
-      <text class="stat-label fs-cap">待确认</text>
+
+  <!-- 店铺身份条：店名、认证、佣金摘要、进店铺 -->
+  <view class="merchant-home-section">
+    <view class="merchant-identity-bar card" bindtap="onShopTap">
+      <view class="merchant-identity-main">
+        <view class="merchant-identity-title-row">
+          <text class="merchant-identity-name fs-body fw-bold text-primary">{{shopName || '我的店铺'}}</text>
+          <view class="merchant-qual-badge merchant-qual-badge-pending" wx:if="{{qualificationStatus === 0 && qualificationSubmitted}}">审核中</view>
+          <view class="merchant-qual-badge merchant-qual-badge-rejected" wx:elif="{{qualificationStatus === 2}}">待修改</view>
+          <view class="merchant-qual-badge merchant-qual-badge-approved" wx:elif="{{qualificationStatus === 1}}">已认证</view>
+        </view>
+        <text class="merchant-identity-wallet text-muted fs-cap" wx:if="{{commissionBalanceText}}">{{commissionBalanceText}}</text>
+        <text class="merchant-identity-hint text-muted fs-cap" wx:else>{{shopInfoStatusText || '查看/编辑店铺资料'}}</text>
+      </view>
+      <text class="merchant-identity-arrow fs-cap text-primary">店铺 ›</text>
     </view>
   </view>
-  <view class="merchant-section-title fs-body fw-bold">快捷入口</view>
-  <view class="merchant-actions">
-    <view class="merchant-action card" bindtap="onBiddingTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/compete_active.png" mode="aspectFit" class="action-img"/>
+
+  <!-- 店铺综合得分：仅展示分数与分档提示，点击查看构成 -->
+  <view class="merchant-home-section" wx:if="{{scoreDetail}}">
+    <text class="merchant-section-title fs-body fw-bold">店铺综合得分</text>
+    <view class="merchant-score-compact card {{scoreTierClass}}" bindtap="onOpenScoreDetail">
+      <view class="merchant-score-compact-row">
+        <view class="merchant-score-compact-main">
+          <text class="merchant-score-compact-num fs-h1 fw-bold">{{scoreDetail.score}}</text>
+          <text class="merchant-score-compact-suffix fs-body">分</text>
+        </view>
+        <text class="merchant-score-compact-chevron fs-cap text-primary">查看构成 ›</text>
       </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">竞价邀请</text>
-        <text class="text-muted fs-cap">查看并报价</text>
-      </view>
-      <text class="merchant-action-arrow">›</text>
+      <text class="merchant-score-compact-stars fs-cap" wx:if="{{scoreDetail.star_display}}">{{scoreDetail.star_display}} · {{scoreDetail.star_short}}</text>
+      <text class="merchant-score-compact-tip fs-cap">{{scoreTip}}</text>
     </view>
-    <view class="merchant-action card" bindtap="onOrderTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+  </view>
+
+  <!-- 今日待办：四宫格为竞价/订单唯一主入口 -->
+  <view class="merchant-home-section">
+    <text class="merchant-section-title fs-body fw-bold">今日待办</text>
+    <text class="merchant-section-sub text-muted fs-cap">点击数字进入列表；订单相关请在「我的订单」内按状态查看</text>
+    <view class="merchant-stats">
+      <view class="merchant-stat-card card merchant-stat-bidding" data-status="pending" bindtap="onBiddingTap">
+        <text class="stat-num">{{pendingBidding}}</text>
+        <text class="stat-label fs-cap">待报价</text>
       </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">我的订单</text>
-        <text class="text-muted fs-cap">待接单、维修中</text>
+      <view class="merchant-stat-card card merchant-stat-order" bindtap="onOrderTap">
+        <text class="stat-num">{{pendingOrder}}</text>
+        <text class="stat-label fs-cap">待接单</text>
       </view>
-      <text class="merchant-action-arrow">›</text>
+      <view class="merchant-stat-card card merchant-stat-repair" bindtap="onOrderTap">
+        <text class="stat-num">{{repairing}}</text>
+        <text class="stat-label fs-cap">维修中</text>
+      </view>
+      <view class="merchant-stat-card card merchant-stat-confirm" bindtap="onOrderTap">
+        <text class="stat-num">{{pendingConfirm}}</text>
+        <text class="stat-label fs-cap">待确认</text>
+      </view>
     </view>
-    <view class="merchant-action card" bindtap="onShopTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/merchant_active.png" mode="aspectFit" class="action-img"/>
+  </view>
+
+  <!-- 经营与资金 -->
+  <view class="merchant-home-section">
+    <text class="merchant-section-title fs-body fw-bold">经营与资金</text>
+    <view class="merchant-actions">
+      <view class="merchant-action card" bindtap="onShopTap">
+        <view class="merchant-action-icon">
+          <image src="/images/icon/merchant_active.png" mode="aspectFit" class="action-img"/>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">店铺资料</text>
+          <text class="text-muted fs-cap">{{shopInfoStatusText || '资质、地址、展示信息'}}</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
       </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">服务商信息</text>
-        <text class="text-muted fs-cap">{{shopInfoStatusText || '查看/编辑本店'}}</text>
+      <view class="merchant-action card" bindtap="onCommissionTap">
+        <view class="merchant-action-icon">
+          <image src="/images/icon/compete_active.png" mode="aspectFit" class="action-img"/>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">资金账户</text>
+          <text class="text-muted fs-cap">佣金、标品货款提现</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
       </view>
-      <text class="merchant-action-arrow">›</text>
+      <view class="merchant-action card" bindtap="onProductTap">
+        <view class="merchant-action-icon">
+          <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">商品管理</text>
+          <text class="text-muted fs-cap">上架/下架保养、钣金等服务</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
+      </view>
+      <view class="merchant-action card" bindtap="onProductOrderTap">
+        <view class="merchant-action-icon">
+          <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">商品订单</text>
+          <text class="text-muted fs-cap">车主标品直购、微信支付</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
+      </view>
     </view>
-    <view class="merchant-action card" bindtap="onCommissionTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/compete_active.png" mode="aspectFit" class="action-img"/>
+  </view>
+
+  <!-- 服务与风控 -->
+  <view class="merchant-home-section merchant-home-section-last">
+    <text class="merchant-section-title fs-body fw-bold">服务与风控</text>
+    <view class="merchant-actions">
+      <view class="merchant-action card" bindtap="onMessageTap">
+        <view class="merchant-action-icon merchant-action-icon-wrap">
+          <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+          <view class="merchant-action-badge" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCount > 99 ? '99+' : messageUnreadCount}}</view>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">消息中心</text>
+          <text class="text-muted fs-cap">申诉、材料审核等通知</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
       </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">佣金账户</text>
-        <text class="text-muted fs-cap">充值、明细、补缴佣金</text>
+      <view class="merchant-action card" bindtap="onAppealTap">
+        <view class="merchant-action-icon">
+          <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
+        </view>
+        <view class="merchant-action-text">
+          <text class="fs-body fw-bold">我的申诉</text>
+          <text class="text-muted fs-cap">评价异议申诉</text>
+        </view>
+        <text class="merchant-action-arrow">›</text>
       </view>
-      <text class="merchant-action-arrow">›</text>
-    </view>
-    <view class="merchant-action card" bindtap="onProductTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
-      </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">商品管理</text>
-        <text class="text-muted fs-cap">上架/下架保养、钣金等服务</text>
-      </view>
-      <text class="merchant-action-arrow">›</text>
-    </view>
-    <view class="merchant-action card" bindtap="onMessageTap">
-      <view class="merchant-action-icon merchant-action-icon-wrap">
-        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
-        <view class="merchant-action-badge" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCount > 99 ? '99+' : messageUnreadCount}}</view>
-      </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">消息中心</text>
-        <text class="text-muted fs-cap">申诉、材料审核等通知</text>
-      </view>
-      <text class="merchant-action-arrow">›</text>
-    </view>
-    <view class="merchant-action card" bindtap="onAppealTap">
-      <view class="merchant-action-icon">
-        <image src="/images/icon/order_active.png" mode="aspectFit" class="action-img"/>
-      </view>
-      <view class="merchant-action-text">
-        <text class="fs-body fw-bold">我的申诉</text>
-        <text class="text-muted fs-cap">评价异议申诉</text>
-      </view>
-      <text class="merchant-action-arrow">›</text>
     </view>
   </view>
 </view>

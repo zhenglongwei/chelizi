@@ -29,12 +29,19 @@
     <navigator wx:else url="/pages/auth/login/index?redirect=%2Fpages%2Fuser%2Findex%2Findex" class="user-login-btn">登录</navigator>
   </view>
 
-  <!-- 服务商快捷入口：仅对已登录过服务商的用户显示，一键进入工作台（token 已缓存即自动登录） -->
-  <view class="user-merchant-entry card" wx:if="{{hasMerchantToken}}">
-    <navigator class="user-merchant-btn" url="/pages/merchant/home">
+  <!-- 服务商入口：已有服务商 token；或车主登录后检测到 openid 已注册服务商 -->
+  <view class="user-merchant-entry card" wx:if="{{hasMerchantToken || merchantOpenidBound}}">
+    <navigator wx:if="{{hasMerchantToken}}" class="user-merchant-btn" url="/pages/merchant/home">
       <text class="fs-body fw-bold">进入服务商工作台</text>
       <text class="text-muted fs-cap">维修厂报价、接单、订单管理</text>
     </navigator>
+    <view wx:else class="user-merchant-btn user-merchant-btn-tap" bindtap="onMerchantWechatQuickEnter">
+      <text class="fs-body fw-bold">进入服务商工作台</text>
+      <text class="text-muted fs-cap" wx:if="{{merchantWechatLoading}}">登录中...</text>
+      <text class="text-muted fs-cap" wx:elif="{{merchantEntryPending}}">资质审核中，暂不可登录</text>
+      <text class="text-muted fs-cap" wx:elif="{{merchantEntryShopName}}">{{merchantEntryShopName}} · 点击登录并进入</text>
+      <text class="text-muted fs-cap" wx:else>当前微信已绑定服务商，点击登录并进入</text>
+    </view>
   </view>
 
   <!-- 消息入口（需登录，从 TabBar 迁移）；未读数引导查看 -->
@@ -73,17 +80,20 @@
   </navigator>
 
   <!-- 我的订单 -->
-  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/order/list/index?status=">
-    <view class="user-section-header">
-      <text class="fs-body fw-bold">我的订单</text>
-      <view class="user-section-more">全部</view>
+  <view class="user-section card" wx:if="{{hasToken}}">
+    <view class="user-section-header user-order-header">
+      <navigator class="user-order-header-left" url="/pages/order/hub/index?tab=repair">
+        <text class="fs-body fw-bold">我的订单</text>
+        <view class="user-section-more">全部</view>
+      </navigator>
+      <text class="user-order-book-btn text-primary fs-cap" catchtap="onUserBookTap">预约</text>
     </view>
     <view class="user-section-tabs">
-      <view class="user-tab" >全部</view>
-      <navigator class="user-tab" url="/pages/order/list/index?status=to_review">待评价</navigator>
-      <navigator class="user-tab" url="/pages/order/list/index?status=completed">已完成</navigator>
+      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair">全部</navigator>
+      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair&status=to_review">待评价</navigator>
+      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair&status=completed">已完成</navigator>
     </view>
-  </navigator>
+  </view>
 
   <!-- 我的竞价 -->
   <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/bidding/list/index">

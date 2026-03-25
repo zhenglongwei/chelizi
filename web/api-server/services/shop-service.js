@@ -7,6 +7,8 @@
 
 const shopSortService = require('../shop-sort-service');
 const antifraud = require('../antifraud');
+const shopProductService = require('./shop-product-service');
+const { parseCompletionEvidence, parseRepairPlanEnrichment } = require('../utils/review-order-display');
 
 /**
  * 从 shops.services JSON 中取匹配 category 的 min_price（06 文档：有产品搜索时价格排序）
@@ -35,14 +37,25 @@ function getMinPriceForCategory(services, category) {
 }
 
 /**
- * 按价格排序店铺（06 文档：有产品/服务搜索时）
- * 优先 services 中匹配 category 的 min_price 升序，无则 deviation_rate 升序
+ * 有效最低价：已上架商品价与 shops.services JSON 中匹配价取更小者（任一侧有则参与）
  */
-function sortShopsByPrice(shops, category) {
+function effectiveMinPriceForShop(shop, category, productMinByShop) {
+  const fromJson = getMinPriceForCategory(shop.services, category);
+  const fromProd = productMinByShop && productMinByShop.get ? productMinByShop.get(shop.shop_id) : null;
+  const nums = [fromJson, fromProd].filter((x) => x != null && !isNaN(x));
+  if (nums.length === 0) return null;
+  return Math.min(...nums);
+}
+
+/**
+ * 按价格排序店铺（06 文档：有产品/服务搜索时）
+ * 含 shop_products 已审核最低价；无价格时按 deviation_rate 升序
+ */
+function sortShopsByPrice(shops, category, productMinByShop) {
   if (!shops || shops.length === 0) return shops;
   return [...shops].sort((a, b) => {
-    const pa = getMinPriceForCategory(a.services, category);
-    const pb = getMinPriceForCategory(b.services, category);
+    const pa = effectiveMinPriceForShop(a, category, productMinByShop);
+    const pb = effectiveMinPriceForShop(b, category, productMinByShop);
     const da = a.deviation_rate != null ? parseFloat(a.deviation_rate) : 999;
     const db = b.deviation_rate != null ? parseFloat(b.deviation_rate) : 999;
     if (pa != null && pb != null) return pa - pb;
@@ -112,6 +125,127 @@ async function getLatestReviewSummaries(pool, shopIds) {
     });
   }
   return map;
+}
+
+/**
+ * 批量：各店在某类目下已上架商品的最低单价（元）
+ */
+async function batchMinProductPriceByCategory(pool, shopIds, category) {
+  const map = new Map();
+  if (!shopIds || !shopIds.length || !category) return map;
+  const ph = shopIds.map(() => '?').join(',');
+  const [rows] = await pool.execute(
+    `SELECT shop_id, MIN(price) as min_p FROM shop_products
+     WHERE status = 'approved' AND category = ? AND shop_id IN (${ph})
+     GROUP BY shop_id`,
+    [category, ...shopIds]
+  );
+  for (const r of rows) {
+    const v = parseFloat(r.min_p);
+    if (!isNaN(v)) map.set(r.shop_id, v);
+  }
+  return map;
+}
+
+/**
+ * 批量：各店名称/描述匹配关键词的已上架商品最低单价
+ */
+async function batchMinProductPriceByKeyword(pool, shopIds, keyword) {
+  const map = new Map();
+  if (!shopIds || !shopIds.length || !keyword || !String(keyword).trim()) return map;
+  const kw = '%' + String(keyword).trim() + '%';
+  const ph = shopIds.map(() => '?').join(',');
+  const [rows] = await pool.execute(
+    `SELECT shop_id, MIN(price) as min_p FROM shop_products
+     WHERE status = 'approved' AND shop_id IN (${ph})
+       AND (name LIKE ? OR IFNULL(description,'') LIKE ?)
+     GROUP BY shop_id`,
+    [...shopIds, kw, kw]
+  );
+  for (const r of rows) {
+    const v = parseFloat(r.min_p);
+    if (!isNaN(v)) map.set(r.shop_id, v);
+  }
+  return map;
+}
+
+/**
+ * 合并类目价与关键词匹配价的最低价（同一店）
+ */
+function mergeMinPriceMaps(a, b) {
+  if (!a || !a.size) return b || new Map();
+  if (!b || !b.size) return a;
+  const out = new Map(a);
+  for (const [k, v] of b) {
+    const cur = out.get(k);
+    out.set(k, cur == null || v < cur ? v : cur);
+  }
+  return out;
+}
+
+/** 价格排序：合并类目维度与关键词匹配的商品最低价 */
+async function buildProductMinMapForPriceSort(pool, rows, category, keyword) {
+  const ids = (rows || []).map((r) => r.shop_id).filter(Boolean);
+  if (!ids.length) return new Map();
+  let map = new Map();
+  if (category) {
+    map = await batchMinProductPriceByCategory(pool, ids, category);
+  }
+  if (keyword && String(keyword).trim()) {
+    const kwMap = await batchMinProductPriceByKeyword(pool, ids, keyword);
+    map = mergeMinPriceMaps(map, kwMap);
+  }
+  return map;
+}
+
+/**
+ * 为店铺列表附加已上架商品摘要（每店最多 2 条，用于列表/口碑卡片）
+ */
+async function enrichShopsWithProductSnippets(pool, shopList) {
+  if (!shopList || shopList.length === 0) return shopList;
+  const ids = [...new Set(shopList.map((s) => s.shop_id).filter(Boolean))];
+  if (!ids.length) return shopList;
+  const ph = ids.map(() => '?').join(',');
+  const [rows] = await pool.execute(
+    `SELECT shop_id, product_id, name, category, price
+     FROM shop_products
+     WHERE status = 'approved' AND shop_id IN (${ph})
+     ORDER BY shop_id, created_at DESC`,
+    ids
+  );
+  const byShop = new Map();
+  for (const r of rows) {
+    const arr = byShop.get(r.shop_id) || [];
+    if (arr.length >= 2) continue;
+    arr.push({
+      product_id: r.product_id,
+      name: r.name,
+      category: r.category,
+      price: parseFloat(r.price),
+    });
+    byShop.set(r.shop_id, arr);
+  }
+  return shopList.map((s) => {
+    const snippets = byShop.get(s.shop_id) || [];
+    const text =
+      snippets.length === 0
+        ? null
+        : snippets.length === 1
+          ? `${snippets[0].name} ¥${Number(snippets[0].price).toFixed(2)}`
+          : `${snippets[0].name} 等${snippets.length}项服务`;
+    return {
+      ...s,
+      product_snippets: snippets,
+      product_snippet_text: text,
+    };
+  });
+}
+
+/** 车主列表：最新短评 + 商品摘要 */
+async function enrichShopListForOwner(pool, shopList) {
+  let list = await enrichShopsWithLatestReview(pool, shopList);
+  list = await enrichShopsWithProductSnippets(pool, list);
+  return list;
 }
 
 /**
@@ -205,7 +339,8 @@ async function getNearby(pool, query) {
     } else if (sort === 'price' && category) {
       sql += ' LIMIT 200';
       const [rows] = await pool.execute(sql, sqlParams);
-      const sorted = sortShopsByPrice(rows, category);
+      const productMin = await buildProductMinMapForPriceSort(pool, rows, category, '');
+      const sorted = sortShopsByPrice(rows, category, productMin);
       totalCount = sorted.length;
       shops = sorted.slice(offset, offset + limitNum);
     } else {
@@ -222,7 +357,7 @@ async function getNearby(pool, query) {
     }
 
     let list = shops.map(s => mapShop(s, true));
-    list = await enrichShopsWithLatestReview(pool, list);
+    list = await enrichShopListForOwner(pool, list);
     return {
       success: true,
       data: {
@@ -240,7 +375,7 @@ async function getNearby(pool, query) {
     const shops = await shopSortService.sortShopsByScore(pool, rows, { scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2' });
     const paged = shops.slice(offset, offset + limitNum);
     let list = paged.map(s => mapShop(s, false));
-    list = await enrichShopsWithLatestReview(pool, list);
+    list = await enrichShopListForOwner(pool, list);
     return {
       success: true,
       data: {
@@ -251,10 +386,11 @@ async function getNearby(pool, query) {
   }
   if (sort === 'price' && category) {
     const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
-    const sorted = sortShopsByPrice(rows, category);
+    const productMin = await buildProductMinMapForPriceSort(pool, rows, category, '');
+    const sorted = sortShopsByPrice(rows, category, productMin);
     const paged = sorted.slice(offset, offset + limitNum);
     let list = paged.map(s => mapShop(s, false));
-    list = await enrichShopsWithLatestReview(pool, list);
+    list = await enrichShopListForOwner(pool, list);
     return {
       success: true,
       data: {
@@ -274,7 +410,7 @@ async function getNearby(pool, query) {
   );
 
   let list = shops.map(s => mapShop(s, false));
-  list = await enrichShopsWithLatestReview(pool, list);
+  list = await enrichShopListForOwner(pool, list);
   return {
     success: true,
     data: {
@@ -298,9 +434,10 @@ async function search(pool, query) {
   const params = [];
 
   if (keyword && keyword.trim()) {
-    whereClause += ' AND (name LIKE ? OR address LIKE ?)';
     const q = '%' + keyword.trim() + '%';
-    params.push(q, q);
+    whereClause +=
+      ' AND (name LIKE ? OR address LIKE ? OR EXISTS (SELECT 1 FROM shop_products sp_kw WHERE sp_kw.shop_id = shops.shop_id AND sp_kw.status = \'approved\' AND (sp_kw.name LIKE ? OR IFNULL(sp_kw.description,\'\') LIKE ?)))';
+    params.push(q, q, q, q);
   }
   if (category) {
     // 按分类筛选：shops.categories 包含该分类，或 shop_products 有已上架商品
@@ -332,11 +469,12 @@ async function search(pool, query) {
     } else if (sort === 'price' && (keyword || category)) {
       sql += ' LIMIT 200';
       const [rows] = await pool.execute(sql, sqlParams);
-      const sorted = sortShopsByPrice(rows, category);
+      const productMin = await buildProductMinMapForPriceSort(pool, rows, category || '', keyword);
+      const sorted = sortShopsByPrice(rows, category || '', productMin);
       const totalCount = sorted.length;
       shops = sorted.slice(offset, offset + limitNum);
       let listPrice = shops.map(s => mapShop(s, true));
-      listPrice = await enrichShopsWithLatestReview(pool, listPrice);
+      listPrice = await enrichShopListForOwner(pool, listPrice);
       return {
         success: true,
         data: {
@@ -370,7 +508,7 @@ async function search(pool, query) {
     }
 
     let listWithLoc = shops.map(s => mapShop(s, true));
-    listWithLoc = await enrichShopsWithLatestReview(pool, listWithLoc);
+    listWithLoc = await enrichShopListForOwner(pool, listWithLoc);
     return {
       success: true,
       data: {
@@ -387,7 +525,7 @@ async function search(pool, query) {
     const shops = await shopSortService.sortShopsByScore(pool, rows, { scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2' });
     const paged = shops.slice(offset, offset + limitNum);
     let listDef = paged.map(s => mapShop(s, false));
-    listDef = await enrichShopsWithLatestReview(pool, listDef);
+    listDef = await enrichShopListForOwner(pool, listDef);
     return {
       success: true,
       data: {
@@ -398,10 +536,11 @@ async function search(pool, query) {
   }
   if (sort === 'price' && (keyword || category)) {
     const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
-    const sorted = sortShopsByPrice(rows, category);
+    const productMin = await buildProductMinMapForPriceSort(pool, rows, category || '', keyword);
+    const sorted = sortShopsByPrice(rows, category || '', productMin);
     const paged = sorted.slice(offset, offset + limitNum);
     let listPrice2 = paged.map(s => mapShop(s, false));
-    listPrice2 = await enrichShopsWithLatestReview(pool, listPrice2);
+    listPrice2 = await enrichShopListForOwner(pool, listPrice2);
     return {
       success: true,
       data: {
@@ -423,7 +562,7 @@ async function search(pool, query) {
     });
     const paged = sorted.slice(offset, offset + limitNum);
     let listScore = paged.map(s => mapShop(s, false));
-    listScore = await enrichShopsWithLatestReview(pool, listScore);
+    listScore = await enrichShopListForOwner(pool, listScore);
     return {
       success: true,
       data: {
@@ -443,7 +582,7 @@ async function search(pool, query) {
   );
 
   let listFinal = shops.map(s => mapShop(s, false));
-  listFinal = await enrichShopsWithLatestReview(pool, listFinal);
+  listFinal = await enrichShopListForOwner(pool, listFinal);
   return {
     success: true,
     data: {
@@ -483,6 +622,7 @@ async function getDetail(pool, shopId) {
   );
 
   const weightedScore = await antifraud.computeShopWeightedScore(pool, shopId);
+  const products = await shopProductService.listPublicForShop(pool, shopId);
 
   return {
     success: true,
@@ -501,6 +641,7 @@ async function getDetail(pool, shopId) {
       categories: JSON.parse(shop.categories || '[]'),
       certifications: JSON.parse(shop.certifications || '[]'),
       services: JSON.parse(shop.services || '[]'),
+      products,
       rating: shop.rating,
       rating_count: shop.rating_count,
       deviation_rate: shop.deviation_rate,
@@ -542,7 +683,7 @@ async function getReviews(pool, shopId, query) {
   params.push(limitNum, offset);
 
   const [reviews] = await pool.execute(
-    `SELECT r.*, u.nickname, u.avatar_url, o.repair_plan, o.quoted_amount, o.actual_amount
+    `SELECT r.*, u.nickname, u.avatar_url, o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence
      FROM reviews r 
      JOIN users u ON r.user_id = u.user_id 
      JOIN orders o ON r.order_id = o.order_id
@@ -604,14 +745,9 @@ async function getReviews(pool, shopId, query) {
     data: {
       list: reviews.map(r => {
         const stats = likeStats[r.review_id] || {};
-        let repairItems = [];
         let amount = r.actual_amount != null ? parseFloat(r.actual_amount) : (r.quoted_amount != null ? parseFloat(r.quoted_amount) : null);
-        if (r.repair_plan) {
-          try {
-            const rp = typeof r.repair_plan === 'string' ? JSON.parse(r.repair_plan) : r.repair_plan;
-            repairItems = (rp?.items || []).map((i) => i.name || i.damage_part || '').filter(Boolean);
-          } catch (_) {}
-        }
+        const { material_photos } = parseCompletionEvidence(r.completion_evidence);
+        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key);
         const objAnswers = (() => {
           try {
             return typeof r.objective_answers === 'string' ? JSON.parse(r.objective_answers || '{}') : (r.objective_answers || {});
@@ -645,6 +781,8 @@ async function getReviews(pool, shopId, query) {
           },
           content: r.content,
           repair_items: repairItems,
+          part_promise_lines: part_promise_lines,
+          material_photos,
           amount,
           before_images: beforeImgs,
           after_images: JSON.parse(r.after_images || '[]'),
@@ -695,10 +833,12 @@ async function getRank(pool, query) {
   );
 
   await shopSortService.ensureShopScores(pool, rows);
+  let rankList = rows.map(s => mapShop(s, false));
+  rankList = await enrichShopListForOwner(pool, rankList);
   return {
     success: true,
     data: {
-      list: rows.map(s => mapShop(s, false)),
+      list: rankList,
       dimension: dimension === 'quality' ? 'quality' : 'price',
     },
   };

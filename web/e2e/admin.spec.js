@@ -1,6 +1,6 @@
 /**
  * 后台运维 E2E 测试
- * 按《车厘子-全流程需求梳理》A01-A02 验证
+ * 按《辙见-全流程需求梳理》A01-A02 验证
  */
 const { test, expect } = require('@playwright/test');
 

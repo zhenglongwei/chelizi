@@ -9,7 +9,7 @@ cd "$DB_DIR"
 
 MYSQL="${1:-mysql}"
 
-echo "[1/2] 删除数据库 chelizi..."
+echo "[1/2] 删除数据库 zhejian..."
 "$MYSQL" -u root -p < "$DB_DIR/reset-db.sql"
 
 echo "[2/2] 重建 schema 及初始数据..."

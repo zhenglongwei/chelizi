@@ -35,6 +35,8 @@ function normalizeTechnicians(certs) {
 Page({
   data: {
     pageRootStyle: 'padding-top: 88px',
+    formLocked: false,
+    qualHelpExpanded: false,
     shop: null,
     qualificationStatus: 0,
     qualificationSubmitted: false,
@@ -91,11 +93,15 @@ Page({
       const qlIdx = qlOpt ? QUALIFICATION_LEVEL_OPTIONS.indexOf(qlOpt) : -1;
       const submitted = !!(res.qualification_level && String(res.qualification_level).trim()) || !!(res.technician_certs && (Array.isArray(res.technician_certs) ? res.technician_certs.length : res.technician_certs));
       const withdrawn = (res.qualification_withdrawn === 1 || res.qualification_withdrawn === '1');
+      const qualStatus = res.qualification_status != null ? res.qualification_status : 0;
+      const formLocked = qualStatus === 0 && submitted && !withdrawn;
       this.setData({
         shop: res,
-        qualificationStatus: res.qualification_status != null ? res.qualification_status : 0,
+        qualificationStatus: qualStatus,
         qualificationSubmitted: submitted,
         qualificationWithdrawn: withdrawn,
+        formLocked,
+        qualHelpExpanded: false,
         qualificationAuditReason: res.qualification_audit_reason || '',
         name: res.name || '',
         address: res.address || '',
@@ -128,7 +134,11 @@ Page({
   },
 
   _isAuditingLocked() {
-    return this.data.qualificationStatus === 0 && this.data.qualificationSubmitted && !this.data.qualificationWithdrawn;
+    return !!this.data.formLocked;
+  },
+
+  onToggleQualHelp() {
+    this.setData({ qualHelpExpanded: !this.data.qualHelpExpanded });
   },
 
   onChooseLocation() {
