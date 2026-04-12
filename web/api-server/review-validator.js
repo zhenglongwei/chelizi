@@ -1,6 +1,6 @@
 /**
  * 评价有效性校验（仅车主输入）
- * 按《02-评价内容质量等级体系》：有效评价仅与客观题、主观题相关；材料为服务商义务，不要求车主上传
+ * 按《02-评价内容质量等级体系》：有效评价与主观描述、水评规则相关；必答客观题 5/6 题在 review-service 与 review-objective-schema 校验；材料为服务商义务
  */
 
 const WATER_WORDS = ['好', '不错', '划算', '可以', '满意', '很好', '还行'];
@@ -113,10 +113,34 @@ function validateReview(params) {
   return { valid: true, premium };
 }
 
+const MAX_V3_CONTENT = 200;
+
+/**
+ * 极简 v3：补充说明选填；有内容时仍防纯水评
+ * @returns {{ valid: boolean, premium: boolean, reason?: string }}
+ */
+function validateReviewMinimalV3(params) {
+  const text = String(params.content || '').trim();
+  if (text.length > MAX_V3_CONTENT) {
+    return { valid: false, premium: false, reason: `补充说明请勿超过 ${MAX_V3_CONTENT} 字` };
+  }
+  if (text.length === 0) {
+    return { valid: true, premium: false };
+  }
+  const contentResult = validateContent(params.content, params.complexityLevel, false);
+  if (!contentResult.valid) {
+    return { valid: false, premium: false, reason: contentResult.reason };
+  }
+  const premium = checkIsPremium({ content: params.content }, params.complexityLevel);
+  return { valid: true, premium };
+}
+
 module.exports = {
   validateRequiredImages,
   validateContent,
   checkIsPremium,
   validateReview,
+  validateReviewMinimalV3,
+  MAX_V3_CONTENT,
   parseImageCount,
 };

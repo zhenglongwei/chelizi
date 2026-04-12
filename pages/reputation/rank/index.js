@@ -18,7 +18,7 @@ function mapShopItem(s, idx) {
   return {
     shop_id: s.shop_id,
     name: s.name,
-    logo: s.logo || '/images/logo/logo_white.png',
+    logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
     rating: starDisplay.scoreText,
     starsDisplay: starDisplay.stars,
     scoreNum: starDisplay.score,

@@ -7,6 +7,20 @@
 const config = require('../config.js');
 const BASE_URL = config.BASE_URL;
 
+/** 微信拦截未在合法域名中的请求时，附带可操作的说明 */
+function attachWechatDomainHint(err) {
+  if (!err || typeof err !== 'object') return err;
+  const msg = String(err.errMsg || '');
+  if (!msg.includes('domain list') && !msg.includes('合法域名')) return err;
+  err.domainBlocked = true;
+  const isLocal =
+    /localhost|127\.0\.0\.1/i.test(BASE_URL) || /^http:\/\//i.test(BASE_URL);
+  err.userHint = isLocal
+    ? '本地 API：工具「详情→本地设置」勾选不校验合法域名；真机请用已备案 HTTPS 域名'
+    : '请在公众平台配置 request 合法域名';
+  return err;
+}
+
 function getToken() {
   return wx.getStorageSync('token') || '';
 }
@@ -163,7 +177,7 @@ function requestWithHeaders(options) {
           reject(err);
         }
       },
-      fail: (err) => reject(err)
+      fail: (err) => reject(attachWechatDomainHint(err))
     });
   });
 }
@@ -315,11 +329,17 @@ module.exports = {
   seedDevQuotes: (biddingId) => api.post('/api/v1/dev/seed-quotes', { bidding_id: biddingId }),
   getUserOrders: (params) => api.get('/api/v1/user/orders', params),
   getUserOrder: (id) => api.get('/api/v1/user/orders/' + id),
+  /** 历史接口：小程序已下线质保卡页，保留以防旧版或其它端调用 */
+  getUserOrderWarrantyCard: (id) => api.get('/api/v1/user/orders/' + id + '/warranty-card'),
+  /** 历史公开核验接口 */
+  verifyWarrantyCard: (data) => api.post('/api/v1/public/warranty-card/verify', data),
   getRewardPreview: (id) => api.get('/api/v1/user/orders/' + id + '/reward-preview'),
   cancelOrder: (id, reason) => api.post('/api/v1/user/orders/' + id + '/cancel', { reason: reason || '' }),
   escalateCancelRequest: (orderId, requestId) => api.post('/api/v1/user/orders/' + orderId + '/cancel-request/' + requestId + '/escalate'),
   confirmOrder: (id) => api.post('/api/v1/user/orders/' + id + '/confirm'),
   approveRepairPlan: (id, approved) => api.post('/api/v1/user/orders/' + id + '/repair-plan/approve', { approved }),
+  /** 车主确认/拒绝最终报价（双阶段报价锁价） */
+  confirmFinalQuote: (id, approved) => api.post('/api/v1/user/orders/' + id + '/final-quote/confirm', { approved }),
   getOrderForReview: (id) => api.get('/api/v1/user/orders/' + id + '/for-review'),
   getOrderFirstReview: (id) => api.get('/api/v1/user/orders/' + id + '/first-review'),
   submitReview: (data) => api.post('/api/v1/reviews', data),
@@ -358,11 +378,83 @@ module.exports = {
   getMerchantBiddings: (params) => merchantRequest({ url: '/api/v1/merchant/biddings', method: 'GET', data: params }),
   getMerchantBidding: (id) => merchantRequest({ url: '/api/v1/merchant/bidding/' + id, method: 'GET' }),
   submitQuote: (data) => merchantRequest({ url: '/api/v1/merchant/quote', method: 'POST', data }),
+  /** 标准报价 CSV 模板说明与示例（JSON，兼容旧逻辑） */
+  getMerchantQuoteTemplate: () => merchantRequest({ url: '/api/v1/merchant/quote-template', method: 'GET' }),
+  /** 标准报价 Excel 模板完整下载 URL（GET，需 Header Authorization，返回 xlsx 二进制） */
+  getMerchantQuoteTemplateXlsxUrl: () => {
+    const base = String(BASE_URL || '').replace(/\/$/, '');
+    return `${base}/api/v1/merchant/quote-template.xlsx`;
+  },
+  /** 解析 CSV 文本 → items 预览 */
+  previewMerchantQuoteImport: (csvText, opts) =>
+    merchantRequest({
+      url: '/api/v1/merchant/quote-import/preview',
+      method: 'POST',
+      data: {
+        csv_text: csvText,
+        ai_enrich: !opts || opts.ai_enrich !== false,
+      },
+    }),
+  /** 上传本地 .xlsx（微信聊天文件）解析报价明细，返回结构与 CSV 预览一致 */
+  previewMerchantQuoteImportXlsx: (filePath, opts) =>
+    new Promise((resolve, reject) => {
+      const token = getMerchantToken();
+      if (!token) {
+        reject(new Error('请先登录'));
+        return;
+      }
+      const base = String(BASE_URL || '').replace(/\/$/, '');
+      wx.uploadFile({
+        url: `${base}/api/v1/merchant/quote-import/preview-xlsx`,
+        filePath,
+        name: 'file',
+        header: { Authorization: 'Bearer ' + token },
+        formData: {
+          ai_enrich: !opts || opts.ai_enrich !== false ? '1' : '0',
+        },
+        success: (res) => {
+          const sc = res.statusCode;
+          if (sc === 401) {
+            handleMerchantUnauthorized();
+            reject(new Error('登录已失效'));
+            return;
+          }
+          let body;
+          try {
+            body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+          } catch (_) {
+            reject(new Error('服务器响应无效'));
+            return;
+          }
+          if (sc < 200 || sc >= 300) {
+            reject(new Error((body && body.message) || '上传失败'));
+            return;
+          }
+          if (body.code !== undefined && body.code !== 200) {
+            reject(new Error(body.message || '解析失败'));
+            return;
+          }
+          resolve(body.data !== undefined ? body.data : body);
+        },
+        fail: (err) => reject(attachWechatDomainHint(err)),
+      });
+    }),
+  /** 报价单拍照 AI 识别 */
+  analyzeMerchantQuoteSheetImage: (imageUrl) =>
+    merchantRequest({ url: '/api/v1/merchant/quote-sheet/analyze-image', method: 'POST', data: { image_url: imageUrl } }),
   getMerchantOrders: (params) => merchantRequest({ url: '/api/v1/merchant/orders', method: 'GET', data: params }),
   getMerchantOrder: (id) => merchantRequest({ url: '/api/v1/merchant/orders/' + id, method: 'GET' }),
+  /** 历史接口：商户端已下线质保卡页 */
+  getMerchantOrderWarrantyCard: (id) =>
+    merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/warranty-card', method: 'GET' }),
+  /** 历史接口 */
+  getMerchantWarrantyCardTemplates: () =>
+    merchantRequest({ url: '/api/v1/merchant/warranty-card/templates', method: 'GET' }),
   acceptOrder: (id) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/accept', method: 'POST' }),
   updateOrderStatus: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/status', method: 'PUT', data }),
   updateRepairPlan: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/repair-plan', method: 'PUT', data }),
+  /** 服务商提交到店最终报价 */
+  submitMerchantFinalQuote: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/final-quote', method: 'PUT', data }),
   respondCancelRequest: (orderId, requestId, approve) => merchantRequest({ url: '/api/v1/merchant/orders/' + orderId + '/cancel-request/' + requestId + '/respond', method: 'POST', data: { approve } }),
   getMerchantProducts: () => merchantRequest({ url: '/api/v1/merchant/products', method: 'GET' }),
   createMerchantProduct: (data) => merchantRequest({ url: '/api/v1/merchant/products', method: 'POST', data }),

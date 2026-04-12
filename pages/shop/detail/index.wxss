@@ -2,6 +2,8 @@
  * 维修厂详情页 - 04-维修厂详情页
  * 以《设计规范.md》、design-system 为准
  */
+@import '../../../styles/review-public-polish.wxss';
+@import '../../../styles/review-linear.wxss';
 .shop-detail-page {
   min-height: 100vh;
   background: var(--bg-page);
@@ -231,7 +233,7 @@
 .detail-review-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xl);
+  gap: var(--space-2xl);
 }
 
 .detail-review-item {
@@ -252,7 +254,31 @@
   margin-bottom: var(--space-sm);
 }
 
+.detail-review-linear-head {
+  align-items: center;
+}
+
+.detail-review-user-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-review-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--avatar-placeholder-bg);
+  border: 1rpx solid var(--avatar-placeholder-border);
+}
+
 .detail-review-user {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -264,7 +290,7 @@
 }
 
 .detail-review-section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-xl);
 }
 .detail-review-section-label {
   display: block;

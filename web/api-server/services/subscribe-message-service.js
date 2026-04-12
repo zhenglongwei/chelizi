@@ -2,6 +2,11 @@
  * 小程序订阅消息服务
  * 在创建 user_messages / merchant_messages 时，同步发送微信订阅消息
  * 需在 mp.weixin.qq.com 订阅消息中选用模板，并将 template_id 配置到 .env
+ *
+ * 微信「一次性订阅」规则（与长期订阅不同）：
+ * - 用户每次在小程序内点「允许」授权某模板，通常仅增加有限次数（多为 1 次）下发额度；
+ * - 同一模板多次下发需用户多次授权，不能只靠「发起竞价时授权一次」覆盖后续每一次新报价；
+ * - errcode 43101 等表示用户拒绝、额度已用尽或未订阅。业务上应配合站内消息（user_messages）等兜底。
  */
 
 const axios = require('axios');
@@ -182,14 +187,28 @@ const TEMPLATE_CONFIG = {
  * @param {string} appSecret
  */
 async function sendToUser(pool, userId, templateKey, payload, appId, appSecret) {
-  if (!appId || !appSecret) return;
+  if (!appId || !appSecret) {
+    console.warn(`${LOG_PREFIX} sendToUser ${templateKey} skip: 未配置 WX_APPID/WX_SECRET`);
+    return;
+  }
   const cfg = TEMPLATE_CONFIG[templateKey];
-  if (!cfg) return;
+  if (!cfg) {
+    console.warn(`${LOG_PREFIX} sendToUser ${templateKey} skip: 未知模板键`);
+    return;
+  }
   const templateId = getTemplateId(cfg.envKey);
-  if (!templateId) return;
+  if (!templateId) {
+    console.warn(
+      `${LOG_PREFIX} sendToUser ${templateKey} skip: 未配置模板ID（${cfg.envKey} 或 SUBSCRIBE_TEMPLATE_ID）`
+    );
+    return;
+  }
 
   const [rows] = await pool.execute('SELECT openid FROM users WHERE user_id = ?', [userId]);
-  if (!rows.length || !rows[0].openid) return;
+  if (!rows.length || !rows[0].openid) {
+    console.warn(`${LOG_PREFIX} sendToUser ${templateKey} skip: user_id=${userId} 无 openid（用户需曾微信登录）`);
+    return;
+  }
 
   try {
     const token = await getAccessToken(appId, appSecret);
@@ -197,7 +216,14 @@ async function sendToUser(pool, userId, templateKey, payload, appId, appSecret) 
     const page = cfg.page ? cfg.page(payload || {}) : undefined;
     const result = await sendSubscribeMessage(token, rows[0].openid, templateId, data, page);
     if (!result.ok) {
-      console.warn(`${LOG_PREFIX} sendToUser ${templateKey} err:`, result.errcode, result.errmsg);
+      console.warn(
+        `${LOG_PREFIX} sendToUser ${templateKey} err:`,
+        result.errcode,
+        result.errmsg,
+        '(43101=拒收/无额度；一次性订阅每授权通常仅 1 条)'
+      );
+    } else {
+      console.log(`${LOG_PREFIX} sendToUser ${templateKey} ok user_id=${userId}`);
     }
   } catch (err) {
     console.warn(`${LOG_PREFIX} sendToUser ${templateKey} error:`, err.message);

@@ -48,6 +48,12 @@ pm2 save
 pm2 startup  # 开机自启
 ```
 
+**PM2 多实例 / cluster 注意**：本项目的 `server.js` **未**使用 Node `cluster` 模块。若使用 `pm2 start -i 2` 或 ecosystem 里 `instances > 1` 且为 **cluster 模式**，多个进程会争抢同一 `PORT`，易出现 `EADDRINUSE`，PM2 会报 `too many unstable restarts` 后进入 `errored`。生产请 **`instances: 1`**，或改用 **fork 单实例**；若要多核负载，需在 Nginx 后挂多个**不同端口**的进程，或自行在代码中接入 `cluster`。
+
+**.env 放置位置**：启动时会依次读取 `web/.env`（即 `api-server` 的上一级目录下的 `.env`）以及 `web/api-server/.env`（存在则**覆盖**前者）。仅把密钥放在 `api-server/.env` 即可，不必再复制到 `web/` 根目录。
+
+**启动失败反复重启**：在服务器执行 `pm2 logs zhejian-api --lines 80` 查看首条报错。常见为：① 生产环境未设置 `JWT_SECRET`；② 多实例抢端口；③ `Cannot find module`（部署缺文件，需完整同步 `api-server` 目录后 `npm install --production`）。
+
 ### 4. 若使用 Nginx 反向代理
 
 ```nginx

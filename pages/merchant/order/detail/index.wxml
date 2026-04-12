@@ -64,18 +64,21 @@
     </view>
     <view class="quote-info">
       <text class="text-gold fs-body fw-medium">¥{{order.displayAmount || order.quoted_amount}}</text>
-      <text class="text-muted fs-cap" wx:if="{{order.displayDuration || order.displayWarranty || order.quote}}">，工期{{order.displayDuration || order.quote.duration}}天，质保{{order.displayWarranty || order.quote.warranty}}月</text>
+      <text class="text-muted fs-cap" wx:if="{{order.displayDuration || order.quote}}">，工期{{order.displayDuration || order.quote.duration}}天</text>
     </view>
 
     <!-- 维修方案（接单后为正式方案，来自 repair_plan 或 quote） -->
     <view class="section-head section-head-with-action" wx:if="{{planItems.length}}">
       <view class="section-title fs-body fw-medium">{{order.status >= 1 ? '维修方案' : '维修建议'}}</view>
-      <view class="section-more" wx:if="{{canEditPlan}}" bindtap="onEditPlan">修改方案</view>
+      <view class="section-actions">
+        <view class="section-more" wx:if="{{canEditPlan}}" bindtap="onEditPlan">修改方案</view>
+        <view class="section-more" wx:if="{{canSubmitFinalQuote}}" bindtap="onSubmitFinalQuote">{{finalQuoteLocked ? '继续修改报价单' : '修改报价单'}}</view>
+      </view>
     </view>
     <view class="repair-items" wx:if="{{planItems.length}}">
       <view class="repair-item" wx:for="{{planItems}}" wx:key="index">
         <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
-        <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}</text>
+        <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}{{item.price != null ? ' · ¥' + item.price : ''}}{{item.warranty_months != null ? ' · 质保' + item.warranty_months + '月' : ''}}</text>
       </view>
     </view>
 
@@ -108,6 +111,13 @@
     </view>
   </view>
 
+  <!-- 已转后台人工审核（勿重复提交） -->
+  <view class="detail-section card material-audit-manual" wx:if="{{order && order.status === 1 && materialAuditManualReview}}">
+    <text class="fs-body fw-medium">材料人工审核中</text>
+    <text class="text-muted fs-cap" style="display:block;margin-top:12rpx;">自动审核未通过或暂不可用，已转后台人工处理。请耐心等待，无需重复点击「维修完成」。</text>
+    <text class="text-weak fs-sm" wx:if="{{materialAuditRejectReason}}" style="display:block;margin-top:12rpx;">系统参考：{{materialAuditRejectReason}}</text>
+  </view>
+
   <!-- 审核未通过提示（从订阅消息进入时避免误解为提交失败） -->
   <view class="detail-section card material-audit-rejected" wx:if="{{order && order.status === 1 && materialAuditRejected}}">
     <view class="reject-banner">
@@ -119,6 +129,12 @@
 
   <!-- 维修完成凭证（status=1 时必填；审核中时只读） -->
   <view class="detail-section card" wx:if="{{order && order.status === 1}}">
+    <view class="section-head" wx:if="{{needLeadTech}}">
+      <view class="section-title fs-body fw-medium">负责技师/负责人<text class="text-error">*</text></view>
+    </view>
+    <view class="edit-row" wx:if="{{needLeadTech}}" style="margin-bottom: var(--space-md);">
+      <input class="edit-row-input" placeholder="姓名或称呼" value="{{leadTechName}}" bindinput="onLeadTechInput"/>
+    </view>
     <view class="section-head">
       <view class="section-title fs-body fw-medium">维修完成凭证<text class="text-error" wx:if="{{!materialAuditing}}">*</text></view>
     </view>
@@ -153,14 +169,41 @@
           <view class="evidence-add" wx:if="{{!materialAuditing && materialPhotoUrls.length < 4}}" bindtap="onChooseMaterialPhoto">+</view>
         </view>
       </view>
+      <view class="evidence-item" wx:if="{{needLeadTech && !materialAuditing}}">
+        <text class="evidence-label fs-body">配件验真方式<text class="text-error">*</text></text>
+        <text class="text-weak fs-sm" style="display:block;margin-bottom:12rpx;">便于车主按您提供的方式自行验真；至少选一种，或勾选下方「暂不填写」。</text>
+        <view class="parts-verify-chips">
+          <view
+            class="parts-verify-chip {{partsVerifyPicks[item.key] ? 'on' : ''}}"
+            wx:for="{{partsVerificationMethods}}"
+            wx:key="key"
+            data-key="{{item.key}}"
+            bindtap="onTogglePartsVerifyMethod"
+          >{{item.label}}</view>
+        </view>
+        <view class="review-anonymous" style="margin-top: 16rpx;">
+          <text class="fs-body">暂不填写验真说明</text>
+          <switch checked="{{partsVerifyNotProvided}}" bindchange="onPartsVerifyNotProvidedChange" color="var(--primary)"/>
+        </view>
+        <view wx:if="{{partsVerifyPicks.other}}" style="margin-top: 12rpx;">
+          <input class="edit-row-input" placeholder="请说明其他验真方式" value="{{partsVerifyNote}}" bindinput="onPartsVerifyNoteInput"/>
+        </view>
+      </view>
     </view>
     <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-sm);">建议 JPG 格式；PNG 将自动转为 JPG 后上传，单张不超过 5MB</text>
     <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
   </view>
 
+  <view class="detail-section card" wx:if="{{order && order.status >= 2 && order.status <= 3}}">
+    <view class="section-head">
+      <view class="section-title fs-body fw-medium">分项质保</view>
+    </view>
+    <text class="text-muted fs-cap" style="display:block;line-height:1.55;">分项质保以本单维修方案/报价明细中各项目「质保 X 月」为准，由您向车主作出；辙见不提供独立电子质保卡。</text>
+  </view>
+
   <!-- 底部固定操作区 -->
   <view class="action-btns action-btns-fixed safe-area-bottom" wx:if="{{order && (order.status === 0 || order.status === 1)}}">
     <button class="btn-primary" wx:if="{{order.status === 0}}" disabled="{{accepting}}" bindtap="onAccept">{{accepting ? '处理中...' : '接单'}}</button>
-    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating || planPendingConfirm || materialAuditing}}" bindtap="onMarkComplete">{{materialAuditing ? '正在审核材料' : (planPendingConfirm ? '请等待车主确认维修方案' : (updating ? '处理中...' : '维修完成'))}}</button>
+    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating || completeDisabled || materialAuditing}}" bindtap="onMarkComplete">{{updating ? '处理中...' : completeBtnText}}</button>
   </view>
 </view>

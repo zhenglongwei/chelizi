@@ -30,7 +30,7 @@ INSERT INTO reward_rules (rule_key, rule_value, description) VALUES (
       {"level":"L4","project_type":"大修|缸体|重组","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
       {"level":"L4","project_type":"变速箱拆解|变矩器","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
       {"level":"L4","project_type":"事故车|整车修复|纵梁|ABC柱","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
-      {"level":"L4","project_type":"泡水|电路重构","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
+      {"level":"L4","project_type":"泡水|水淹|进水|电路重构","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
       {"level":"L4","project_type":"疑难故障|隐性故障","fixed_reward":300,"float_ratio":0,"cap_amount":2000},
       {"level":"L4","project_type":"电池包拆解|电芯更换|驱动电机大修|电机控制器","fixed_reward":300,"float_ratio":0,"cap_amount":2000}
     ],

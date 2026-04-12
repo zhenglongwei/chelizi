@@ -13,7 +13,8 @@
   <block wx:elif="{{submitted}}">
     <view class="followup-success card">
       <text class="fs-h3 fw-bold text-success">追评提交成功</text>
-      <text class="fs-body text-gold" style="margin-top: var(--space-md);">奖励金 {{rewardAmount}} 元已到账</text>
+      <text class="fs-body text-gold" style="margin-top: var(--space-md);" wx:if="{{submittedRewardReceived}}">奖励金 {{rewardAmount}} 元已到账</text>
+      <text class="fs-body text-muted" style="margin-top: var(--space-md);line-height:1.55;display:block;" wx:else>感谢您的追评。当前追评不单独触发到账；若主评与追评综合评估产生差额奖励，将按规则后续发放。</text>
       <view class="followup-success-actions">
         <button class="btn-primary" bindtap="onToOrder">查看订单</button>
         <button class="btn-secondary" bindtap="onToUser">返回个人中心</button>

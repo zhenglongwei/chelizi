@@ -30,6 +30,13 @@
   font-size: var(--fs-cap);
   color: var(--primary);
 }
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: flex-end;
+  align-items: center;
+}
 
 .status-text {
   display: inline-block;
@@ -39,6 +46,13 @@
   color: var(--primary);
   background: var(--primary-bg);
   border-radius: var(--radius-md);
+}
+
+/* 材料转人工审核 */
+.material-audit-manual {
+  background: rgba(59, 130, 246, 0.06);
+  border-left: 6rpx solid var(--primary);
+  padding-left: var(--space-md);
 }
 
 /* 审核未通过提示：从订阅消息进入时避免误解为提交失败 */
@@ -251,4 +265,23 @@
 }
 .quote-info {
   line-height: 1.5;
+}
+
+.parts-verify-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.parts-verify-chip {
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+}
+.parts-verify-chip.on {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-bg);
 }

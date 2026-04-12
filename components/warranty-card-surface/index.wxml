@@ -1,0 +1,104 @@
+<view class="warranty-card-shell {{themeClass}}" wx:if="{{card}}">
+  <view class="warranty-card-pattern" aria-hidden="true"></view>
+  <view class="warranty-card-watermark" aria-hidden="true">辙见存证</view>
+  <view class="warranty-card-ornament warranty-card-ornament--tl" aria-hidden="true"></view>
+  <view class="warranty-card-ornament warranty-card-ornament--br" aria-hidden="true"></view>
+
+  <view class="warranty-card-body">
+    <view class="warranty-card-headline">
+      <text class="warranty-card-title fs-body fw-medium">电子质保凭证</text>
+      <text class="warranty-card-subtitle fs-cap text-muted">机动车维修服务 · 分项质保承诺</text>
+    </view>
+    <view class="warranty-card-kicker fs-cap text-muted">平台：辙见 · 展示与防篡改存证 · 便于保存与核验</view>
+
+    <view class="warranty-card-badge-row">
+      <view class="warranty-card-preview-tag fs-cap" wx:if="{{isMerchantDemo}}">样式演示 · 示例分项与防伪码</view>
+      <view class="warranty-card-preview-tag fs-cap" wx:elif="{{isOwnerStylePreview}}">样式预览 · 非正式（分项为展示示例）</view>
+    </view>
+
+    <view class="warranty-card-pending fs-cap" wx:if="{{isOwnerStylePreview && card.preview_message}}">{{card.preview_message}}</view>
+
+    <view class="warranty-card-section">
+      <view class="warranty-card-section-bar"></view>
+      <view class="warranty-card-section-inner">
+        <text class="warranty-card-section-label fs-cap text-muted">出具方（维修厂）</text>
+        <text class="warranty-card-shop">{{card.shop_name || '维修厂'}}</text>
+      </view>
+    </view>
+
+    <view class="warranty-card-section warranty-card-section--compact">
+      <view class="warranty-card-section-bar warranty-card-section-bar--secondary"></view>
+      <view class="warranty-card-section-inner">
+        <text class="warranty-card-section-label fs-cap text-muted">车辆与订单</text>
+        <text class="warranty-card-order fs-cap">订单号 {{card.order_id}}</text>
+        <text class="warranty-card-vehicle fs-cap text-muted">{{card.vehicle_summary}}</text>
+      </view>
+    </view>
+
+    <view class="warranty-card-rule-block">
+      <text class="warranty-card-rule fs-cap">{{card.warranty_start_rule}}</text>
+      <text class="warranty-card-start fs-cap" wx:if="{{card.warranty_start_at_display && (isOfficial || isMerchantDemo || showSampleRibbon)}}">质保起算：{{card.warranty_start_at_display}}</text>
+    </view>
+
+    <view class="warranty-card-table-wrap" wx:if="{{displayItems.length}}">
+      <view class="warranty-card-table-title fs-cap">分项质保明细（由出具方承诺）</view>
+      <view class="warranty-card-table-head">
+        <text>部位 / 方式</text>
+        <text class="warranty-card-th-wm">质保期</text>
+      </view>
+      <scroll-view scroll-y class="warranty-card-table-body" show-scrollbar="{{false}}">
+        <view class="warranty-card-row fs-cap" wx:for="{{displayItems}}" wx:key="index">
+          <view class="warranty-card-cell-main">
+            <text class="warranty-card-part">{{item.damage_part}}</text>
+            <text class="text-muted warranty-card-row-sub">{{item.repair_type}}{{item.parts_type ? ' · ' + item.parts_type : ''}}</text>
+          </view>
+          <text class="warranty-card-wm">{{item.warranty_months != null ? item.warranty_months + ' 个月' : '—'}}</text>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="warranty-card-style-placeholder fs-cap text-muted" wx:elif="{{isOwnerStylePreview && !showSampleRibbon}}">
+      确认维修完成后，分项质保明细与存证防伪码将写入本凭证并锁定，内容与订单存证一致、不可篡改。
+    </view>
+
+    <view class="warranty-card-seal-block">
+      <view class="warranty-card-seal-line"></view>
+      <text class="warranty-card-seal-cap fs-cap text-muted">存证与核验</text>
+      <view class="warranty-card-seal-line"></view>
+    </view>
+
+    <view class="warranty-card-meta-block" wx:if="{{isOfficial}}">
+      <text class="warranty-card-meta-line fs-cap text-muted">卡面样式：{{card.template.name}}</text>
+      <view class="warranty-card-code-row fs-cap">
+        <text class="text-muted">存证防伪码</text>
+        <text class="warranty-card-code">{{card.anti_fake_code}}</text>
+      </view>
+      <text class="warranty-card-generated fs-cap text-muted" wx:if="{{card.generated_at_display}}">生成时间 {{card.generated_at_display}}</text>
+    </view>
+
+    <view class="warranty-card-meta-block warranty-card-meta-block--demo" wx:elif="{{isMerchantDemo}}">
+      <text class="warranty-card-meta-line fs-cap text-muted">卡面样式：{{card.template.name}}</text>
+      <view class="warranty-card-code-row fs-cap">
+        <text class="text-muted">存证防伪码（示例）</text>
+        <text class="warranty-card-code warranty-card-code--demo">{{card.anti_fake_code}}</text>
+      </view>
+      <text class="warranty-card-generated fs-cap text-muted">生成时间（示例）{{card.generated_at_display}}</text>
+    </view>
+
+    <view class="warranty-card-meta-block warranty-card-meta-block--demo" wx:elif="{{showSampleRibbon && isOwnerStylePreview}}">
+      <text class="warranty-card-meta-line fs-cap text-muted">卡面样式：{{card.template.name}}</text>
+      <view class="warranty-card-code-row fs-cap">
+        <text class="text-muted">存证防伪码（示例）</text>
+        <text class="warranty-card-code warranty-card-code--demo">{{card.anti_fake_code || '8f3a9c2b1d4e5f6a0a1b2c3d4e5f6a7'}}</text>
+      </view>
+      <text class="warranty-card-generated fs-cap text-muted">正式凭证将在确认完工后生成，防伪码以届时存证为准</text>
+    </view>
+
+    <view class="warranty-card-meta fs-cap text-muted" wx:elif="{{isOwnerStylePreview && !showSampleRibbon}}">
+      <text>样式：{{card.template.name}}（正式凭证生成后将显示存证防伪码）</text>
+    </view>
+
+    <view class="warranty-card-disclaimer fs-cap">{{card.disclaimer}}</view>
+    <view class="warranty-card-share-hint fs-cap text-muted" wx:if="{{showShareHint && card.share_hint}}">{{card.share_hint}}</view>
+  </view>
+</view>

@@ -1,0 +1,176 @@
+/* 与提交页「请您评价」块语义对齐（公示只读），视觉按《设计规范》卡片化 */
+
+.pub-review-v3-wrap {
+  margin-top: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--bg-page);
+  border-radius: var(--radius-lg);
+  border: 1rpx solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.pub-review-v3-header {
+  margin-bottom: var(--space-lg);
+}
+
+.pub-review-v3-title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.pub-review-v3-title-accent {
+  width: 6rpx;
+  height: 28rpx;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--primary-light) 0%, var(--primary) 100%);
+  flex-shrink: 0;
+}
+
+.pub-review-v3-title {
+  margin-bottom: 0;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.pub-review-v3-intro {
+  display: block;
+  line-height: 1.55;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+}
+
+.review-v3-linear-block {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.review-v3-linear-block:last-child {
+  margin-bottom: 0;
+}
+
+.review-v3-linear-block:first-of-type {
+  margin-top: 0;
+}
+
+/* 首段上无重复顶距：与 header 已由 header margin 分隔 */
+.review-v3-linear-block:first-of-type {
+  padding-top: var(--space-lg);
+}
+
+.review-v3-linear-q {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.review-v3-star-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.review-v3-star-head .review-v3-linear-q {
+  margin-bottom: 0;
+}
+
+.review-expand-hint {
+  margin-top: var(--space-md);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--primary-bg);
+  border-radius: var(--radius-xl);
+  border: 1rpx solid var(--avatar-placeholder-border);
+}
+
+.review-expand-hint:active {
+  opacity: 0.88;
+}
+
+.review-expand-hint-chevron {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  line-height: 1;
+  width: 32rpx;
+  text-align: center;
+}
+
+.review-expand-hint-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--primary);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.review-expand-body {
+  margin-top: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+}
+
+.review-evidence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.review-evidence-thumb {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-sm);
+  background: var(--border);
+  border: 1rpx solid var(--border-light);
+}
+
+.review-stars {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 44rpx;
+}
+
+.review-star {
+  color: var(--text-hint);
+  line-height: 1;
+}
+
+.review-star.filled {
+  color: var(--warning);
+}
+
+.review-stars-lg .review-star {
+  font-size: 40rpx;
+  margin-right: 0;
+}
+
+.review-quote-node {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.review-quote-node:last-child {
+  border-bottom: none;
+}
+
+.pub-review-v3-supplement.review-v3-linear-block {
+  border-left: 6rpx solid var(--accent);
+}

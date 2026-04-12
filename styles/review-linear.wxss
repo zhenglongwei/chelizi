@@ -1,0 +1,116 @@
+/**
+ * 评价公开展示 · 三段线性：系统校验 → 车主核心反馈 → 主观评价
+ * 由店铺详情评价列表、口碑流共用
+ */
+
+.rv-linear-item {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.rv-linear-item:last-child {
+  border-bottom: none;
+}
+.rv-linear-head {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+.rv-linear-block {
+  margin-bottom: var(--space-lg);
+}
+.rv-linear-block:last-of-type {
+  margin-bottom: var(--space-sm);
+}
+.rv-linear-block-title {
+  display: block;
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm);
+  padding-bottom: 6rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.rv-linear-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: 10rpx 0;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+}
+.rv-linear-row:last-child {
+  border-bottom: none;
+}
+.rv-linear-q {
+  flex: 0 0 200rpx;
+  font-size: var(--fs-sm);
+  color: var(--text-hint);
+  line-height: 1.45;
+}
+.rv-linear-a {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.rv-linear-a--multiline {
+  flex-direction: column;
+}
+.rv-linear-sub {
+  display: block;
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  margin-top: 4rpx;
+  line-height: 1.4;
+}
+.rv-linear-fold {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+.rv-linear-fold-text {
+  font-size: var(--fs-sm);
+  color: var(--primary);
+  font-weight: 500;
+}
+.rv-linear-quote-compact {
+  padding: var(--space-xs) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.rv-linear-quote-compact:last-child {
+  border-bottom: none;
+}
+.rv-linear-disclaimer {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-hint);
+  line-height: 1.45;
+  margin-bottom: var(--space-sm);
+}
+.rv-linear-img-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+.rv-linear-img {
+  width: 160rpx;
+  height: 120rpx;
+  border-radius: var(--radius-sm);
+  background: var(--bg-placeholder);
+}
+.rv-linear-img-label {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-hint);
+  margin-top: var(--space-sm);
+  margin-bottom: 4rpx;
+}
+.rv-linear-tip {
+  margin-top: var(--space-sm);
+  text-decoration: underline;
+}

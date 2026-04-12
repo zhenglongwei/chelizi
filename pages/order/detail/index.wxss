@@ -1,14 +1,35 @@
 /* 订单详情 - 07-订单详情页（参照服务商端布局，不含佣金等专属信息） */
-.order-detail-page { min-height: 100vh; background: var(--bg-page); padding: var(--space-lg) var(--page-padding-x); padding-bottom: 120rpx; }
+.order-detail-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.order-detail-page--footer {
+  padding-bottom: calc(320rpx + env(safe-area-inset-bottom));
+}
+
 .order-loading { padding: var(--space-2xl); text-align: center; }
 
 .detail-section {
   padding: var(--space-xl);
   margin-bottom: var(--space-lg);
 }
+
+/* 综合卡内区块分隔 */
+.detail-block .section-head:first-child { margin-top: 0; }
+.detail-block .section-head { margin-top: var(--space-md); }
+.detail-block + .detail-block {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1rpx solid var(--border);
+}
+
 .section-head { margin-top: var(--space-md); }
-.section-head:first-child { margin-top: 0; }
+.detail-section.card > .section-head:first-child { margin-top: 0; }
 .section-title { font-size: var(--fs-body); margin-bottom: var(--space-xs); font-weight: 500; }
+.section-head--after-status { margin-top: var(--space-md); }
 
 .status-text {
   display: inline-block;
@@ -18,6 +39,11 @@
   color: var(--primary);
   background: var(--primary-bg);
   border-radius: var(--radius-md);
+}
+.status-text--hero {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  padding: var(--space-sm) var(--space-md);
 }
 
 .duration-timer-wrap { margin-top: var(--space-md); }
@@ -44,15 +70,40 @@
 .damage-item-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); }
 .damage-sub { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xs) 0 var(--space-xs) var(--space-md); }
 .value-added-item { padding: var(--space-xs) 0; color: var(--text-secondary); }
+
 .quote-info { line-height: 1.5; margin-top: var(--space-xs); }
+.quote-info--prominent { margin-top: var(--space-sm); }
+.quote-info-amount { font-size: var(--fs-h3); vertical-align: baseline; }
+.quote-info-duration { vertical-align: baseline; }
+.quote-info--pay-block { margin-bottom: var(--space-md); }
+
 .shop-info { margin-top: var(--space-xs); }
 .shop-address { margin-top: var(--space-xs); }
 .link { color: var(--primary); margin-left: var(--space-sm); }
 
+/* 全页统一凭证缩略图（协商记录 / 待确认报价 / 完工凭证） */
+.order-detail-page .evidence-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.order-detail-page .evidence-grid--spaced { margin-top: var(--space-sm); }
+.order-detail-page .evidence-thumb {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-placeholder);
+}
+.order-detail-page .evidence-thumb image { width: 100%; height: 100%; }
+.final-quote-evidence { margin-top: var(--space-md); }
+.final-quote-evidence .evidence-grid { margin-top: var(--space-sm); }
+
 .order-reward-preview { margin-top: var(--space-lg); }
 .order-reward-title { margin-bottom: var(--space-sm); }
 .order-reward-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs); }
-.order-reward-stages { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.order-reward-note { display: block; margin-top: var(--space-xs); line-height: 1.45; }
+.order-reward-hint { display: block; margin-top: var(--space-sm); line-height: 1.5; }
 
 .order-repair-plan-pending { margin-top: var(--space-lg); }
 .repair-plan-pending-title { margin-bottom: var(--space-md); color: var(--warning); }
@@ -107,16 +158,125 @@
 .repair-plan-diff-tag.modified { color: var(--warning); background: rgba(245, 158, 11, 0.12); }
 .repair-plan-diff-tag.removed { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
 
-/* 待确认时展示的维修凭证照片（只读） */
+.repair-plan-compare-item--emph {
+  padding: 8rpx 12rpx;
+  margin: 4rpx 0;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 4rpx solid var(--warning);
+}
+.repair-plan-text--emph {
+  color: var(--warning);
+  font-weight: 500;
+}
+.repair-plan-meta--emph {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.quote-proposal-hint {
+  display: block;
+  margin-bottom: var(--space-md);
+}
+.quote-proposal-time-block {
+  display: block;
+}
+.quote-proposal-amount-line {
+  display: block;
+  margin-top: var(--space-xs);
+}
+.quote-proposal-note-line {
+  display: block;
+  margin-top: var(--space-xs);
+}
+.quote-proposal-va-title {
+  display: block;
+  margin-top: var(--space-sm);
+}
+
+.quote-proposal-row {
+  padding-bottom: var(--space-md);
+  margin-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border);
+}
+.quote-proposal-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.quote-proposal-diff {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+.quote-proposal-diff-title {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+.quote-proposal-diff-meta {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.5;
+}
+
+.pay-repair-desc {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+/* 完工凭证区块 */
 .completion-evidence .evidence-view { display: flex; flex-direction: column; gap: var(--space-lg); }
 .completion-evidence .evidence-item { display: flex; flex-direction: column; gap: var(--space-xs); }
 .completion-evidence .evidence-label { color: var(--text-secondary); }
-.completion-evidence .evidence-grid { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
-.completion-evidence .evidence-thumb {
-  width: 120rpx; height: 120rpx; border-radius: var(--radius-sm); overflow: hidden;
-  background: var(--bg-placeholder);
-}
-.completion-evidence .evidence-thumb image { width: 100%; height: 100%; }
 
-.order-detail-actions { margin-top: var(--space-xl); display: flex; flex-wrap: wrap; gap: var(--space-md); }
-.order-detail-actions .btn-secondary, .order-detail-actions button { flex: 1; min-width: 160rpx; }
+/* 底部固定操作区（设计规范 7.5）：主/次按钮同宽满幅，纵向一组 */
+.order-detail-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  background: var(--bg-card);
+  border-top: 1rpx solid var(--border);
+  border-radius: 24rpx 24rpx 0 0;
+  box-shadow: var(--shadow-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+.order-detail-footer-inner {
+  padding: var(--space-lg) var(--page-padding-x) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-sm);
+  box-sizing: border-box;
+}
+.order-detail-footer-primary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+  margin: 0;
+}
+.order-detail-footer-btn-primary {
+  width: 100% !important;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  display: block;
+}
+.order-detail-footer-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+}
+.order-detail-footer-btn {
+  width: 100% !important;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 500;
+}

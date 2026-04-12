@@ -4,8 +4,8 @@
  *
  * 微信合法域名要求 HTTPS，BASE_URL 需与微信后台配置的 request 合法域名一致
  *
- * 本地开发：复制 config.local.example.js 为 config.local.js，将 BASE_URL 改为
- * http://127.0.0.1:3000（与 api-server 一致），并在开发者工具中关闭域名校验。
+ * 本地/云端切换：在 web/.env 设置 ZHEJIAN_MINIPROGRAM=local|cloud，项目根目录执行
+ * npm run sync:config，将生成 config.local.js（勿手改）。local 时须在开发者工具关闭域名校验。
  *
  * 订阅消息：在 mp.weixin.qq.com 功能->订阅消息 选用模板后，将模板 ID 填入此处
  * 同时需在 web/.env 配置对应变量（SUBSCRIBE_TEMPLATE_ORDER_UPDATE 等）
@@ -26,11 +26,6 @@ const defaults = {
   },
 };
 
-let local = {};
-try {
-  local = require('./config.local.js');
-} catch (e) {
-  if (e.code !== 'MODULE_NOT_FOUND') throw e;
-}
+const local = require('./config.local.js');
 
 module.exports = { ...defaults, ...local };

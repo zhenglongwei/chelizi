@@ -19,6 +19,7 @@ const SORT_OPTIONS_BASE = [
 ];
 const SORT_OPTIONS_WITH_PRICE = [
   ...SORT_OPTIONS_BASE,
+  { value: 'value', label: '性价比优先' },
   { value: 'price', label: '价格最低' }
 ];
 
@@ -41,7 +42,7 @@ function mapShopItem(s, idx) {
   return {
     shop_id: s.shop_id,
     name: s.name,
-    logo: s.logo || '/images/logo/logo_white.png',
+    logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
     rating: starDisplay.scoreText,
     starsDisplay: starDisplay.stars,
     scoreNum: starDisplay.score,
@@ -193,6 +194,7 @@ Page({
       }
 
       const sortLabels = this.data.sortLabels || SORT_OPTIONS_BASE;
+      const hasProductContext = !!(keyword || category);
       const params = {
         page,
         limit,
@@ -203,6 +205,9 @@ Page({
       if (lat && lng) {
         params.latitude = lat;
         params.longitude = lng;
+      }
+      if (hasProductContext) {
+        params.payer_intent = 'self_pay';
       }
 
       const res = await getShopsSearch(params);

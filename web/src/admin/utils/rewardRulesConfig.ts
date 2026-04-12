@@ -3,6 +3,16 @@
  * 对应《全指标底层逻辑梳理》第四章
  */
 
+/** 维修佣金类目覆盖键，与服务端 repair-commission-category 解析结果一致 */
+export const COMMISSION_REPAIR_CATEGORY_OPTIONS = [
+  '钣金喷漆',
+  '保养服务',
+  '发动机维修',
+  '电路维修',
+  '换胎',
+  '美容',
+];
+
 export function getDefaultRewardRulesConfig(): { rewardRules: Record<string, any> } {
   return {
     rewardRules: {
@@ -45,16 +55,11 @@ export function getDefaultRewardRulesConfig(): { rewardRules: Record<string, any
       complianceRedLine: 70,
       upgradeMaxPer3Months: 2,
       upgradeReviewHours: 24,
-      // 模块 5：佣金配置
-      commissionTier1Max: 5000,
-      commissionTier2Max: 20000,
-      commissionTier1Rate: 8,
-      commissionTier2Rate: 10,
-      commissionTier3Rate: 12,
-      commissionDownMinRatio: 50,
-      commissionUpMaxRatio: 120,
-      commissionDownPercent: 1,
-      commissionUpPercent: 2,
+      // 模块 5：维修订单固定佣金（付款方 default + 可选类目覆盖；标品走 settings product_order_platform_fee_rate）
+      commissionRepair: {
+        self_pay: { default: 6, byCategory: {} },
+        insurance: { default: 12, byCategory: {} },
+      },
     },
   };
 }

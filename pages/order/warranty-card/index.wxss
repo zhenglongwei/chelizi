@@ -1,0 +1,23 @@
+.warranty-card-page {
+  min-height: 100vh;
+  padding: var(--space-md);
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.warranty-card-loading,
+.warranty-card-error {
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+.warranty-card-share-btn {
+  width: 100%;
+}
+
+.warranty-card-notice-link {
+  display: block;
+  text-align: center;
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) 0;
+}

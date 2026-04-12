@@ -4,6 +4,7 @@ const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantShop, updateMerchantShop, withdrawMerchantQualification, merchantUploadImage, merchantAnalyzeTechnicianCert, merchantAnalyzeQualificationCert, ocrBusinessLicense } = require('../../../../utils/api');
 const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 const { getNavBarHeight } = require('../../../../utils/util');
+const { pickImagePaths } = require('../../../../utils/pick-image');
 const { BUSINESS_HOURS_OPTIONS, QUALIFICATION_LEVEL_OPTIONS, TECHNICIAN_LEVEL_OPTIONS } = require('../../../../utils/shop-profile-constants');
 
 const logger = getLogger('MerchantShopProfile');
@@ -219,12 +220,10 @@ Page({
     if (this._isAuditingLocked()) return;
     let url;
     try {
-      const files = await new Promise((resolve, reject) => {
-        wx.chooseMedia({ count: 1, mediaType: ['image'], success: (r) => resolve(r.tempFiles || []), fail: reject });
-      });
-      if (!files || !files.length) return;
+      const paths = await pickImagePaths(1);
+      if (!paths.length) return;
       ui.showLoading('上传中...');
-      url = await merchantUploadImage(files[0].tempFilePath);
+      url = await merchantUploadImage(paths[0]);
       if (!url) {
         ui.hideLoading();
         return;
@@ -292,12 +291,10 @@ Page({
 
   async _uploadBrandCert(type, name, dataKey) {
     try {
-      const files = await new Promise((resolve, reject) => {
-        wx.chooseMedia({ count: 1, mediaType: ['image'], success: (r) => resolve(r.tempFiles || []), fail: reject });
-      });
-      if (!files || !files.length) return;
+      const paths = await pickImagePaths(1);
+      if (!paths.length) return;
       ui.showLoading('上传中...');
-      const url = await merchantUploadImage(files[0].tempFilePath);
+      const url = await merchantUploadImage(paths[0]);
       ui.hideLoading();
       if (!url) return;
       const certs = [...(this.data.certifications || [])];
@@ -322,19 +319,13 @@ Page({
   async onAddShopImage() {
     if (this._isAuditingLocked()) return;
     try {
-      const files = await new Promise((resolve, reject) => {
-        wx.chooseMedia({
-          count: 6 - this.data.shop_images.length,
-          mediaType: ['image'],
-          success: (res) => resolve(res.tempFiles || []),
-          fail: reject
-        });
-      });
-      if (!files || !files.length) return;
+      const remain = 6 - this.data.shop_images.length;
+      const paths = await pickImagePaths(remain);
+      if (!paths.length) return;
       ui.showLoading('上传中...');
       const urls = [];
-      for (const f of files) {
-        const url = await merchantUploadImage(f.tempFilePath);
+      for (const p of paths) {
+        const url = await merchantUploadImage(p);
         if (url) urls.push(url);
       }
       ui.hideLoading();
@@ -437,12 +428,10 @@ Page({
 
   async onTechnicianCertTap() {
     try {
-      const files = await new Promise((resolve, reject) => {
-        wx.chooseMedia({ count: 1, mediaType: ['image'], success: (r) => resolve(r.tempFiles || []), fail: reject });
-      });
-      if (!files || !files.length) return;
+      const paths = await pickImagePaths(1);
+      if (!paths.length) return;
       ui.showLoading('上传中...');
-      const url = await merchantUploadImage(files[0].tempFilePath);
+      const url = await merchantUploadImage(paths[0]);
       if (!url) {
         ui.hideLoading();
         return;
@@ -476,12 +465,10 @@ Page({
 
   async onTechnicianAvatarTap() {
     try {
-      const files = await new Promise((resolve, reject) => {
-        wx.chooseMedia({ count: 1, mediaType: ['image'], success: (r) => resolve(r.tempFiles || []), fail: reject });
-      });
-      if (!files || !files.length) return;
+      const paths = await pickImagePaths(1);
+      if (!paths.length) return;
       ui.showLoading('上传中...');
-      const url = await merchantUploadImage(files[0].tempFilePath);
+      const url = await merchantUploadImage(paths[0]);
       ui.hideLoading();
       if (url) this.setData({ 'technicianForm.avatar_url': url });
     } catch (err) {

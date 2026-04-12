@@ -382,6 +382,26 @@
   margin-bottom: var(--space-lg);
 }
 
+.damage-human-section {
+  margin-bottom: var(--space-md);
+}
+
+.damage-human-title {
+  margin-bottom: var(--space-xs);
+}
+
+.damage-human-empty {
+  display: block;
+  padding: var(--space-xs) 0;
+}
+
+.damage-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+  line-height: 1.5;
+}
+
 .damage-report-repair {
   margin-bottom: 0;
 }

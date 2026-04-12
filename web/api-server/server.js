@@ -2,21 +2,50 @@
 // 基于 Express + MySQL + 阿里云OSS
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const fs = require('fs');
+
+// 环境变量：先加载 web 根目录 .env，再加载 api-server/.env（后者覆盖前者）
+// 避免生产仅部署 /var/www/.../api-server/.env 时读不到 JWT_SECRET 导致进程反复退出
+const envWebRoot = path.join(__dirname, '..', '.env');
+const envApiServer = path.join(__dirname, '.env');
+require('dotenv').config({ path: envWebRoot });
+if (fs.existsSync(envApiServer)) {
+  require('dotenv').config({ path: envApiServer, override: true });
+}
 
 // 生产环境强制校验 JWT_SECRET，避免使用默认值导致伪造风险
 const isProd = process.env.NODE_ENV === 'production';
 if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key')) {
-  console.error('❌ 生产环境必须配置 JWT_SECRET，请在 .env 中设置');
+  console.error(
+    '❌ 生产环境必须配置 JWT_SECRET。已尝试加载：',
+    fs.existsSync(envWebRoot) ? envWebRoot : '(无文件)',
+    '与',
+    fs.existsSync(envApiServer) ? envApiServer : '(无文件)',
+    '；也可在 pm2 ecosystem 的 env 中注入 JWT_SECRET。'
+  );
   process.exit(1);
+}
+
+/**
+ * 追评提交：是否跳过「完工/首评基准满 1 个月 / 3 个月」时间窗校验。
+ * - 生产环境：永远校验。
+ * - 非生产：默认跳过（便于测试）；设置 SKIP_FOLLOWUP_TIME_CHECK=0|false|no 则开启校验。
+ */
+function shouldSkipFollowupTimeCheck() {
+  if (isProd) return false;
+  const v = String(process.env.SKIP_FOLLOWUP_TIME_CHECK || '').trim().toLowerCase();
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  return true;
 }
 
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+
+const { sanitizeAnalysisResultForRead } = require('./utils/analysis-result-sanitize');
+const { enrichAnalysisResultHumanDisplay } = require('./utils/human-display');
 
 const app = express();
 
@@ -72,9 +101,28 @@ const commissionWalletService = require('./services/commission-wallet-service');
 const rewardTransferService = require('./services/reward-transfer-service');
 const shopIncomeService = require('./services/shop-income-service');
 const repairOrderPaymentService = require('./services/repair-order-payment-service');
+const historicalFairPriceService = require('./services/historical-fair-price-service');
+const orderQuoteProposalService = require('./services/order-quote-proposal-service');
 const merchantIncomeWithdrawService = require('./services/merchant-income-withdraw-service');
+const orderWarrantyCardService = require('./services/order-warranty-card-service');
+const { hasColumn: dbHasColumn } = require('./utils/db-utils');
 const merchantCorpIncomeWithdrawService = require('./services/merchant-corp-income-withdraw-service');
-
+const quoteImportService = require('./services/quote-import-service');
+const quoteTemplateXlsx = require('./services/quote-template-xlsx');
+const shopTechnicianUtils = require('./utils/shop-technician-utils');
+const { buildQuoteTimelineForReview } = require('./utils/review-quote-timeline');
+const { buildEvidenceSections, buildObjectiveHints } = require('./utils/review-for-review-evidence');
+const { isInsuranceOrder, reviewScene } = require('./utils/review-objective-schema');
+const quoteNomenclature = require('./utils/quote-nomenclature');
+const quoteProposalPublic = require('./utils/quote-proposal-public-list');
+const reviewSystemCheckService = require('./services/review-system-check-service');
+const { sanitizeSystemChecksForUserFacing } = require('./utils/review-public-system-sanitize');
+const qwenAnalyzer = require('./qwen-analyzer');
+const multer = require('multer');
+const quoteImportXlsxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('file');
 // 测试数据库连接并验证 schema
 async function testDBConnection() {
   try {
@@ -254,7 +302,7 @@ const authenticateMerchant = async (req, res, next) => {
   }
 };
 
-// 资质审核通过才可接单/报价（方案A）
+// 资质审核通过即可接单/报价；技师持证为选填（完工时仍可选手动负责人）
 const requireQualification = async (req, res, next) => {
   try {
     const [rows] = await pool.execute(
@@ -853,15 +901,25 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
            EXISTS (SELECT 1 FROM quotes q WHERE q.bidding_id = b.bidding_id AND q.shop_id = ?)
            OR (
              b.status = 0
-             AND EXISTS (
-               SELECT 1 FROM users u INNER JOIN shops s ON s.shop_id = ?
-               WHERE b.user_id = u.user_id AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
-                 AND (6371 * acos(cos(radians(u.latitude)) * cos(radians(s.latitude)) *
-                 cos(radians(s.longitude) - radians(u.longitude)) + sin(radians(u.latitude)) * sin(radians(s.latitude)))) <= b.range_km
+             AND (
+               (
+                 NOT EXISTS (SELECT 1 FROM bidding_distribution bd2 WHERE bd2.bidding_id = b.bidding_id)
+                 AND EXISTS (
+                   SELECT 1 FROM users u INNER JOIN shops s ON s.shop_id = ?
+                   WHERE b.user_id = u.user_id AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+                     AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+                     AND (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(u.latitude)) * cos(radians(s.latitude)) *
+                     cos(radians(s.longitude) - radians(u.longitude)) + sin(radians(u.latitude)) * sin(radians(s.latitude)))))) <= b.range_km
+                 )
+               )
+               OR EXISTS (
+                 SELECT 1 FROM bidding_distribution bd
+                 WHERE bd.bidding_id = b.bidding_id AND bd.shop_id = ?
+               )
              )
            )
          )`,
-      [id, shopId, shopId]
+      [id, shopId, shopId, shopId]
     );
     if (biddings.length === 0) {
       return res.status(404).json(errorResponse('竞价不存在或未邀请您'));
@@ -873,12 +931,15 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
     let images = [];
     try {
       vehicleInfo = typeof b.vehicle_info === 'string' ? JSON.parse(b.vehicle_info) : (b.vehicle_info || {});
-      analysis = typeof b.analysis_result === 'string' ? JSON.parse(b.analysis_result || '{}') : (b.analysis_result || {});
+      analysis = sanitizeAnalysisResultForRead(
+        typeof b.analysis_result === 'string' ? JSON.parse(b.analysis_result || '{}') : (b.analysis_result || {})
+      );
+      enrichAnalysisResultHumanDisplay(analysis);
       images = typeof b.images === 'string' ? JSON.parse(b.images || '[]') : (b.images || []);
     } catch (_) {}
 
     const [quoted] = await pool.execute(
-      'SELECT quote_id, amount, items, value_added_services, duration, warranty, remark, quote_status, quote_valid_until FROM quotes WHERE bidding_id = ? AND shop_id = ?',
+      'SELECT quote_id, amount, items, value_added_services, duration, remark, quote_status, quote_valid_until FROM quotes WHERE bidding_id = ? AND shop_id = ?',
       [id, shopId]
     );
 
@@ -913,7 +974,6 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
         items: typeof quoted[0].items === 'string' ? JSON.parse(quoted[0].items || '[]') : (quoted[0].items || []),
         value_added_services: typeof quoted[0].value_added_services === 'string' ? JSON.parse(quoted[0].value_added_services || '[]') : (quoted[0].value_added_services || []),
         duration: quoted[0].duration,
-        warranty: quoted[0].warranty,
         remark: quoted[0].remark,
         quote_status: quoted[0].quote_status != null ? quoted[0].quote_status : 0,
         quote_valid_until: quoted[0].quote_valid_until
@@ -928,7 +988,7 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
 // 提交报价（需资质审核通过）
 app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, async (req, res) => {
   try {
-    const { bidding_id, amount, items, value_added_services, duration, warranty, remark, quote_validity_days } = req.body;
+    const { bidding_id, amount, items, value_added_services, duration, remark, quote_validity_days } = req.body;
     const shopId = req.shopId;
 
     if (!bidding_id || !amount || amount <= 0) {
@@ -938,13 +998,21 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     const validityDays = quote_validity_days != null && quote_validity_days !== '' ? parseInt(quote_validity_days, 10) : 3;
     const validDays = (isNaN(validityDays) || validityDays < 1 || validityDays > 30) ? 3 : Math.min(30, Math.max(1, validityDays));
     const dur = duration != null && duration !== '' ? parseInt(duration, 10) : NaN;
-    const war = warranty != null && warranty !== '' ? parseInt(warranty, 10) : NaN;
     if (isNaN(dur) || dur < 0) {
       return res.status(400).json(errorResponse('请填写预计工期（天）'));
     }
-    if (isNaN(war) || war < 0) {
-      return res.status(400).json(errorResponse('请填写质保期（月）'));
+
+    const sanitized = quoteImportService.sanitizeQuoteItemsStrict(items);
+    if (!sanitized.ok) {
+      return res.status(400).json(errorResponse(sanitized.error));
     }
+    const amtNum = parseFloat(amount);
+    if (Math.abs(sanitized.sumPrice - amtNum) > 0.51) {
+      return res.status(400).json(
+        errorResponse(`分项金额合计 ¥${sanitized.sumPrice} 与总报价 ¥${amtNum} 不一致，请核对`)
+      );
+    }
+    const war = sanitized.maxWarranty;
 
     const [biddingCheck] = await pool.execute(
       'SELECT bidding_id, status FROM biddings WHERE bidding_id = ?',
@@ -952,6 +1020,17 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     );
     if (biddingCheck.length === 0) return res.status(404).json(errorResponse('竞价不存在'));
     if (biddingCheck[0].status !== 0) return res.status(400).json(errorResponse('该竞价已结束'));
+
+    const [bTime] = await pool.execute(
+      'SELECT expire_at FROM biddings WHERE bidding_id = ?',
+      [bidding_id]
+    );
+    if (bTime.length > 0 && bTime[0].expire_at) {
+      const ex = new Date(bTime[0].expire_at).getTime();
+      if (Date.now() > ex) {
+        return res.status(400).json(errorResponse('竞价报价窗口已结束，无法提交新报价'));
+      }
+    }
 
     const [existing] = await pool.execute(
       'SELECT quote_id FROM quotes WHERE bidding_id = ? AND shop_id = ?',
@@ -975,31 +1054,46 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     if (!visible) return res.status(403).json(errorResponse('该竞价未邀请您'));
 
     const quoteId = 'QUO' + Date.now();
-    const validUntil = new Date(Date.now() + validDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    // 报价有效期与 NOW() 比较一致，避免 toISOString(UTC) 写入 DATETIME 导致与库时区错位、提前判过期
     await pool.execute(
       `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [quoteId, bidding_id, shopId, amount, JSON.stringify(items || []), JSON.stringify(value_added_services || []), dur, war, remark || null, validUntil]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))`,
+      [quoteId, bidding_id, shopId, amount, JSON.stringify(sanitized.items), JSON.stringify(value_added_services || []), dur, war, remark || null, validDays]
     );
 
     try {
+      const { hasColumn } = require('./utils/db-utils');
+      const crypto = require('crypto');
       const [biddingRows] = await pool.execute('SELECT user_id FROM biddings WHERE bidding_id = ?', [bidding_id]);
       if (biddingRows.length > 0) {
-        const subMsg = require('./services/subscribe-message-service');
+        const ownerUserId = biddingRows[0].user_id;
         const [shops] = await pool.execute('SELECT name FROM shops WHERE shop_id = ?', [shopId]);
-        const shopName = shops.length > 0 ? shops[0].name : '维修厂';
+        const shopName = (shops.length > 0 && shops[0].name) ? String(shops[0].name).trim() : '维修厂';
+
+        if (await hasColumn(pool, 'user_messages', 'message_id')) {
+          const msgId = 'umsg_' + crypto.randomBytes(12).toString('hex');
+          const title = '新报价待查看';
+          const content = `${shopName.slice(0, 24)} 已提交报价 ¥${amtNum}，请进入竞价详情比价。`;
+          await pool.execute(
+            `INSERT INTO user_messages (message_id, user_id, type, title, content, related_id, is_read)
+             VALUES (?, ?, 'bidding', ?, ?, ?, 0)`,
+            [msgId, ownerUserId, title, content, bidding_id]
+          );
+        }
+
+        const subMsg = require('./services/subscribe-message-service');
         subMsg.sendToUser(
           pool,
-          biddingRows[0].user_id,
+          ownerUserId,
           'user_bidding_quote',
-          { title: '您有新报价', content: `${(shopName || '维修厂').slice(0, 6)}已报价，请查看`, relatedId: bidding_id },
+          { title: '您有新报价', content: `${shopName.slice(0, 6)}已报价，请查看`, relatedId: bidding_id },
           process.env.WX_APPID,
           process.env.WX_SECRET
         ).catch((e) => console.warn('[merchant/quote] 订阅消息发送异常:', e));
       }
     } catch (msgErr) {
       if (!String((msgErr && msgErr.message) || '').includes('subscribe')) {
-        console.warn('[merchant/quote] 订阅消息失败:', msgErr && msgErr.message);
+        console.warn('[merchant/quote] 通知车主失败:', msgErr && msgErr.message);
       }
     }
 
@@ -1093,7 +1187,8 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
     const shopId = req.shopId;
 
     const [orders] = await pool.execute(
-      `SELECT o.*, b.vehicle_info, b.report_id, dr.analysis_result, dr.images,
+      `SELECT o.*, b.vehicle_info, b.report_id, b.insurance_info, dr.analysis_result, dr.images,
+        dr.user_description AS damage_report_user_description,
         u.nickname, u.phone as owner_phone
        FROM orders o
        LEFT JOIN biddings b ON o.bidding_id = b.bidding_id
@@ -1108,14 +1203,30 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
     let vehicleInfo = {};
     let analysis = {};
     let images = [];
+    let insuranceInfo = {};
     try {
       vehicleInfo = typeof o.vehicle_info === 'string' ? JSON.parse(o.vehicle_info) : (o.vehicle_info || {});
-      analysis = typeof o.analysis_result === 'string' ? JSON.parse(o.analysis_result || '{}') : (o.analysis_result || {});
+      analysis = sanitizeAnalysisResultForRead(
+        typeof o.analysis_result === 'string' ? JSON.parse(o.analysis_result || '{}') : (o.analysis_result || {})
+      );
+      enrichAnalysisResultHumanDisplay(analysis);
       images = typeof o.images === 'string' ? JSON.parse(o.images || '[]') : (o.images || []);
+      insuranceInfo = typeof o.insurance_info === 'string' ? JSON.parse(o.insurance_info || '{}') : (o.insurance_info || {});
     } catch (_) {}
+    const orderAccidentTypeLabels = {
+      single: '单方事故',
+      self_fault: '己方全责',
+      other_fault: '对方全责',
+      other_main: '对方主责',
+      self_main: '己方主责'
+    };
+    if (insuranceInfo.is_insurance && insuranceInfo.accident_type) {
+      insuranceInfo.accident_type_label = orderAccidentTypeLabels[insuranceInfo.accident_type] || insuranceInfo.accident_type;
+    }
+    const damageReportUserDescription = (o.damage_report_user_description || '').trim() || null;
 
     const [quote] = await pool.execute(
-      'SELECT amount, items, duration, warranty, remark, value_added_services FROM quotes WHERE quote_id = ?',
+      'SELECT amount, items, duration, remark, value_added_services FROM quotes WHERE quote_id = ?',
       [o.quote_id]
     );
 
@@ -1123,7 +1234,6 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       amount: quote[0].amount,
       items: typeof quote[0].items === 'string' ? JSON.parse(quote[0].items || '[]') : (quote[0].items || []),
       duration: quote[0].duration,
-      warranty: quote[0].warranty,
       remark: quote[0].remark,
       value_added_services: (() => {
         try {
@@ -1176,10 +1286,27 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
     }
     if (o.repair_plan_status != null) repairPlanStatus = parseInt(o.repair_plan_status, 10) || 0;
 
+    const parseSnap = (v) => {
+      if (v == null || v === '') return null;
+      try {
+        return typeof v === 'string' ? JSON.parse(v) : v;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    let quoteProposals = [];
+    try {
+      if (await orderQuoteProposalService.proposalsTableExists(pool)) {
+        quoteProposals = await orderQuoteProposalService.listFormatted(pool, id);
+      }
+    } catch (_) {}
+
     res.json(successResponse({
       order_id: o.order_id,
       bidding_id: o.bidding_id,
       status: o.status,
+      is_insurance_accident: o.is_insurance_accident === 1 || o.is_insurance_accident === '1' ? 1 : 0,
       quoted_amount: o.quoted_amount,
       order_tier: o.order_tier,
       complexity_level: o.complexity_level,
@@ -1187,22 +1314,48 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       vehicle_info: vehicleInfo,
       analysis_result: analysis,
       images,
+      user_description: damageReportUserDescription,
+      insurance_info: insuranceInfo,
       owner_nickname: o.nickname,
       owner_phone: o.owner_phone,
       quote: quoteObj,
       repair_plan: repairPlan,
       repair_plan_status: repairPlanStatus,
+      pre_quote_snapshot: parseSnap(o.pre_quote_snapshot),
+      final_quote_snapshot: parseSnap(o.final_quote_snapshot),
+      final_quote_status: o.final_quote_status != null ? parseInt(o.final_quote_status, 10) : null,
+      loss_assessment_documents: parseSnap(o.loss_assessment_documents),
+      final_quote_submitted_at: o.final_quote_submitted_at || null,
+      final_quote_confirmed_at: o.final_quote_confirmed_at || null,
+      deviation_rate: o.deviation_rate != null ? parseFloat(o.deviation_rate) : null,
       duration_deadline: durationDeadline,
       duration_deadline_text: durationDeadlineText,
       created_at: o.created_at,
       accepted_at: o.accepted_at,
       pending_cancel_request: pendingCancel,
       material_audit_status: materialAuditStatus,
-      material_audit_reject_reason: materialAuditRejectReason
+      material_audit_reject_reason: materialAuditRejectReason,
+      quote_proposals: quoteProposals,
+      warranty_card_template_id:
+        o.warranty_card_template_id != null && o.warranty_card_template_id !== ''
+          ? orderWarrantyCardService.normalizeTemplateId(o.warranty_card_template_id)
+          : null
     }));
   } catch (error) {
     console.error('服务商订单详情错误:', error);
     res.status(500).json(errorResponse('获取订单详情失败', 500));
+  }
+});
+
+// 电子质保凭证（商户只读，存证数据）
+app.get('/api/v1/merchant/orders/:id/warranty-card', authenticateMerchant, async (req, res) => {
+  try {
+    const r = await orderWarrantyCardService.getWarrantyCard(pool, req.params.id, { shopId: req.shopId });
+    if (!r.ok) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data));
+  } catch (error) {
+    console.error('商户电子质保凭证错误:', error);
+    res.status(500).json(errorResponse('获取电子质保凭证失败', 500));
   }
 });
 
@@ -1224,8 +1377,11 @@ app.post('/api/v1/merchant/orders/:id/accept', authenticateMerchant, requireQual
 // 材料 AI 审核：返回 auditing 时异步审核，通过后自动 status=2
 app.put('/api/v1/merchant/orders/:id/status', authenticateMerchant, async (req, res) => {
   try {
-    const { status, completion_evidence } = req.body || {};
-    const result = await orderService.updateOrderStatus(pool, req.params.id, req.shopId, status, completion_evidence);
+    const { status, completion_evidence, warranty_card_template_id } = req.body || {};
+    const result = await orderService.updateOrderStatus(pool, req.params.id, req.shopId, status, {
+      completion_evidence,
+      warranty_card_template_id
+    });
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
@@ -1252,6 +1408,20 @@ app.put('/api/v1/merchant/orders/:id/repair-plan', authenticateMerchant, async (
   } catch (error) {
     console.error('修改维修方案错误:', error);
     res.status(500).json(errorResponse('更新失败', 500));
+  }
+});
+
+// 服务商提交到店最终报价（双阶段报价；车主确认前）
+app.put('/api/v1/merchant/orders/:id/final-quote', authenticateMerchant, async (req, res) => {
+  try {
+    const result = await orderService.submitFinalQuote(pool, req.params.id, req.shopId, req.body || {});
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '已提交最终报价，请等待车主确认'));
+  } catch (error) {
+    console.error('提交最终报价错误:', error);
+    res.status(500).json(errorResponse('提交失败', 500));
   }
 });
 
@@ -1489,7 +1659,8 @@ app.get('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
       technician_certs: typeof s.technician_certs === 'string' ? (s.technician_certs ? JSON.parse(s.technician_certs) : null) : s.technician_certs,
       qualification_status: s.qualification_status != null ? s.qualification_status : 0,
       qualification_audit_reason: s.qualification_audit_reason || null,
-      qualification_withdrawn: (s.qualification_withdrawn === 1 || s.qualification_withdrawn === '1') ? 1 : 0
+      qualification_withdrawn: (s.qualification_withdrawn === 1 || s.qualification_withdrawn === '1') ? 1 : 0,
+      warranty_card_template_id: orderWarrantyCardService.normalizeTemplateId(s.warranty_card_template_id)
     }));
   } catch (error) {
     console.error('获取店铺信息错误:', error);
@@ -1497,9 +1668,17 @@ app.get('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
   }
 });
 
+app.get('/api/v1/merchant/warranty-card/templates', authenticateMerchant, async (req, res) => {
+  try {
+    res.json(successResponse({ templates: orderWarrantyCardService.listTemplates() }));
+  } catch (e) {
+    res.status(500).json(errorResponse('获取模板失败', 500));
+  }
+});
+
 app.put('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
   try {
-    const { name, address, latitude, longitude, phone, business_hours, categories, qualification_level, qualification_ai_recognized, qualification_ai_result, technician_certs, shop_images, certifications } = req.body;
+    const { name, address, latitude, longitude, phone, business_hours, categories, qualification_level, qualification_ai_recognized, qualification_ai_result, technician_certs, shop_images, certifications, warranty_card_template_id } = req.body;
     const [preCheck] = await pool.execute(
       'SELECT qualification_status, qualification_level, technician_certs, qualification_withdrawn FROM shops WHERE shop_id = ?',
       [req.shopId]
@@ -1515,8 +1694,10 @@ app.put('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
         return res.status(403).json(errorResponse('资质审核中，不可修改。如需修改请先撤回'));
       }
     }
+    const hasShopWctCol = await dbHasColumn(pool, 'shops', 'warranty_card_template_id');
+    const shopSelectExtra = hasShopWctCol ? ', warranty_card_template_id' : '';
     const [shops] = await pool.execute(
-      'SELECT name, address, latitude, longitude, phone, business_hours, categories, qualification_level, qualification_ai_recognized, qualification_ai_result, technician_certs, shop_images, certifications, qualification_status, qualification_audit_reason FROM shops WHERE shop_id = ?',
+      `SELECT name, address, latitude, longitude, phone, business_hours, categories, qualification_level, qualification_ai_recognized, qualification_ai_result, technician_certs, shop_images, certifications, qualification_status, qualification_audit_reason${shopSelectExtra} FROM shops WHERE shop_id = ?`,
       [req.shopId]
     );
     if (!shops || shops.length === 0) return res.status(404).json(errorResponse('店铺不存在'));
@@ -1541,6 +1722,12 @@ app.put('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
       newQualStatus = 0;
       auditReason = null;
       const techCerts = Array.isArray(technician_certs) ? technician_certs : [];
+      const mergedForTech =
+        technician_certs !== undefined ? technician_certs : shopTechnicianUtils.parseTechnicianCerts(s.technician_certs);
+      const techMin = shopTechnicianUtils.validateOptionalTechnicianCerts(mergedForTech);
+      if (!techMin.ok) {
+        return res.status(400).json(errorResponse(techMin.error));
+      }
       for (const t of techCerts) {
         if (t.certificate_url && t.ai_recognized_level && (t.level || '') !== (t.ai_recognized_level || '')) {
           auditReason = '用户修改了技师职业等级，需人工复核';
@@ -1572,15 +1759,195 @@ app.put('/api/v1/merchant/shop', authenticateMerchant, async (req, res) => {
       certifications: newCerts
     };
 
-    await pool.execute(
-      `UPDATE shops SET name = ?, address = ?, latitude = ?, longitude = ?, phone = ?, business_hours = ?, categories = ?, qualification_level = ?, qualification_ai_recognized = ?, qualification_ai_result = ?, technician_certs = ?, shop_images = ?, certifications = ?, qualification_status = ?, qualification_audit_reason = ?, qualification_withdrawn = 0, updated_at = NOW()
-       WHERE shop_id = ?`,
-      [updates.name, updates.address, updates.latitude, updates.longitude, updates.phone, updates.business_hours, updates.categories, updates.qualification_level, updates.qualification_ai_recognized, updates.qualification_ai_result, updates.technician_certs, updates.shop_images, updates.certifications, newQualStatus, auditReason, req.shopId]
-    );
+    const newWarrantyTpl =
+      hasShopWctCol && warranty_card_template_id !== undefined
+        ? orderWarrantyCardService.normalizeTemplateId(warranty_card_template_id)
+        : hasShopWctCol
+          ? orderWarrantyCardService.normalizeTemplateId(s.warranty_card_template_id)
+          : null;
+
+    if (hasShopWctCol) {
+      await pool.execute(
+        `UPDATE shops SET name = ?, address = ?, latitude = ?, longitude = ?, phone = ?, business_hours = ?, categories = ?, qualification_level = ?, qualification_ai_recognized = ?, qualification_ai_result = ?, technician_certs = ?, shop_images = ?, certifications = ?, warranty_card_template_id = ?, qualification_status = ?, qualification_audit_reason = ?, qualification_withdrawn = 0, updated_at = NOW()
+         WHERE shop_id = ?`,
+        [
+          updates.name,
+          updates.address,
+          updates.latitude,
+          updates.longitude,
+          updates.phone,
+          updates.business_hours,
+          updates.categories,
+          updates.qualification_level,
+          updates.qualification_ai_recognized,
+          updates.qualification_ai_result,
+          updates.technician_certs,
+          updates.shop_images,
+          updates.certifications,
+          newWarrantyTpl,
+          newQualStatus,
+          auditReason,
+          req.shopId
+        ]
+      );
+    } else {
+      await pool.execute(
+        `UPDATE shops SET name = ?, address = ?, latitude = ?, longitude = ?, phone = ?, business_hours = ?, categories = ?, qualification_level = ?, qualification_ai_recognized = ?, qualification_ai_result = ?, technician_certs = ?, shop_images = ?, certifications = ?, qualification_status = ?, qualification_audit_reason = ?, qualification_withdrawn = 0, updated_at = NOW()
+         WHERE shop_id = ?`,
+        [
+          updates.name,
+          updates.address,
+          updates.latitude,
+          updates.longitude,
+          updates.phone,
+          updates.business_hours,
+          updates.categories,
+          updates.qualification_level,
+          updates.qualification_ai_recognized,
+          updates.qualification_ai_result,
+          updates.technician_certs,
+          updates.shop_images,
+          updates.certifications,
+          newQualStatus,
+          auditReason,
+          req.shopId
+        ]
+      );
+    }
     res.json(successResponse(null, (qualChanged || isResubmitAfterReject) ? '保存成功，资质信息已提交审核' : '保存成功'));
   } catch (error) {
     console.error('更新店铺信息错误:', error.message, error.sql || '', error.code || '');
     res.status(500).json(errorResponse(safeErrorMessage(error, '保存失败'), 500));
+  }
+});
+
+/** 标准报价表模板（CSV 说明与示例，供电脑填表后导入） */
+app.get('/api/v1/merchant/quote-template', authenticateMerchant, (req, res) => {
+  try {
+    res.json(successResponse(quoteImportService.getQuoteTemplatePayload()));
+  } catch (e) {
+    res.status(500).json(errorResponse('获取模板失败', 500));
+  }
+});
+
+/** 标准报价表 Excel 模板（含中文使用说明 + 报价明细，下载到本地用 Excel/WPS 打开） */
+app.get('/api/v1/merchant/quote-template.xlsx', authenticateMerchant, async (req, res) => {
+  try {
+    const buf = await quoteTemplateXlsx.buildQuoteTemplateXlsxBuffer();
+    const asciiName = 'zhejian-quote-template.xlsx';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(quoteTemplateXlsx.TEMPLATE_FILENAME)}`
+    );
+    res.send(buf);
+  } catch (e) {
+    console.error('[quote-template.xlsx]', e && e.message);
+    res.status(500).json(errorResponse('生成 Excel 模板失败', 500));
+  }
+});
+
+/** 解析上传的 CSV 文本 → 报价 items 预览 */
+app.post('/api/v1/merchant/quote-import/preview', authenticateMerchant, async (req, res) => {
+  try {
+    const csvText = (req.body && req.body.csv_text) != null ? String(req.body.csv_text) : '';
+    const r = quoteImportService.parseQuoteImportCsv(csvText);
+    if (!r.ok) {
+      return res.status(400).json(errorResponse((r.errors && r.errors.join('；')) || '解析失败'));
+    }
+    const payload = {
+      items: r.items,
+      amount_sum: r.amount_sum,
+      ai_enriched: false,
+      missing_fields: [],
+      ai_warnings: [],
+    };
+    const apiKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.ALIYUN_AI_KEY;
+    const wantAi = req.body && req.body.ai_enrich !== false && process.env.QUOTE_IMPORT_AI_ENRICH !== '0';
+    if (apiKey && wantAi) {
+      try {
+        const enriched = await qwenAnalyzer.enrichQuoteItemsWithQwen(r.items, r.amount_sum, apiKey);
+        payload.items = enriched.items && enriched.items.length ? enriched.items : r.items;
+        payload.missing_fields = enriched.missing_fields || [];
+        payload.ai_warnings = enriched.warnings || [];
+        payload.ai_enriched = true;
+      } catch (aiErr) {
+        payload.ai_enrich_error = safeErrorMessage(aiErr, 'AI 规范化失败');
+      }
+    }
+    res.json(successResponse(payload));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '解析失败'), 500));
+  }
+});
+
+/** 解析上传的 Excel（.xlsx）→ 报价 items 预览（与 CSV 预览字段一致） */
+app.post(
+  '/api/v1/merchant/quote-import/preview-xlsx',
+  authenticateMerchant,
+  (req, res, next) => {
+    quoteImportXlsxUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Excel 文件请不超过 5MB' : err.message || '上传失败';
+        return res.status(400).json(errorResponse(msg, 400));
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    try {
+      const buf = req.file && req.file.buffer;
+      if (!buf || !buf.length) {
+        return res.status(400).json(errorResponse('请选择 .xlsx 文件', 400));
+      }
+      const r = await quoteImportService.parseQuoteImportXlsx(buf);
+      if (!r.ok) {
+        return res.status(400).json(errorResponse((r.errors && r.errors.join('；')) || '解析失败'));
+      }
+      const payload = {
+        items: r.items,
+        amount_sum: r.amount_sum,
+        ai_enriched: false,
+        missing_fields: [],
+        ai_warnings: [],
+      };
+      const apiKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.ALIYUN_AI_KEY;
+      const wantAi =
+        req.body &&
+        req.body.ai_enrich !== 'false' &&
+        req.body.ai_enrich !== '0' &&
+        process.env.QUOTE_IMPORT_AI_ENRICH !== '0';
+      if (apiKey && wantAi) {
+        try {
+          const enriched = await qwenAnalyzer.enrichQuoteItemsWithQwen(r.items, r.amount_sum, apiKey);
+          payload.items = enriched.items && enriched.items.length ? enriched.items : r.items;
+          payload.missing_fields = enriched.missing_fields || [];
+          payload.ai_warnings = enriched.warnings || [];
+          payload.ai_enriched = true;
+        } catch (aiErr) {
+          payload.ai_enrich_error = safeErrorMessage(aiErr, 'AI 规范化失败');
+        }
+      }
+      res.json(successResponse(payload));
+    } catch (e) {
+      res.status(500).json(errorResponse(safeErrorMessage(e, '解析失败'), 500));
+    }
+  }
+);
+
+/** 报价单拍照 AI 结构化（需配置 QWEN_API_KEY / DASHSCOPE_API_KEY） */
+app.post('/api/v1/merchant/quote-sheet/analyze-image', authenticateMerchant, async (req, res) => {
+  try {
+    const imageUrl = req.body && req.body.image_url;
+    const apiKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.ALIYUN_AI_KEY;
+    if (!apiKey) {
+      return res.status(503).json(errorResponse('未配置千问 API Key，无法使用拍照识别', 503));
+    }
+    const out = await qwenAnalyzer.analyzeRepairQuoteSheetWithQwen(imageUrl, apiKey);
+    res.json(successResponse(out));
+  } catch (e) {
+    res.status(400).json(errorResponse(e.message || '识别失败'));
   }
 });
 
@@ -1600,11 +1967,18 @@ app.get('/api/v1/user/profile', authenticateToken, async (req, res) => {
     const trust = await antifraud.getUserTrustLevel(pool, req.userId);
     const levelNames = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
     const idNo = user.id_card_no ? String(user.id_card_no) : '';
+    const phoneRaw = user.phone;
+    const phoneOut =
+      phoneRaw == null || phoneRaw === ''
+        ? ''
+        : Buffer.isBuffer(phoneRaw)
+          ? phoneRaw.toString('utf8').trim()
+          : String(phoneRaw).trim();
     res.json(successResponse({
       user_id: user.user_id,
       nickname: user.nickname,
       avatar_url: user.avatar_url,
-      phone: user.phone,
+      phone: phoneOut,
       withdraw_real_name: user.withdraw_real_name || '',
       id_card_tail: idNo.length >= 4 ? idNo.slice(-4) : '',
       level: trust.level,
@@ -2115,7 +2489,17 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
         range_km: row.range_km,
         quote_count: row.quote_count || 0,
         order_id: row.order_id || null,
-        analysis_result: row.analysis_result ? JSON.parse(row.analysis_result || '{}') : null
+        analysis_result: row.analysis_result
+          ? sanitizeAnalysisResultForRead(
+              (() => {
+                try {
+                  return JSON.parse(row.analysis_result || '{}');
+                } catch (_) {
+                  return {};
+                }
+              })()
+            )
+          : null
       };
     });
 
@@ -2213,13 +2597,15 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
     let analysisResult = {};
     try {
       vehicleInfo = typeof order.vehicle_info === 'string' ? JSON.parse(order.vehicle_info || '{}') : (order.vehicle_info || {});
-      analysisResult = typeof order.analysis_result === 'string' ? JSON.parse(order.analysis_result || '{}') : (order.analysis_result || {});
+      analysisResult = sanitizeAnalysisResultForRead(
+        typeof order.analysis_result === 'string' ? JSON.parse(order.analysis_result || '{}') : (order.analysis_result || {})
+      );
     } catch (_) {}
 
     let quote = null;
     if (order.quote_id) {
       const [qRows] = await pool.execute(
-        'SELECT amount, items, duration, warranty, value_added_services FROM quotes WHERE quote_id = ?',
+        'SELECT amount, items, duration, value_added_services FROM quotes WHERE quote_id = ?',
         [order.quote_id]
       );
       if (qRows.length > 0) {
@@ -2228,7 +2614,6 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
           amount: q.amount,
           items: typeof q.items === 'string' ? (q.items ? JSON.parse(q.items) : []) : (q.items || []),
           duration: q.duration,
-          warranty: q.warranty,
           value_added_services: typeof q.value_added_services === 'string' ? (q.value_added_services ? JSON.parse(q.value_added_services) : []) : (q.value_added_services || [])
         };
       }
@@ -2247,7 +2632,8 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
     order.repair_plan = repairPlan;
     if (order.status === 3) {
       const [firstReview] = await pool.execute(
-        'SELECT review_id, created_at FROM reviews WHERE order_id = ? AND type = 1',
+        `SELECT review_id, created_at, rebate_amount, reward_amount, tax_deducted, content_quality, ai_analysis
+         FROM reviews WHERE order_id = ? AND type = 1 ORDER BY created_at DESC LIMIT 1`,
         [id]
       );
       const [followup] = await pool.execute(
@@ -2259,7 +2645,29 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
         [id]
       );
       if (firstReview.length > 0) {
-        order.first_review_id = firstReview[0].review_id;
+        const fr = firstReview[0];
+        order.first_review_id = fr.review_id;
+        order.first_review_rebate_amount = fr.rebate_amount != null ? parseFloat(fr.rebate_amount) : 0;
+        order.first_review_reward_amount = fr.reward_amount != null ? parseFloat(fr.reward_amount) : 0;
+        order.first_review_tax_deducted = fr.tax_deducted != null ? parseFloat(fr.tax_deducted) : 0;
+        order.first_review_content_quality = fr.content_quality != null ? String(fr.content_quality) : null;
+        order.first_review_invalid = fr.content_quality === 'invalid';
+        order.first_review_pending_human = fr.content_quality === 'pending_human';
+        order.first_review_human_feedback = null;
+        if (fr.content_quality === 'invalid' && fr.ai_analysis != null && fr.ai_analysis !== '') {
+          try {
+            const ai =
+              typeof fr.ai_analysis === 'string' ? JSON.parse(fr.ai_analysis) : fr.ai_analysis;
+            if (ai && ai.human_audit && ai.human_audit.decision === 'reject') {
+              const note = String(ai.human_audit.note || '').trim();
+              order.first_review_human_feedback = note
+                ? `我们已仔细查看了您的评价。结合内容与相关材料，本单暂未符合奖励金发放条件，这不影响您对服务的真实感受。说明供您参考：${note}。您仍可通过追评补充说明，或联系客服，我们很乐意为您解答。`
+                : `我们已仔细查看了您的评价。结合内容与相关材料，本单暂未符合奖励金发放条件，这不影响您对服务的真实感受。您可通过追评补充说明，或联系客服，我们很乐意为您解答。`;
+            }
+          } catch (_) {
+            order.first_review_human_feedback = null;
+          }
+        }
       }
       if (firstReview.length > 0 && followup.length === 0 && returnReview.length === 0) {
         const created = new Date(firstReview[0].created_at);
@@ -2307,9 +2715,47 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
       rps !== 'paid';
     order.repair_pay_amount =
       order.actual_amount != null ? parseFloat(order.actual_amount) : null;
+    try {
+      if (await orderQuoteProposalService.proposalsTableExists(pool)) {
+        order.quote_proposals = await orderQuoteProposalService.listFormatted(pool, id);
+      } else {
+        order.quote_proposals = [];
+      }
+    } catch (_) {
+      order.quote_proposals = [];
+    }
     res.json(successResponse(order));
   } catch (error) {
     res.status(500).json(errorResponse('获取订单详情失败', 500));
+  }
+});
+
+// 电子质保凭证（车主）
+app.get('/api/v1/user/orders/:id/warranty-card', authenticateToken, async (req, res) => {
+  try {
+    const r = await orderWarrantyCardService.getWarrantyCard(pool, req.params.id, { userId: req.userId });
+    if (!r.ok) return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    res.json(successResponse(r.data));
+  } catch (error) {
+    console.error('用户电子质保凭证错误:', error);
+    res.status(500).json(errorResponse('获取电子质保凭证失败', 500));
+  }
+});
+
+// 电子质保凭证存证核验（公开，无需登录）
+app.post('/api/v1/public/warranty-card/verify', async (req, res) => {
+  try {
+    const orderId = (req.body && req.body.order_id) != null ? String(req.body.order_id).trim() : '';
+    const code =
+      (req.body && (req.body.anti_fake_code != null ? req.body.anti_fake_code : req.body.code)) != null
+        ? String(req.body.anti_fake_code != null ? req.body.anti_fake_code : req.body.code)
+        : '';
+    const r = await orderWarrantyCardService.verifyAntiFakeCode(pool, orderId, code);
+    if (!r.ok) return res.status(400).json(errorResponse(r.error));
+    res.json(successResponse(r.data));
+  } catch (error) {
+    console.error('电子质保凭证核验错误:', error);
+    res.status(500).json(errorResponse('核验失败', 500));
   }
 });
 
@@ -2330,27 +2776,47 @@ app.get('/api/v1/user/orders/:id/reward-preview', authenticateToken, async (req,
     try {
       vehicleInfo = typeof order.vehicle_info === 'string' ? JSON.parse(order.vehicle_info || '{}') : (order.vehicle_info || {});
     } catch (_) {}
-    let quoteItems = [];
-    if (order.quote_id) {
-      const [quotes] = await pool.execute('SELECT items FROM quotes WHERE quote_id = ?', [order.quote_id]);
-      if (quotes.length > 0 && quotes[0].items) {
-        try {
-          quoteItems = typeof quotes[0].items === 'string' ? JSON.parse(quotes[0].items) : (quotes[0].items || []);
-        } catch (_) {}
-      }
-    }
+    const { quoteItems, quotedForCalc } = await rewardCalculator.resolveRepairItemsAndQuotedAmount(pool, order);
     const [shops] = await pool.execute(
       'SELECT compliance_rate, complaint_rate FROM shops WHERE shop_id = ?',
       [order.shop_id]
     );
     const shop = shops.length > 0 ? shops[0] : {};
-    const result = await rewardCalculator.calculateReward(pool, order, vehicleInfo, quoteItems, shop);
+    const orderForCalc = {
+      quoted_amount: quotedForCalc,
+      actual_amount: order.actual_amount,
+      complexity_level: null,
+      order_tier: null,
+      is_insurance_accident: order.is_insurance_accident === 1 || order.is_insurance_accident === '1',
+    };
+    const result = await rewardCalculator.calculateReward(pool, orderForCalc, vehicleInfo, quoteItems, shop);
+    const ruleTotalReward = result.reward_pre.toFixed(2);
+    let firstReviewInvalid = false;
+    let firstReviewCredited = null;
+    try {
+      const [frRows] = await pool.execute(
+        'SELECT rebate_amount, reward_amount, content_quality FROM reviews WHERE order_id = ? AND type = 1 LIMIT 1',
+        [id]
+      );
+      if (frRows.length > 0) {
+        const fr = frRows[0];
+        firstReviewInvalid = fr.content_quality === 'invalid';
+        const credited = parseFloat(fr.rebate_amount ?? fr.reward_amount ?? 0) || 0;
+        firstReviewCredited = credited;
+      }
+    } catch (_) {}
     res.json(successResponse({
       order_id: id,
       order_tier: result.order_tier,
       complexity_level: result.complexity_level,
       vehicle_price_tier: result.vehicle_price_tier,
-      total_reward: result.reward_pre.toFixed(2),
+      /** 规则下基础预估（未扣有效评价门槛；已评价后仍可用于对照） */
+      total_reward: ruleTotalReward,
+      rule_reward_pre: ruleTotalReward,
+      first_review_invalid: firstReviewInvalid,
+      /** 首评实际入账（rebate_amount≈税后到账；无效评价为 0） */
+      first_review_credited:
+        firstReviewCredited != null ? Number(firstReviewCredited).toFixed(2) : null,
       commission_rate: (result.commission_rate * 100).toFixed(1),
       commission_amount: result.commission_amount,
       stages: result.stages
@@ -2395,7 +2861,7 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
   try {
     const { id } = req.params;
     const [orders] = await pool.execute(
-      `SELECT o.*, s.name as shop_name, s.logo as shop_logo
+      `SELECT o.*, s.name as shop_name, s.logo as shop_logo, s.address as shop_address, s.district as shop_district
        FROM orders o
        LEFT JOIN shops s ON o.shop_id = s.shop_id
        WHERE o.order_id = ? AND o.user_id = ?`,
@@ -2435,8 +2901,8 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
 
       const [quotes] = await pool.execute(
         order.quote_id
-          ? 'SELECT items, value_added_services, amount, duration, warranty FROM quotes WHERE quote_id = ?'
-          : 'SELECT items, value_added_services, amount, duration, warranty FROM quotes WHERE bidding_id = ? AND shop_id = ?',
+          ? 'SELECT items, value_added_services, amount, duration FROM quotes WHERE quote_id = ?'
+          : 'SELECT items, value_added_services, amount, duration FROM quotes WHERE bidding_id = ? AND shop_id = ?',
         order.quote_id ? [order.quote_id] : [order.bidding_id, order.shop_id]
       );
       if (quotes.length > 0) {
@@ -2450,8 +2916,7 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
           items: typeof q.items === 'string' ? (q.items ? JSON.parse(q.items) : []) : (q.items || []),
           value_added_services: typeof q.value_added_services === 'string' ? (q.value_added_services ? JSON.parse(q.value_added_services) : []) : (q.value_added_services || []),
           amount: q.amount,
-          duration: q.duration,
-          warranty: q.warranty
+          duration: q.duration
         };
       }
     }
@@ -2461,6 +2926,26 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
         repairPlan = typeof order.repair_plan === 'string' ? JSON.parse(order.repair_plan) : order.repair_plan;
       } catch (_) {}
     }
+
+    let preQuotePlan = null;
+    let finalQuotePlanSnap = null;
+    if (order.pre_quote_snapshot) {
+      try {
+        preQuotePlan =
+          typeof order.pre_quote_snapshot === 'string'
+            ? JSON.parse(order.pre_quote_snapshot)
+            : order.pre_quote_snapshot;
+      } catch (_) {}
+    }
+    if (order.final_quote_snapshot) {
+      try {
+        finalQuotePlanSnap =
+          typeof order.final_quote_snapshot === 'string'
+            ? JSON.parse(order.final_quote_snapshot)
+            : order.final_quote_snapshot;
+      } catch (_) {}
+    }
+    const dualStageQuote = !!(preQuotePlan && preQuotePlan.items && preQuotePlan.items.length);
 
     // 奖励金按《全指标底层逻辑梳理》第四章核算，此处仅作展示用占位
     const amount = parseFloat(order.actual_amount || order.quoted_amount) || 0;
@@ -2475,6 +2960,11 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
     const merchantSettlement = completionEvidence?.settlement_photos || [];
     const merchantCompletion = completionEvidence?.repair_photos || [];
     const merchantMaterials = completionEvidence?.material_photos || [];
+    const merchantPartsVerification = completionEvidence?.parts_verification || null;
+    const warrantyPhotos = []
+      .concat(completionEvidence?.warranty_card_photos || [], completionEvidence?.warranty_photos || [])
+      .flat()
+      .filter((u) => u && String(u).trim());
 
     const trust = await antifraud.getUserTrustLevel(pool, req.userId);
     const levelNames = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
@@ -2497,7 +2987,20 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       on_time: true,
       warranty_informed: false
     };
-    if (quotePlan?.warranty != null || repairPlan?.warranty != null) orderVerification.warranty_informed = true;
+    const legacyWarrantyOk = (p) =>
+      p != null && p.warranty != null && String(p.warranty).trim() !== '' && !Number.isNaN(parseInt(p.warranty, 10));
+    if (
+      legacyWarrantyOk(quotePlan) ||
+      legacyWarrantyOk(repairPlan) ||
+      legacyWarrantyOk(preQuotePlan) ||
+      legacyWarrantyOk(finalQuotePlanSnap) ||
+      quoteImportService.planItemsAllHaveWarrantyMonths(quotePlan) ||
+      quoteImportService.planItemsAllHaveWarrantyMonths(repairPlan) ||
+      quoteImportService.planItemsAllHaveWarrantyMonths(preQuotePlan) ||
+      quoteImportService.planItemsAllHaveWarrantyMonths(finalQuotePlanSnap)
+    ) {
+      orderVerification.warranty_informed = true;
+    }
     const durationDays = repairPlan?.duration ?? quotePlan?.duration ?? 3;
     if (order.accepted_at && order.completed_at && durationDays != null) {
       const accepted = new Date(order.accepted_at);
@@ -2508,26 +3011,124 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
     }
     const allVerified = Object.values(orderVerification).every(Boolean);
 
+    let quoteProposalHistory = [];
+    try {
+      if (await orderQuoteProposalService.proposalsTableExists(pool)) {
+        quoteProposalHistory = await orderQuoteProposalService.listFormatted(pool, id);
+      }
+    } catch (_) {
+      quoteProposalHistory = [];
+    }
+
+    const prePlanForPublic =
+      quoteProposalPublic.planHasDisplayablePreQuote(preQuotePlan) ? preQuotePlan : quotePlan;
+    quoteProposalHistory = quoteProposalPublic.prependPreQuoteProposalToList(
+      quoteProposalHistory,
+      prePlanForPublic,
+      order.accepted_at
+    );
+
+    let biddingQuotesTotal = null;
+    if (order.bidding_id) {
+      try {
+        const [bc] = await pool.execute('SELECT COUNT(*) as c FROM quotes WHERE bidding_id = ?', [order.bidding_id]);
+        biddingQuotesTotal = bc.length ? parseInt(bc[0].c, 10) : 0;
+      } catch (_) {
+        biddingQuotesTotal = null;
+      }
+    }
+
+    const quote_timeline = buildQuoteTimelineForReview({
+      order,
+      quotePlan,
+      repairPlan,
+      preQuotePlan,
+      finalQuotePlanSnap,
+      proposalHistoryFormatted: quoteProposalHistory,
+      biddingQuotesTotal,
+    });
+
+    let system_checks_preview = {};
+    try {
+      const initialChecks = await reviewSystemCheckService.buildInitialSystemChecksForOrder(pool, id);
+      system_checks_preview = sanitizeSystemChecksForUserFacing(initialChecks);
+    } catch (err) {
+      console.warn('[for-review] system_checks_preview:', err.message);
+    }
+
+    let lossAssessmentUrls = [];
+    if (order.loss_assessment_documents) {
+      try {
+        const raw =
+          typeof order.loss_assessment_documents === 'string'
+            ? JSON.parse(order.loss_assessment_documents || '{}')
+            : order.loss_assessment_documents;
+        if (raw && Array.isArray(raw.urls)) lossAssessmentUrls = raw.urls.filter(Boolean);
+      } catch (_) {}
+    }
+
+    const evidenceBundle = buildEvidenceSections({
+      beforeImages,
+      merchantSettlement,
+      merchantCompletion,
+      merchantMaterials,
+      quote_timeline,
+      quote_proposal_history: quoteProposalHistory,
+      orderVerification,
+      order,
+      lossAssessmentUrls,
+      repairPlan,
+      quotePlan,
+      warrantyPhotos
+    });
+    const objective_hints = buildObjectiveHints(order, orderVerification);
+
     res.json(successResponse({
       order_id: order.order_id,
+      bidding_id: order.bidding_id || null,
+      is_insurance_accident: isInsuranceOrder(order) ? 1 : 0,
+      review_scene: reviewScene(order),
+      evidence_sections: evidenceBundle.sections,
+      objective_hints,
       needs_verification: trust.needsVerification === true,
       level: trust.level,
       level_name: levelNames[trust.level] || levelNames[0],
       valid_review_count: validReviewCount,
       shop_name: order.shop_name,
       shop_logo: order.shop_logo,
+      shop_address: order.shop_address || '',
+      shop_district: order.shop_district || '',
+      shop_address_line: [order.shop_district, order.shop_address].filter(Boolean).join(' ') || '',
+      merchant_parts_verification: merchantPartsVerification,
       quoted_amount: order.quoted_amount,
+      accepted_at: order.accepted_at || null,
       before_images: beforeImages,
       repair_items: repairItems,
       rebate_rate: '8%',
       rebate_amount: rebateAmount.toFixed(2),
       merchant_settlement_list: merchantSettlement,
+      /** 定损/保险材料图 URL 列表（与 evidence_sections 事故区一致，供评价页报价折叠区展示） */
+      loss_assessment_image_urls: lossAssessmentUrls,
       merchant_completion_images: merchantCompletion,
       merchant_material_images: merchantMaterials,
       quote_plan: quotePlan,
+      /** 与 quote_plan 相同，语义为「竞价阶段 winning quotes 行」便于前端单独展示 */
+      bidding_quote_plan: quotePlan,
       repair_plan: repairPlan,
+      pre_quote_plan: preQuotePlan || quotePlan,
+      final_quote_plan: finalQuotePlanSnap || repairPlan,
+      dual_stage_quote: dualStageQuote,
       order_verification: orderVerification,
-      order_verification_all_ok: allVerified
+      order_verification_all_ok: allVerified,
+      quote_proposal_history: quoteProposalHistory,
+      quote_timeline,
+      /** 与小程序 utils/quote-nomenclature 对齐，便于端上少硬编码 */
+      quote_nomenclature: {
+        stage_codes: quoteNomenclature.QUOTE_STAGE_CODES,
+        labels: quoteNomenclature.QUOTE_LABELS,
+      },
+      /** 极简评价 v3 模块1：报价节点 + 外观等（提交前为 pending，无内部结论字段） */
+      system_checks_preview,
     }));
   } catch (error) {
     res.status(500).json(errorResponse('获取评价信息失败', 500));
@@ -2587,6 +3188,21 @@ app.post('/api/v1/user/orders/:id/repair-plan/approve', authenticateToken, async
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
     const msg = approved ? '已同意维修方案' : (result.msg || '已记录，如有疑问请联系客服');
+    res.json(successResponse(result.data, msg));
+  } catch (error) {
+    res.status(500).json(errorResponse('操作失败', 500));
+  }
+});
+
+// 车主确认或拒绝最终报价（锁价）
+app.post('/api/v1/user/orders/:id/final-quote/confirm', authenticateToken, async (req, res) => {
+  try {
+    const approved = req.body && req.body.approved === true;
+    const result = await orderService.confirmFinalQuote(pool, req.params.id, req.userId, approved);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    const msg = approved ? '已确认最终报价，价格已锁定' : '已拒绝，服务商可重新提交最终报价';
     res.json(successResponse(result.data, msg));
   } catch (error) {
     res.status(500).json(errorResponse('操作失败', 500));
@@ -2670,7 +3286,7 @@ app.post('/api/v1/bidding/create', authenticateToken, async (req, res) => {
 app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const [biddings] = await pool.execute(
       `SELECT b.*, dr.analysis_result 
        FROM biddings b 
@@ -2706,7 +3322,9 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
 
     res.json(successResponse({
       bidding_id: bidding.bidding_id,
+      report_id: bidding.report_id,
       status: bidding.status,
+      selected_shop_id: bidding.selected_shop_id || null,
       expire_at: bidding.expire_at,
       tier1_window_ends_at: bidding.tier1_window_ends_at,
       quote_count: quoteCountVal,
@@ -2717,7 +3335,15 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
       all_notified,
       vehicle_info: JSON.parse(bidding.vehicle_info || '{}'),
       insurance_info: JSON.parse(bidding.insurance_info || '{}'),
-      analysis_result: JSON.parse(bidding.analysis_result || '{}')
+      analysis_result: (() => {
+        let ar = {};
+        try {
+          ar = JSON.parse(bidding.analysis_result || '{}');
+        } catch (_) {}
+        const safe = sanitizeAnalysisResultForRead(ar);
+        enrichAnalysisResultHumanDisplay(safe);
+        return safe;
+      })()
     }));
   } catch (error) {
     res.status(500).json(errorResponse('获取竞价详情失败', 500));
@@ -2761,7 +3387,8 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
     }
 
     const [quotes] = await pool.execute(
-      `SELECT q.*, s.name as shop_name, s.logo, s.rating, s.shop_score, s.deviation_rate, s.total_orders, s.created_at as shop_created_at, s.latitude as shop_lat, s.longitude as shop_lng
+      `SELECT q.*, s.name as shop_name, s.logo, s.rating, s.shop_score, s.deviation_rate, s.total_orders, s.created_at as shop_created_at, s.latitude as shop_lat, s.longitude as shop_lng,
+              (q.quote_valid_until IS NOT NULL AND q.quote_valid_until <= NOW()) AS quote_past_validity
        FROM quotes q
        JOIN shops s ON q.shop_id = s.shop_id
        WHERE q.bidding_id = ?`,
@@ -2806,12 +3433,25 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
     } else if (sort_type === 'distance' && hasLocation) {
       list = [...quotesWithDistance].sort((a, b) => (parseFloat(a.distance) || 999) - (parseFloat(b.distance) || 999));
     } else if (sort_type === 'warranty') {
-      list = [...quotesWithDistance].sort((a, b) => (parseInt(b.warranty) || 0) - (parseInt(a.warranty) || 0));
+      list = [...quotesWithDistance].sort((a, b) => {
+        let ai;
+        let bi;
+        try {
+          ai = typeof a.items === 'string' ? JSON.parse(a.items || '[]') : (a.items || []);
+        } catch (_) {
+          ai = [];
+        }
+        try {
+          bi = typeof b.items === 'string' ? JSON.parse(b.items || '[]') : (b.items || []);
+        } catch (_) {
+          bi = [];
+        }
+        return quoteImportService.maxWarrantyMonthsFromItems(bi) - quoteImportService.maxWarrantyMonthsFromItems(ai);
+      });
     } else {
       list = [...quotesWithDistance].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     }
 
-    const now = Date.now();
     const shopIds = [...new Set(quotesWithDistance.map(q => q.shop_id).filter(Boolean))];
     let goodRateMap = new Map();
     let badRateMap = new Map();
@@ -2849,10 +3489,70 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
     } else if (sort_type === 'bad_rate') {
       list = [...quotesWithDistance].sort((a, b) => (badRateMap.get(a.shop_id) ?? 100) - (badRateMap.get(b.shop_id) ?? 100));
     }
+
+    let vehicleInfoForPreview = {};
+    let isInsuranceAccidentPreview = false;
+    try {
+      const [bidPreview] = await pool.execute(
+        'SELECT vehicle_info, insurance_info FROM biddings WHERE bidding_id = ? LIMIT 1',
+        [id]
+      );
+      if (bidPreview.length) {
+        try {
+          vehicleInfoForPreview =
+            typeof bidPreview[0].vehicle_info === 'string'
+              ? JSON.parse(bidPreview[0].vehicle_info || '{}')
+              : bidPreview[0].vehicle_info || {};
+        } catch (_) {
+          vehicleInfoForPreview = {};
+        }
+        try {
+          const ins =
+            typeof bidPreview[0].insurance_info === 'string'
+              ? JSON.parse(bidPreview[0].insurance_info || '{}')
+              : bidPreview[0].insurance_info || {};
+          if (ins && ins.is_insurance) isInsuranceAccidentPreview = true;
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    const quoteRewardPreviews = await Promise.all(
+      list.map(async (q) => {
+        let quoteItems = [];
+        try {
+          quoteItems = typeof q.items === 'string' ? JSON.parse(q.items || '[]') : q.items || [];
+        } catch (_) {
+          quoteItems = [];
+        }
+        const orderForCalc = {
+          quoted_amount: q.amount,
+          actual_amount: null,
+          complexity_level: null,
+          order_tier: null,
+          is_insurance_accident: isInsuranceAccidentPreview,
+        };
+        try {
+          const result = await rewardCalculator.calculateReward(pool, orderForCalc, vehicleInfoForPreview, quoteItems, {});
+          return {
+            preview_complexity_level: result.complexity_level,
+            preview_reward_pre: result.reward_pre,
+            preview_commission_rate: Math.round(result.commission_rate * 10000) / 100,
+          };
+        } catch (_) {
+          return {
+            preview_complexity_level: null,
+            preview_reward_pre: null,
+            preview_commission_rate: null,
+          };
+        }
+      })
+    );
+
     res.json(successResponse({
-      list: list.map(q => {
-        const validUntil = q.quote_valid_until ? new Date(q.quote_valid_until).getTime() : null;
-        const isExpired = validUntil != null && now > validUntil;
+      reward_preview_disclaimer: '以下为根据当前报价明细的规则预估，选厂或后续方案变更后可能变化',
+      list: list.map((q, idx) => {
+        const isExpired = !!q.quote_past_validity;
+        const pv = quoteRewardPreviews[idx] || {};
         return {
           quote_id: q.quote_id,
           shop_id: q.shop_id,
@@ -2866,14 +3566,16 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
           items: JSON.parse(q.items || '[]'),
           value_added_services: typeof q.value_added_services === 'string' ? JSON.parse(q.value_added_services || '[]') : (q.value_added_services || []),
           duration: q.duration,
-          warranty: q.warranty,
           remark: q.remark,
           distance: q.distance != null ? Math.round(q.distance * 10) / 10 : null,
           created_at: q.created_at,
           quote_valid_until: q.quote_valid_until,
           is_expired: isExpired,
           good_rate: goodRateMap.get(q.shop_id),
-          recent_bad_review_summary: badReviewSummaryMap.get(q.shop_id)
+          recent_bad_review_summary: badReviewSummaryMap.get(q.shop_id),
+          preview_complexity_level: pv.preview_complexity_level,
+          preview_reward_pre: pv.preview_reward_pre,
+          preview_commission_rate: pv.preview_commission_rate,
         };
       }),
       total: list.length
@@ -2958,10 +3660,9 @@ if (process.env.NODE_ENV !== 'production') {
         const amount = baseAmount + (i * 200) + Math.floor(Math.random() * 300);
         const duration = 3 + (i % 3);
         const warranty = 12;
-        const validUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
         await pool.execute(
           `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 3 DAY))`,
           [
             quoteId,
             bidding_id,
@@ -2971,8 +3672,7 @@ if (process.env.NODE_ENV !== 'production') {
             JSON.stringify([]),
             duration,
             warranty,
-            '测试报价',
-            validUntil
+            '测试报价'
           ]
         );
         created++;
@@ -2986,6 +3686,17 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ===================== 4. 维修厂相关接口 =====================
+
+// 官网公开：历史成交参考价（匿名聚合，样本门槛）
+app.get('/api/v1/public/historical-fair-price', async (req, res) => {
+  try {
+    const data = await historicalFairPriceService.lookup(pool, req.query);
+    res.json(successResponse(data));
+  } catch (error) {
+    console.error('historical-fair-price:', error);
+    res.status(500).json(errorResponse(safeErrorMessage(error, '查询失败'), 500));
+  }
+});
 
 // 获取附近维修厂
 app.get('/api/v1/shops/nearby', async (req, res) => {
@@ -3357,10 +4068,12 @@ app.post('/api/v1/reviews/:id/followup', authenticateToken, async (req, res) => 
     const threeMonthsAgo = new Date(completedAt);
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() + 3);
     const now = new Date();
-    if (stageVal === '1m' && now < oneMonthAgo) return res.status(400).json(errorResponse('1个月追评尚未到开放时间'));
-    if (stageVal === '3m') {
-      if (orderTier !== 4) return res.status(400).json(errorResponse('仅四级订单支持3个月追评'));
-      if (now < threeMonthsAgo) return res.status(400).json(errorResponse('3个月追评尚未到开放时间'));
+    if (!shouldSkipFollowupTimeCheck()) {
+      if (stageVal === '1m' && now < oneMonthAgo) return res.status(400).json(errorResponse('1个月追评尚未到开放时间'));
+      if (stageVal === '3m') {
+        if (orderTier !== 4) return res.status(400).json(errorResponse('仅四级订单支持3个月追评'));
+        if (now < threeMonthsAgo) return res.status(400).json(errorResponse('3个月追评尚未到开放时间'));
+      }
     }
 
     // 追评不再单独发放：主评价已全额发放，追评触发整体重评，若等级升级则差额补发（月度结算）
@@ -3389,21 +4102,16 @@ app.post('/api/v1/reviews/:id/followup', authenticateToken, async (req, res) => 
       );
     }
 
-    try {
-      await pool.execute(
-        `INSERT INTO review_audit_logs (review_id, audit_type, result, created_at) VALUES (?, 'ai', 'pass', NOW())`,
-        [followupId]
-      );
-    } catch (_) {}
-
     res.json(successResponse({
       review_id: followupId,
       reward: { amount: userReceives.toFixed(2), tax_deducted: taxDeducted, stage: stageVal }
     }, '追评提交成功'));
 
-    // 异步：主评价+追评整体重评估，回写主评价 content_quality（整体性评估原则）
+    // 异步：主评价+追评整体重评估，回写主评价 content_quality；人工裁定仅依赖千问未达标链路（见 02 文档）
     const baseUrl = (req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${PORT}`);
-    reviewService.recomputeHolisticContentQuality(pool, firstReview.order_id, { baseUrl, port: PORT }).catch(() => {});
+    reviewService
+      .recomputeHolisticContentQuality(pool, firstReview.order_id, { baseUrl, port: PORT, triggerFollowupId: followupId })
+      .catch(() => {});
   } catch (error) {
     console.error('提交追评错误:', error);
     res.status(500).json(errorResponse('提交追评失败', 500));
@@ -4049,6 +4757,30 @@ app.post('/api/v1/admin/appeal-reviews/:requestId/resolve', authenticateAdmin, a
   }
 });
 
+// 维修完成材料：AI 未自动通过 → manual_review，后台人工通过/驳回
+app.get('/api/v1/admin/material-audit-tasks', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.listMaterialAuditManualTasks(pool);
+    res.json(successResponse(result.data));
+  } catch (error) {
+    console.error('获取待人工材料审核列表失败:', error);
+    res.status(500).json(errorResponse('获取失败', 500));
+  }
+});
+app.post('/api/v1/admin/material-audit-tasks/:taskId/resolve', authenticateAdmin, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const result = await adminService.resolveMaterialAuditTask(pool, taskId, req.body || {});
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
+  } catch (error) {
+    console.error('材料人工审核处理失败:', error);
+    res.status(500).json(errorResponse('处理失败', 500));
+  }
+});
+
 // ===================== A10 奖励金规则配置 =====================
 // 统一配置接口：读写 reward_rules 表（唯一数据源）
 app.get('/api/v1/admin/reward-rules/config', authenticateAdmin, async (req, res) => {
@@ -4070,6 +4802,19 @@ app.post('/api/v1/admin/reward-rules/config', authenticateAdmin, async (req, res
     res.json(successResponse(null, result.message));
   } catch (error) {
     console.error('保存奖励金规则配置失败:', error);
+    res.status(500).json(errorResponse(error.message || '保存失败', 500));
+  }
+});
+
+app.put('/api/v1/admin/commission-rules', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.saveCommissionRulesConfig(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
+  } catch (error) {
+    console.error('保存佣金规则配置失败:', error);
     res.status(500).json(errorResponse(error.message || '保存失败', 500));
   }
 });
@@ -4151,6 +4896,19 @@ app.get('/api/v1/admin/review-audit/list', authenticateAdmin, async (req, res) =
   }
 });
 
+app.post('/api/v1/admin/review-audit/:reviewId/pending-human-resolve', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.postReviewPendingHumanResolve(pool, req);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, result.message));
+  } catch (error) {
+    console.error('AI 驳回人工裁定失败:', error);
+    res.status(500).json(errorResponse(error.message || '操作失败', 500));
+  }
+});
+
 app.post('/api/v1/admin/review-audit/:reviewId/manual', authenticateAdmin, async (req, res) => {
   try {
     const result = await adminService.postReviewAuditManual(pool, req);
@@ -4161,6 +4919,26 @@ app.post('/api/v1/admin/review-audit/:reviewId/manual', authenticateAdmin, async
   } catch (error) {
     console.error('人工复核失败:', error);
     res.status(500).json(errorResponse('复核失败', 500));
+  }
+});
+
+app.get('/api/v1/admin/review-audit/star-ai-anomaly-config', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.getReviewStarAiAnomalyConfig(pool, req);
+    res.json(successResponse(result.data));
+  } catch (error) {
+    console.error('获取星级-AI矛盾配置失败:', error);
+    res.status(500).json(errorResponse('获取配置失败', 500));
+  }
+});
+
+app.put('/api/v1/admin/review-audit/star-ai-anomaly-config', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.putReviewStarAiAnomalyConfig(pool, req);
+    res.json(successResponse(result.data, result.message));
+  } catch (error) {
+    console.error('保存星级-AI矛盾配置失败:', error);
+    res.status(500).json(errorResponse('保存失败', 500));
   }
 });
 
@@ -4333,7 +5111,7 @@ if (process.env.NODE_ENV !== 'production') {
       const [existing] = await pool.execute('SELECT 1 FROM bidding_distribution WHERE bidding_id = ? AND shop_id = ?', [biddingId, shop_id]);
       if (existing.length > 0) {
         await pool.execute('UPDATE biddings SET tier1_window_ends_at = NULL WHERE bidding_id = ?', [biddingId]);
-        return res.json(successResponse({ added: false, window_expired: true }, '店铺已在邀请名单，已提前结束第一梯队窗口'));
+        return res.json(successResponse({ added: false, window_expired: true }, '店铺已在邀请名单，优先报价窗口已结束'));
       }
       await pool.execute(
         'INSERT INTO bidding_distribution (bidding_id, shop_id, tier, match_score) VALUES (?, ?, 1, 80)',
@@ -4510,7 +5288,7 @@ if (process.env.NODE_ENV !== 'production') {
       );
       try {
         await pool.execute(
-          "UPDATE material_audit_tasks SET status = 'passed', completed_at = NOW() WHERE order_id = ? AND status = 'pending'",
+          "UPDATE material_audit_tasks SET status = 'passed', completed_at = NOW() WHERE order_id = ? AND status IN ('pending','manual_review')",
           [orderId]
         );
       } catch (_) {}
@@ -4565,6 +5343,9 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log('🚀 辙见 API 服务器已启动');
   console.log(`📡 监听端口: ${PORT}`);
   console.log(`🔗 健康检查: http://localhost:${PORT}/health`);
+  if (!isProd && shouldSkipFollowupTimeCheck()) {
+    console.log('ℹ️ 非生产：追评 1 个月/3 个月时间窗校验已关闭（SKIP_FOLLOWUP_TIME_CHECK=0 可恢复）');
+  }
   await testDBConnection();
   setInterval(() => {
     commissionWalletService.scanLowBalanceWallets(pool).catch((e) => console.warn('[commission-scan]', e.message));

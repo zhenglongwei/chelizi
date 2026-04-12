@@ -17,7 +17,7 @@ async function getRewardRulesConfig(pool) {
     [CONFIG_KEY]
   );
   if (!rows || rows.length === 0) {
-    throw new Error('奖励金规则未配置，请在运营后台 /admin/reward-rules 完成配置');
+    throw new Error('奖励金规则未配置，请在运营后台 /admin/reward-rules 完成配置；佣金比例见 /admin/commission-rules');
   }
   const raw = rows[0].rule_value;
   let config;

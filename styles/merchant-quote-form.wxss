@@ -1,0 +1,266 @@
+/**
+ * 服务商报价明细表单（维修项目 + 增值服务 + 汇总）
+ * 复用：pages/merchant/bidding/detail（首次报价）、pages/merchant/order/repair-plan-edit（修改方案/修改报价单）
+ */
+@import '/styles/design-system.wxss';
+
+.mqf-section {
+  margin-bottom: var(--space-xl);
+}
+
+.mqf-section-title {
+  display: block;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+  font-weight: 600;
+}
+
+.mqf-section-hint {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+/* Excel / 拍照识别（M05、M07 再次报价共用） */
+.quote-ai-action {
+  margin-top: var(--space-md);
+}
+.quote-ai-btn {
+  font-size: var(--fs-body);
+  color: var(--primary);
+  background: var(--accent-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-lg);
+}
+.quote-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+.quote-import-btn {
+  margin: 0;
+}
+.quote-import-hint {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.5;
+}
+
+.mqf-items-list {
+  margin-bottom: var(--space-lg);
+}
+
+.mqf-item-block {
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.mqf-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.mqf-line--repair {
+  flex-wrap: wrap;
+}
+
+.mqf-line--repair .mqf-picker {
+  flex: 1;
+  min-width: 140rpx;
+}
+
+.mqf-label {
+  flex-shrink: 0;
+  width: 140rpx;
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}
+
+.mqf-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.mqf-picker {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.mqf-picker--locked {
+  color: var(--text-hint);
+}
+
+.mqf-picker--parts {
+  margin-left: var(--space-sm);
+}
+
+.mqf-static {
+  flex: 1;
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+}
+
+.mqf-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.mqf-del {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  padding: var(--space-xs) var(--space-md);
+}
+
+.mqf-del:active {
+  opacity: 0.7;
+}
+
+.mqf-item-add {
+  padding: var(--space-md);
+  text-align: center;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* 增值服务 */
+.mqf-value-added {
+  margin-bottom: var(--space-lg);
+}
+
+.mqf-va-list {
+  margin-top: var(--space-sm);
+}
+
+.mqf-va-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.mqf-va-input {
+  flex: 1;
+  font-size: var(--fs-body);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mqf-va-del {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.mqf-va-add {
+  padding: var(--space-md);
+  text-align: center;
+  border: 2rpx dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* 汇总：总报价、工期 */
+.mqf-summary-section {
+  padding-top: var(--space-lg);
+  margin-top: var(--space-lg);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.mqf-total-block {
+  margin-bottom: var(--space-lg);
+}
+
+.mqf-total-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+.mqf-total-input-wrap {
+  display: flex;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-md);
+}
+
+.mqf-total-prefix {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--primary);
+  margin-right: var(--space-sm);
+}
+
+.mqf-total-input {
+  flex: 1;
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--primary);
+  min-width: 0;
+}
+
+.mqf-extra-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+}
+
+.mqf-extra-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.mqf-extra-label {
+  flex-shrink: 0;
+}
+
+.mqf-extra-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.mqf-extra-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--fs-body);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.mqf-extra-unit {
+  flex-shrink: 0;
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+}

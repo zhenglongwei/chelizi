@@ -136,12 +136,34 @@
         </view>
 
         <view class="damage-report-damages">
-          <view class="fs-body fw-bold">损伤部位</view>
-          <view class="damage-damage-item" wx:for="{{currentDamages}}" wx:key="index">
-            <text class="fs-body">{{item.part}}：{{item.type}}，{{item.severity}}</text>
-            <text class="text-muted fs-sm" wx:if="{{item.knowledge_rule}}" style="display:block;margin-top:4rpx;">国标：{{item.knowledge_rule}}</text>
+          <view class="damage-human-section">
+            <view class="fs-body fw-bold damage-human-title">明显损伤</view>
+            <block wx:if="{{currentHumanDisplay.obvious_damage && currentHumanDisplay.obvious_damage.length}}">
+              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.obvious_damage}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body damage-human-empty" wx:else>暂无明显可见损伤</text>
           </view>
-          <text class="text-muted fs-body" wx:if="{{!currentDamages || !currentDamages.length}}">未发现明显损伤</text>
+          <view class="damage-human-section">
+            <view class="fs-body fw-bold damage-human-title">可能损伤</view>
+            <block wx:if="{{currentHumanDisplay.possible_damage && currentHumanDisplay.possible_damage.length}}">
+              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.possible_damage}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body damage-human-empty" wx:else>暂无待进一步确认项</text>
+          </view>
+          <view class="damage-human-section">
+            <view class="fs-body fw-bold damage-human-title">维修建议</view>
+            <block wx:if="{{currentHumanDisplay.repair_advice && currentHumanDisplay.repair_advice.length}}">
+              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.repair_advice}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body damage-human-empty" wx:else>暂无专项建议</text>
+          </view>
+          <view class="damage-disclaimer text-muted fs-sm">本分析结果仅供参考，具体请以实车检测与正规维修厂意见为准。</view>
         </view>
       </view>
 

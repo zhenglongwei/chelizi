@@ -29,6 +29,42 @@ page {
   /* 遮罩层（图片删除按钮等） */
   --overlay-dark: rgba(0, 0, 0, 0.5);
 
+  /* 电子质保凭证 · 卡面背景（与 pages/order/warranty-card、merchant 样式预览共用） */
+  --warranty-gold-start: #fff9e6;
+  --warranty-gold-mid: #fef3c7;
+  --warranty-gold-end: #fde68a;
+  --warranty-gold-border: #eab308;
+  --warranty-light-start: #ffffff;
+  --warranty-light-end: #f8fafc;
+  --warranty-light-border: #e2e8f0;
+  --warranty-blue-start: #eff6ff;
+  --warranty-blue-mid: #dbeafe;
+  --warranty-blue-end: #bfdbfe;
+  --warranty-blue-border: #3b82f6;
+  /* 建档纸：米白渐变 + 细纹理感 */
+  --warranty-archive-start: #fffefb;
+  --warranty-archive-mid: #faf8f5;
+  --warranty-archive-end: #f3efe6;
+  --warranty-archive-border: rgba(139, 125, 107, 0.38);
+  --warranty-archive-fiber: rgba(30, 41, 59, 0.028);
+  /* 辙痕：品牌色轻晕 + 细斜纹（抽象「轨迹」） */
+  --warranty-track-glow-tr: rgba(37, 99, 235, 0.08);
+  --warranty-track-glow-bl: rgba(37, 99, 235, 0.045);
+  --warranty-track-stripe: rgba(30, 41, 59, 0.02);
+  --warranty-track-border: rgba(37, 99, 235, 0.3);
+  /* 墨线：正式文书感 */
+  --warranty-ink-start: #ffffff;
+  --warranty-ink-mid: #f8fafc;
+  --warranty-ink-end: #eef2f7;
+  --warranty-ink-border: var(--text-primary);
+  --warranty-ink-inner-line: rgba(30, 41, 59, 0.07);
+  /* 质保卡装饰：角花、水印、暗纹 */
+  --warranty-ornament: rgba(30, 41, 59, 0.2);
+  --warranty-watermark: rgba(30, 41, 59, 0.04);
+  --warranty-pattern-mesh: rgba(37, 99, 235, 0.035);
+  --warranty-sample-bg: rgba(245, 158, 11, 0.12);
+  --warranty-sample-text: #b45309;
+
   /* 间距（rpx） */
   --space-xs: 8rpx;
   --space-sm: 12rpx;

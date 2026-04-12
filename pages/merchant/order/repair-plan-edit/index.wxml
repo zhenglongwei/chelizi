@@ -1,52 +1,249 @@
-<!-- 修改维修方案 - M07 -->
-<custom-nav-bar title="修改维修方案" showBack="{{true}}" />
+<!-- 修改维修方案 / 修改报价单（多轮）- M07；车主定损与 AI 分析与 M05 首次报价对齐 -->
+<custom-nav-bar title="{{navTitle}}" showBack="{{true}}" />
 <view class="page-root repair-plan-edit" style="{{pageRootStyle}}">
-  <view class="edit-tip card" wx:if="{{order}}">
-    <text class="text-muted fs-cap">配件类型不可修改。可增删改项目、金额、工期、质保。</text>
-  </view>
   <scroll-view class="edit-scroll" scroll-y style="{{scrollStyle}}" wx:if="{{order}}">
-    <view class="edit-card card">
-      <view class="edit-section">
-        <text class="edit-section-title fs-body fw-bold">维修项目</text>
-        <view class="edit-item" wx:for="{{items}}" wx:key="id">
-          <view class="edit-item-row">
-            <text class="edit-item-label">损失部位</text>
-            <input class="edit-item-input" placeholder="如：前保险杠" value="{{item.damage_part}}" data-id="{{item.id}}" data-f="damage_part" bindinput="onItemInput"/>
-          </view>
-          <view class="edit-item-row">
-            <text class="edit-item-label">维修方案</text>
-            <picker mode="selector" range="{{repairTypes}}" range-key="label" value="{{item.rtIdx}}" data-id="{{item.id}}" bindchange="onRepairTypeChange">
-              <view class="edit-item-picker">{{item.repair_type || '请选择'}}</view>
-            </picker>
-            <picker wx:if="{{item.repair_type === '换'}}" mode="selector" range="{{partsTypes}}" range-key="label" value="{{item.ptIdx}}" data-id="{{item.id}}" bindchange="onPartsTypeChange">
-              <view class="edit-item-picker {{item.partsTypeLocked ? 'edit-item-picker-locked' : ''}}">{{item.parts_type || '配件类型'}}</view>
-            </picker>
-          </view>
-          <view class="edit-item-del" data-id="{{item.id}}" bindtap="onDelItem">删除</view>
-        </view>
-        <view class="edit-item-add" bindtap="onAddItem">+ 添加项目</view>
+    <!-- 车主定损依据（与 M05 一致） -->
+    <view class="merchant-owner-evidence card">
+      <view class="merchant-evidence-head">
+        <text class="merchant-evidence-title fs-h3 fw-bold">车主定损依据</text>
+        <text class="merchant-evidence-priority fs-cap">请优先根据下列照片与说明核损、填写报价</text>
       </view>
-      <view class="edit-section">
-        <text class="edit-section-title fs-body fw-bold">增值服务</text>
-        <view class="edit-va-row" wx:for="{{valueAdded}}" wx:key="id">
-          <input class="edit-va-input" placeholder="如：代步车" value="{{item.name}}" data-id="{{item.id}}" bindinput="onVaInput"/>
-          <view class="edit-va-del" data-id="{{item.id}}" bindtap="onDelVa">删除</view>
+      <view class="merchant-evidence-photos-block" wx:if="{{order.images && order.images.length}}">
+        <text class="merchant-evidence-block-label fs-body fw-bold">事故照片</text>
+        <view class="merchant-evidence-photos-grid">
+          <view class="merchant-evidence-photo-item" wx:for="{{order.images}}" wx:key="index" data-index="{{index}}" bindtap="onPreviewOwnerDamagePhoto">
+            <image class="merchant-evidence-photo-thumb" src="{{item}}" mode="aspectFill"/>
+          </view>
         </view>
-        <view class="edit-item-add" bindtap="onAddVa">+ 添加增值服务</view>
       </view>
-      <view class="edit-section">
-        <view class="edit-row">
-          <text class="edit-row-label">总报价（元）</text>
-          <input class="edit-row-input" type="digit" value="{{amount}}" bindinput="onAmountInput"/>
+      <view class="merchant-evidence-empty-photos text-muted fs-cap" wx:else>
+        车主未上传事故照片
+      </view>
+      <view class="merchant-evidence-desc-block" wx:if="{{order.user_description}}">
+        <text class="merchant-evidence-block-label fs-body fw-bold">车主补充说明</text>
+        <view class="merchant-evidence-desc-body">
+          <text class="fs-body merchant-evidence-desc-text">{{order.user_description}}</text>
         </view>
-        <view class="edit-row">
-          <text class="edit-row-label">工期（天）</text>
-          <input class="edit-row-input" type="number" value="{{duration}}" bindinput="onDurationInput"/>
+      </view>
+      <view class="merchant-evidence-no-desc text-muted fs-cap" wx:elif="{{order.images && order.images.length}}">
+        车主未填写补充说明（如泡水、异响等请以照片为准）
+      </view>
+      <view class="merchant-evidence-meta">
+        <view class="detail-vehicle-row">
+          <text class="text-muted fs-cap">车辆</text>
+          <text class="fs-body fw-medium">{{order.vehicle_info.brand || ''}} {{order.vehicle_info.model || ''}}</text>
+          <text class="text-weak fs-sm" wx:if="{{order.vehicle_info.plate_number}}">{{order.vehicle_info.plate_number}}</text>
         </view>
-        <view class="edit-row">
-          <text class="edit-row-label">质保（月）</text>
-          <input class="edit-row-input" type="number" value="{{warranty}}" bindinput="onWarrantyInput"/>
+        <view class="detail-insurance-row">
+          <text class="text-muted fs-cap">支付方式</text>
+          <text class="fs-body fw-medium">{{order.insurance_info && order.insurance_info.is_insurance ? '保险支付' : '自费'}}</text>
         </view>
+        <view class="detail-insurance-detail" wx:if="{{order.insurance_info && order.insurance_info.is_insurance}}">
+          <view class="detail-insurance-item" wx:if="{{order.insurance_info.accident_type_label}}">
+            <text class="text-muted fs-cap">事故类型</text>
+            <text class="fs-sm">{{order.insurance_info.accident_type_label}}</text>
+          </view>
+          <view class="detail-insurance-item" wx:if="{{order.insurance_info.insurance_company}}">
+            <text class="text-muted fs-cap">{{order.insurance_info.insurance_company_other ? '自家保险' : '保险公司'}}</text>
+            <text class="fs-sm">{{order.insurance_info.insurance_company}}</text>
+          </view>
+          <view class="detail-insurance-item" wx:if="{{order.insurance_info.insurance_company_other}}">
+            <text class="text-muted fs-cap">对家保险</text>
+            <text class="fs-sm">{{order.insurance_info.insurance_company_other}}</text>
+          </view>
+          <view class="detail-insurance-item" wx:if="{{order.insurance_info.main_responsible}}">
+            <text class="text-muted fs-cap">主责方</text>
+            <text class="fs-sm">{{order.insurance_info.main_responsible}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- AI 分析报告（与 M05 一致，默认折叠） -->
+    <view class="merchant-ai-report card" wx:if="{{reportHasAnalysisSection}}">
+      <view class="merchant-ai-report-head" bindtap="toggleAiReport">
+        <view class="merchant-ai-report-head-text">
+          <text class="fs-body fw-bold">AI 分析报告</text>
+          <text class="merchant-ai-report-hint text-muted fs-cap">仅供参考 · 点击展开</text>
+        </view>
+        <view class="merchant-ai-report-head-right">
+          <view class="detail-card-badge merchant-ai-badge" wx:if="{{order.complexity_level}}">
+            <text class="fs-sm">{{order.complexity_level}}</text>
+          </view>
+          <image class="merchant-ai-report-arrow" src="/images/icon/zhedie.png" mode="aspectFit" style="transform: rotate({{aiReportExpanded ? 180 : 0}}deg);"/>
+        </view>
+      </view>
+      <view class="merchant-ai-report-body" wx:if="{{aiReportExpanded}}">
+        <view class="merchant-ai-row" wx:if="{{order.analysis_result && order.analysis_result.total_estimate && order.analysis_result.total_estimate.length >= 2}}">
+          
+        </view>
+        <view class="merchant-ai-human" wx:if="{{reportHasHumanLines}}">
+          <view class="merchant-ai-human-block">
+            <text class="fs-cap fw-bold merchant-ai-human-title">明显损伤</text>
+            <block wx:if="{{reportHumanDisplay.obvious_damage && reportHumanDisplay.obvious_damage.length}}">
+              <view class="merchant-ai-line fs-cap" wx:for="{{reportHumanDisplay.obvious_damage}}" wx:key="index">· {{item}}</view>
+            </block>
+            <text class="text-muted fs-cap" wx:else>暂无明显可见损伤</text>
+          </view>
+          <view class="merchant-ai-human-block">
+            <text class="fs-cap fw-bold merchant-ai-human-title">可能损伤</text>
+            <block wx:if="{{reportHumanDisplay.possible_damage && reportHumanDisplay.possible_damage.length}}">
+              <view class="merchant-ai-line fs-cap" wx:for="{{reportHumanDisplay.possible_damage}}" wx:key="index">· {{item}}</view>
+            </block>
+            <text class="text-muted fs-cap" wx:else>暂无待进一步确认项</text>
+          </view>
+          <view class="merchant-ai-human-block">
+            <text class="fs-cap fw-bold merchant-ai-human-title">维修建议</text>
+            <block wx:if="{{reportHumanDisplay.repair_advice && reportHumanDisplay.repair_advice.length}}">
+              <view class="merchant-ai-line fs-cap" wx:for="{{reportHumanDisplay.repair_advice}}" wx:key="index">· {{item}}</view>
+            </block>
+            <text class="text-muted fs-cap" wx:else>暂无专项建议</text>
+          </view>
+        </view>
+        <view class="detail-damages" wx:if="{{!reportHasHumanLines && order.analysis_result && order.analysis_result.damages && order.analysis_result.damages.length}}">
+          <text class="text-muted fs-cap">损伤明细（结构化）</text>
+          <view class="detail-damage-tags">
+            <view class="detail-damage-tag" wx:for="{{order.analysis_result.damages}}" wx:key="index">
+              <text class="fs-sm">{{item.part}} {{item.type}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="merchant-ai-disclaimer text-muted fs-cap">本分析结果仅供参考，具体请以实车检测与您店核损为准。</view>
+      </view>
+    </view>
+
+    <view class="edit-tip card" wx:if="{{!isFinalMode}}">
+      <text class="text-muted fs-cap">与竞价「提交报价」模板一致：每项含损失部位、维修方式、配件类型（换件为五类之一）、分项金额（元）、项目质保（月）。已锁类型的部位不可改配件等级。</text>
+    </view>
+    <view class="edit-tip card" wx:if="{{isFinalMode}}">
+      <text class="text-muted fs-cap">与首次报价字段一致；每轮须填<text class="fw-medium">分项金额</text>且与总报价一致。每轮报价须上传证明材料，提交后需车主确认，并留痕公示。</text>
+    </view>
+    <view class="edit-tip card insurance-risk" wx:if="{{isFinalMode && isInsurance}}">
+      <text class="fs-body">保险车：最终报价须与保司定损一致；虚增、伪造定损材料涉嫌违法。平台仅做材料留存，不视为认可理赔结论。</text>
+    </view>
+
+    <view class="edit-card card bidding-quote-card">
+      <view class="quote-card-header">
+        <text class="quote-card-title fs-h3 fw-bold">{{isFinalMode ? '报价明细' : '维修方案'}}</text>
+        <text class="quote-card-hint text-weak fs-sm" wx:if="{{isFinalMode}}">与 Excel 模板中「报价明细」表一致：每项须含损失部位、维修方式、配件类型（换件必填五类之一）、分项金额（元）、项目质保（月）。纸质/截图可用拍照识别（需服务端配置 AI）。</text>
+      </view>
+
+      <view class="mqf-section" wx:if="{{isFinalMode}}">
+        <text class="mqf-section-title fs-body fw-bold">快捷录入</text>
+        <view class="merchant-quote-toolbar">
+          <view class="merchant-quote-toolbar-row merchant-quote-toolbar-row--dual">
+            <button class="merchant-quote-tool-btn merchant-quote-tool-btn--half" bindtap="onDownloadQuoteTemplateExcel">下载 Excel 模板</button>
+            <button class="merchant-quote-tool-btn merchant-quote-tool-btn--half" bindtap="onChooseImportExcel" disabled="{{importBusy}}">导入 Excel</button>
+          </view>
+          <view class="merchant-quote-toolbar-row merchant-quote-toolbar-row--dual" wx:if="{{hasAiSuggestions}}">
+            <button class="merchant-quote-tool-btn merchant-quote-tool-btn--half merchant-quote-tool-btn--outline" bindtap="onUseAiSuggestions">采用 AI 建议</button>
+            <button class="merchant-quote-tool-btn merchant-quote-tool-btn--half merchant-quote-tool-btn--ghost" bindtap="onAnalyzeQuotePhoto" disabled="{{importBusy}}">拍照识别</button>
+          </view>
+          <view class="merchant-quote-toolbar-row" wx:else>
+            <button class="merchant-quote-tool-btn merchant-quote-tool-btn--full merchant-quote-tool-btn--ghost" bindtap="onAnalyzeQuotePhoto" disabled="{{importBusy}}">拍照识别</button>
+          </view>
+        </view>
+        <text class="quote-import-hint text-weak fs-sm">下载的模板含中文说明，填好后保存为 .xlsx，通过微信发到手机，在此「导入 Excel」选择文件即可。</text>
+      </view>
+
+      <view class="mqf-section">
+        <text class="mqf-section-title fs-body fw-bold">维修项目</text>
+        <view class="mqf-items-list">
+          <view class="mqf-item-block" wx:for="{{items}}" wx:key="id">
+            <view class="mqf-line">
+              <text class="mqf-label">损失部位</text>
+              <input class="mqf-input" placeholder="如：前保险杠、左前翼子板" value="{{item.damage_part}}" data-id="{{item.id}}" data-f="damage_part" bindinput="onItemInput"/>
+            </view>
+            <view class="mqf-line mqf-line--repair">
+              <text class="mqf-label">维修方式</text>
+              <picker mode="selector" range="{{repairTypes}}" range-key="label" value="{{item.rtIdx === undefined ? 1 : item.rtIdx}}" data-id="{{item.id}}" bindchange="onRepairTypeChange">
+                <view class="mqf-picker">{{item.repair_type || '请选择'}}</view>
+              </picker>
+            </view>
+            <view class="mqf-line" wx:if="{{item.repair_type === '换'}}">
+              <text class="mqf-label">配件类型</text>
+              <picker mode="selector" range="{{partsTypes}}" range-key="label" value="{{item.ptIdx === undefined || item.ptIdx < 0 ? 0 : item.ptIdx}}" data-id="{{item.id}}" bindchange="onPartsTypeChange">
+                <view class="mqf-picker mqf-picker--parts {{item.partsTypeLocked ? 'mqf-picker--locked' : ''}}">{{item.parts_type || '请选择'}}</view>
+              </picker>
+            </view>
+            <view class="mqf-line" wx:else>
+              <text class="mqf-label">配件类型</text>
+              <text class="mqf-static text-muted fs-cap">不涉及换件</text>
+            </view>
+            <view class="mqf-line">
+              <text class="mqf-label">分项金额（元）</text>
+              <input class="mqf-input" type="digit" placeholder="{{isFinalMode ? '必填' : '选填'}}" value="{{item.line_price}}" data-id="{{item.id}}" bindinput="onLinePriceInput"/>
+            </view>
+            <view class="mqf-line">
+              <text class="mqf-label">项目质保（月）</text>
+              <input class="mqf-input" type="number" placeholder="必填" value="{{item.line_warranty}}" data-id="{{item.id}}" bindinput="onLineWarrantyInput"/>
+            </view>
+            <view class="mqf-actions">
+              <view class="mqf-del" data-id="{{item.id}}" bindtap="onDelItem">删除</view>
+            </view>
+          </view>
+          <view class="mqf-item-add" bindtap="onAddItem">
+            <text class="text-primary fs-body">+ 添加项目</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="mqf-section mqf-value-added">
+        <text class="mqf-section-title fs-body fw-bold">增值服务</text>
+        <text class="mqf-section-hint text-weak fs-sm">如代步车、上门接送等，每项一行</text>
+        <view class="mqf-va-list">
+          <view class="mqf-va-row" wx:for="{{valueAdded}}" wx:key="id">
+            <input class="mqf-va-input" placeholder="如：代步车、上门接送" value="{{item.name}}" data-id="{{item.id}}" bindinput="onVaInput"/>
+            <view class="mqf-va-del" data-id="{{item.id}}" bindtap="onDelVa">删除</view>
+          </view>
+          <view class="mqf-va-add" bindtap="onAddVa">
+            <text class="text-primary fs-body">+ 添加增值服务</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="mqf-summary-section">
+        <view class="mqf-total-block">
+          <text class="mqf-total-label fs-cap text-muted">总报价（元）{{isFinalMode ? '*' : ''}}</text>
+          <view class="mqf-total-input-wrap">
+            <text class="mqf-total-prefix">¥</text>
+            <input class="mqf-total-input" type="digit" placeholder="0.00" value="{{amount}}" bindinput="onAmountInput"/>
+          </view>
+        </view>
+        <view class="mqf-extra-block">
+          <view class="mqf-extra-item">
+            <text class="mqf-extra-label text-muted fs-cap">预计工期{{isFinalMode ? '*' : ''}}</text>
+            <view class="mqf-extra-input-wrap">
+              <input class="mqf-extra-input" type="number" placeholder="天数" value="{{duration}}" bindinput="onDurationInput"/>
+              <text class="mqf-extra-unit">天</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="edit-section" wx:if="{{isFinalMode && !isInsurance}}">
+        <text class="edit-section-title fs-body fw-bold">报价证明材料（至少1张）</text>
+        <text class="text-muted fs-cap rp-evidence-hint">建议含环车/拆解/检测等；若能体现与所填五类配件相符的包装、标识、合格证、溯源或票据线索更佳（参见《配件类型和极简证明材料》）。</text>
+        <view class="rp-evidence-grid">
+          <view class="rp-evidence-thumb" wx:for="{{evidencePhotoUrls}}" wx:key="index">
+            <image src="{{item}}" mode="aspectFill" class="rp-evidence-img"/>
+            <view class="evidence-del" data-index="{{index}}" bindtap="onDelEvidence">×</view>
+          </view>
+          <view class="evidence-add" wx:if="{{evidencePhotoUrls.length < 9}}" bindtap="onChooseEvidencePhoto">+</view>
+        </view>
+      </view>
+      <view class="edit-section" wx:if="{{isFinalMode && isInsurance}}">
+        <text class="edit-section-title fs-body fw-bold">定损单照片（至少1张）</text>
+        <text class="text-muted fs-cap rp-evidence-hint">若定损单列项不足以覆盖本单维修明细，请在下方补充说明。</text>
+        <view class="rp-evidence-grid">
+          <view class="rp-evidence-thumb" wx:for="{{lossAssessmentUrls}}" wx:key="index">
+            <image src="{{item}}" mode="aspectFill" class="rp-evidence-img"/>
+            <view class="evidence-del" data-index="{{index}}" bindtap="onDelLoss">×</view>
+          </view>
+          <view class="evidence-add" wx:if="{{lossAssessmentUrls.length < 6}}" bindtap="onChooseLossPhoto">+</view>
+        </view>
+        <text class="edit-section-title fs-body fw-bold rp-loss-note-title">补充说明（选填）</text>
+        <textarea class="edit-textarea" placeholder="定损单未列明的项目、辅料或工时等" value="{{lossSupplementNote}}" maxlength="500" bindinput="onLossSupplementInput"/>
       </view>
     </view>
     <view class="edit-bottom-pad"></view>

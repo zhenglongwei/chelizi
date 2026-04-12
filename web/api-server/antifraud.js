@@ -4,6 +4,19 @@
  * 违规等级：1=轻度 2=中度 3=重度 4=重大（与 violation_records.violation_level 一致）
  */
 
+/** 检测列是否存在（勿 require shop-score，避免与 shop-score→antifraud 循环依赖） */
+async function hasColumn(pool, table, col) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, col]
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 获取用户违规汇总（供等级核算使用）
  * @param {object} pool - 数据库连接池
@@ -80,11 +93,12 @@ async function checkBlacklist(pool, userId, phone, ip) {
 async function getUserTrustLevel(pool, userId) {
   const WEIGHTS = { 0: 0, 1: 0.3, 2: 1.0, 3: 2.0, 4: 3.0 };
   const NAMES = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
+  const uid = String(userId || '').trim();
 
   try {
     const [userRows] = await pool.execute(
       'SELECT u.created_at, COALESCE(u.level_demoted_by_violation, 0) as level_demoted_by_violation, u.phone FROM users u WHERE u.user_id = ?',
-      [userId]
+      [uid]
     );
     if (userRows.length === 0) return { level: 0, weight: 0, levelName: NAMES[0] };
 
@@ -95,95 +109,139 @@ async function getUserTrustLevel(pool, userId) {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // 一票否决：未实名 or 未车辆 → 0 级（始终优先校验）
-    const [verifRows] = await pool.execute(
-      'SELECT verified FROM user_verification WHERE user_id = ?',
-      [userId]
-    );
-    const hasVerification = (verifRows[0]?.verified === 1) || (user.phone && String(user.phone).trim());
+    // 一票否决：未实名 or 未车辆 → 0 级（表缺失时容错，避免整段抛错后误报「需完善资料」）
+    let verifRows = [];
+    try {
+      const [rows] = await pool.execute('SELECT verified FROM user_verification WHERE user_id = ?', [uid]);
+      verifRows = rows || [];
+    } catch (e) {
+      console.warn('[antifraud] user_verification 查询失败，仅依据 users.phone 判断:', e.message);
+    }
+    const verifiedRaw = verifRows[0]?.verified;
+    const verifiedOk =
+      verifiedRaw === true ||
+      Number(verifiedRaw) === 1 ||
+      String(verifiedRaw).trim() === '1';
+    // mysql2 可能 VARCHAR 为 Buffer，需显式转字符串，否则 trim 后仍判为无手机
+    const phoneRaw = user.phone;
+    const phoneStr =
+      phoneRaw == null || phoneRaw === ''
+        ? ''
+        : Buffer.isBuffer(phoneRaw)
+          ? phoneRaw.toString('utf8').trim()
+          : String(phoneRaw).trim();
+    const hasPhone = phoneStr.length > 0;
+    const hasVerification = verifiedOk || hasPhone;
 
-    const [vehicleCount] = await pool.execute(
-      'SELECT COUNT(*) as c FROM user_vehicles WHERE user_id = ? AND status = 1',
-      [userId]
-    );
-    const [orderWithVehicle] = await pool.execute(
-      `SELECT 1 FROM orders o JOIN biddings b ON o.bidding_id = b.bidding_id
-       WHERE o.user_id = ? AND o.status = 3 AND b.vehicle_info IS NOT NULL AND b.vehicle_info != '' AND b.vehicle_info != 'null' LIMIT 1`,
-      [userId]
-    );
-    const hasVehicle = (vehicleCount[0]?.c || 0) > 0 || orderWithVehicle.length > 0;
+    let vehicleN = 0;
+    let hasOrderVehicle = false;
+    try {
+      const [vehicleCount] = await pool.execute(
+        'SELECT COUNT(*) as c FROM user_vehicles WHERE user_id = ? AND status = 1',
+        [uid]
+      );
+      vehicleN = Number(vehicleCount[0]?.c || 0);
+      const [orderWithVehicle] = await pool.execute(
+        `SELECT 1 FROM orders o JOIN biddings b ON o.bidding_id = b.bidding_id
+         WHERE o.user_id = ? AND o.status = 3 AND b.vehicle_info IS NOT NULL AND b.vehicle_info != '' AND b.vehicle_info != 'null' LIMIT 1`,
+        [uid]
+      );
+      hasOrderVehicle = (orderWithVehicle || []).length > 0;
+    } catch (e) {
+      console.warn('[antifraud] 车辆门槛主查询失败，回退仅数 user_vehicles:', e.message);
+      try {
+        const [vc] = await pool.execute(
+          'SELECT COUNT(*) as c FROM user_vehicles WHERE user_id = ? AND status = 1',
+          [uid]
+        );
+        vehicleN = Number(vc[0]?.c || 0);
+      } catch (e2) {
+        console.warn('[antifraud] 车辆门槛回退查询失败:', e2.message);
+      }
+    }
+    const hasVehicle = vehicleN > 0 || hasOrderVehicle;
 
     if (!hasVerification || !hasVehicle) {
       return { level: 0, weight: 0, levelName: NAMES[0], needsVerification: true };
     }
 
-    // 违规联动：读取 violation_records 确定等级上限
-    const vio = await getUserViolationSummary(pool, userId);
-    if (vio.levelCap === 0) {
-      return { level: 0, weight: 0, levelName: NAMES[0] };
+    // 已通过实名+车辆：后续违规/统计任一步失败时，不得落入最外层 catch 变成「风险受限+要完善资料」（与 GET /profile 展示不一致）
+    try {
+      const vio = await getUserViolationSummary(pool, uid);
+      if (vio.levelCap === 0) {
+        return { level: 0, weight: 0, levelName: NAMES[0], needsVerification: false };
+      }
+
+      const [orderCount] = await pool.execute('SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND status = 3', [uid]);
+      const [reviewCount] = await pool.execute(
+        `SELECT COUNT(*) as c FROM reviews r JOIN orders o ON r.order_id = o.order_id WHERE r.user_id = ? AND r.type = 1`,
+        [uid]
+      );
+      const validOrders = orderCount[0]?.c || 0;
+      const validReviews = reviewCount[0]?.c || 0;
+
+      // content_quality 列来自 migration-20260219，部分环境仅有 content_quality_level
+      const hasContentQualityCol = await hasColumn(pool, 'reviews', 'content_quality');
+      const qualityPremiumCond = hasContentQualityCol
+        ? '(r.content_quality_level >= 2 OR r.content_quality IN (\'premium\', \'标杆\', \'维权参考\', \'爆款\'))'
+        : 'r.content_quality_level >= 2';
+
+      const [qualityReviewCount] = await pool.execute(
+        `SELECT COUNT(*) as c FROM reviews r
+         JOIN orders o ON r.order_id = o.order_id AND o.user_id = ? AND o.status = 3
+         WHERE r.user_id = ? AND r.type = 1 AND ${qualityPremiumCond}`,
+        [uid, uid]
+      );
+      const qualityReviews = qualityReviewCount[0]?.c || 0;
+
+      const [likeCount] = await pool.execute(
+        `SELECT COUNT(*) as c FROM review_likes rl 
+         JOIN reviews r ON rl.review_id = r.review_id AND r.user_id = ?
+         WHERE rl.is_valid_for_bonus = 1`,
+        [uid]
+      );
+      const sameModelLikes = likeCount[0]?.c || 0;
+
+      let level = 1;
+
+      if (createdAt <= sevenDaysAgo && validOrders >= 1 && validReviews >= 1) {
+        level = 2;
+      }
+
+      if (level >= 2 && createdAt <= thirtyDaysAgo && validOrders >= 5 && qualityReviews >= 3 && vio.moderateCount === 0) {
+        level = 3;
+      }
+
+      if (
+        level >= 3 &&
+        createdAt <= ninetyDaysAgo &&
+        validOrders >= 10 &&
+        qualityReviews >= 5 &&
+        sameModelLikes >= 100 &&
+        vio.moderateCount === 0 &&
+        vio.severeCount === 0
+      ) {
+        level = 4;
+      }
+
+      if (vio.levelCap !== null && level > vio.levelCap) {
+        level = vio.levelCap;
+      }
+
+      return {
+        level,
+        weight: WEIGHTS[level],
+        levelName: NAMES[level],
+        needsVerification: false,
+      };
+    } catch (statsErr) {
+      console.error('[antifraud] getUserTrustLevel 违规/统计阶段失败，降级为基础注册（避免误提示完善资料）:', statsErr.message);
+      return { level: 1, weight: WEIGHTS[1], levelName: NAMES[1], needsVerification: false };
     }
-
-    // 统计：有效交易、有效评价、优质评价、标杆评价、同车型点赞
-    const [orderCount] = await pool.execute(
-      'SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND status = 3',
-      [userId]
-    );
-    const [reviewCount] = await pool.execute(
-      `SELECT COUNT(*) as c FROM reviews r JOIN orders o ON r.order_id = o.order_id WHERE r.user_id = ? AND r.type = 1`,
-      [userId]
-    );
-    const validOrders = orderCount[0]?.c || 0;
-    const validReviews = reviewCount[0]?.c || 0;
-
-    // 优质评价：主评价 content_quality_level >= 2 或 content_quality 为 premium/标杆/维权参考
-    const [qualityReviewCount] = await pool.execute(
-      `SELECT COUNT(*) as c FROM reviews r
-       JOIN orders o ON r.order_id = o.order_id AND o.user_id = ? AND o.status = 3
-       WHERE r.user_id = ? AND r.type = 1 AND (r.content_quality_level >= 2 OR r.content_quality IN ('premium', '标杆', '维权参考', '爆款'))`,
-      [userId, userId]
-    );
-    const qualityReviews = qualityReviewCount[0]?.c || 0;
-
-    // 同车型有效点赞：用户发布的评价收到的有效点赞数（简化：用 review_likes 中 is_valid_for_bonus=1 的）
-    const [likeCount] = await pool.execute(
-      `SELECT COUNT(*) as c FROM review_likes rl 
-       JOIN reviews r ON rl.review_id = r.review_id AND r.user_id = ?
-       WHERE rl.is_valid_for_bonus = 1`,
-      [userId]
-    );
-    const sameModelLikes = likeCount[0]?.c || 0;
-
-    let level = 1;
-
-    // 2 级：注册≥7天、≥1笔交易、≥1条有效评价、合规、违规上限
-    if (createdAt <= sevenDaysAgo && validOrders >= 1 && validReviews >= 1) {
-      level = 2;
-    }
-
-    // 3 级：注册≥30天、≥5笔、≥3条优质评价、100%合规、无中度及以上违规
-    if (level >= 2 && createdAt <= thirtyDaysAgo && validOrders >= 5 && qualityReviews >= 3 && vio.moderateCount === 0) {
-      level = 3;
-    }
-
-    // 4 级：注册≥90天、≥10笔、≥5条标杆评价、≥100同车型点赞、终身零违规
-    if (level >= 3 && createdAt <= ninetyDaysAgo && validOrders >= 10 && qualityReviews >= 5 && sameModelLikes >= 100 && vio.moderateCount === 0 && vio.severeCount === 0) {
-      level = 4;
-    }
-
-    // 应用违规等级上限
-    if (vio.levelCap !== null && level > vio.levelCap) {
-      level = vio.levelCap;
-    }
-
-    return {
-      level,
-      weight: WEIGHTS[level],
-      levelName: NAMES[level],
-      needsVerification: level === 0,
-    };
   } catch (err) {
     console.error('[antifraud] getUserTrustLevel error:', err.message);
-    return { level: 0, weight: 0, levelName: '风险受限', needsVerification: true };
+    // 未知错误：勿用「风险受限 + 需完善资料」误导已登录用户；与资料页并列展示时优先保守为 1 级且不催认证
+    return { level: 1, weight: WEIGHTS[1], levelName: NAMES[1], needsVerification: false };
   }
 }
 
@@ -363,7 +421,7 @@ async function getAntifraudConfig(pool) {
     }
     return {
       orderSameShopDays: parseInt(cfg.antifraud_order_same_shop_days) || 30,
-      orderSameShopMax: parseInt(cfg.antifraud_order_same_shop_max) || 3,
+      orderSameShopMax: parseInt(cfg.antifraud_order_same_shop_max) || 5,
       newUserDays: parseInt(cfg.antifraud_new_user_days) || 7,
       newUserOrderMax: parseInt(cfg.antifraud_new_user_order_max) || 5,
       l1MonthlyCap: parseFloat(cfg.antifraud_l1_monthly_cap) || 100,
@@ -374,7 +432,7 @@ async function getAntifraudConfig(pool) {
     console.error('[antifraud] getAntifraudConfig error:', err.message);
     return {
       orderSameShopDays: 30,
-      orderSameShopMax: 3,
+      orderSameShopMax: 5,
       newUserDays: 7,
       newUserOrderMax: 5,
       l1MonthlyCap: 100,

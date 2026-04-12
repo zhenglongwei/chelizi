@@ -157,6 +157,12 @@
   background: rgba(37, 99, 235, 0.1);
 }
 
+.bidding-status-badge.selecting {
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.06);
+  border: 1rpx solid rgba(37, 99, 235, 0.2);
+}
+
 .bidding-status-badge.ended {
   color: var(--text-secondary);
   background: var(--bg-placeholder);
@@ -188,6 +194,7 @@
 /* ========== 操作按钮 ========== */
 .bidding-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-md);
   padding-top: var(--space-lg);
   border-top: 1rpx solid var(--border-light);

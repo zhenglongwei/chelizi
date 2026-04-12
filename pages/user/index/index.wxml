@@ -102,8 +102,8 @@
       <view class="user-section-more" >全部</view>
     </view>
     <view class="user-section-tabs">
-      <navigator class="user-tab" url="/pages/bidding/list/index?status=0">进行中</navigator>
-      <navigator class="user-tab" url="/pages/bidding/list/index?status=1">已结束</navigator>
+      <navigator class="user-tab" url="/pages/bidding/list/index?status=0">未完成</navigator>
+      <navigator class="user-tab" url="/pages/bidding/list/index?status=1">已关闭</navigator>
     </view>
   </navigator>
 

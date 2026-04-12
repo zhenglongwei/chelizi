@@ -5,6 +5,7 @@
 const crypto = require('crypto');
 const wechatPay = require('./wechat-pay-service');
 const subscribeMsg = require('./subscribe-message-service');
+const { hasColumn } = require('../utils/db-utils');
 
 function publicBaseUrl() {
   // 与微信 notify_url 一致：仅站点根，不含 /api；未单独配置时沿用已有 BASE_URL（与 server 其它逻辑一致）
@@ -401,10 +402,13 @@ async function handleWechatPayNotify(pool, rawBody, headers) {
  * 阶段 B：提交最终实付金额与支付凭证，多退少补
  */
 async function finalizeCommissionProof(pool, shopId, orderId, actualAmountYuan, proofUrls) {
+  let selectCols = `order_id, shop_id, status, commission_rate, commission_provisional, commission_paid_amount, commission_status,
+            is_insurance_accident, quoted_amount`;
+  if (await hasColumn(pool, 'orders', 'final_quote_status')) {
+    selectCols += ', final_quote_status, final_quote_snapshot';
+  }
   const [ords] = await pool.execute(
-    `SELECT order_id, shop_id, status, commission_rate, commission_provisional, commission_paid_amount, commission_status,
-            is_insurance_accident
-     FROM orders WHERE order_id = ? AND shop_id = ?`,
+    `SELECT ${selectCols} FROM orders WHERE order_id = ? AND shop_id = ?`,
     [orderId, shopId]
   );
   if (!ords.length) return { success: false, error: '订单不存在', statusCode: 404 };
@@ -421,6 +425,33 @@ async function finalizeCommissionProof(pool, shopId, orderId, actualAmountYuan, 
   }
 
   const actual = roundMoney(actualAmountYuan);
+
+  let lockedCap = null;
+  const fqs = o.final_quote_status != null ? parseInt(o.final_quote_status, 10) : null;
+  if (fqs === 2) {
+    let snap = o.final_quote_snapshot;
+    if (typeof snap === 'string') {
+      try {
+        snap = JSON.parse(snap);
+      } catch (_) {
+        snap = null;
+      }
+    }
+    if (snap && snap.amount != null && !Number.isNaN(parseFloat(snap.amount))) {
+      lockedCap = roundMoney(parseFloat(snap.amount));
+    }
+    if (lockedCap == null && o.quoted_amount != null && !Number.isNaN(parseFloat(o.quoted_amount))) {
+      lockedCap = roundMoney(parseFloat(o.quoted_amount));
+    }
+  }
+  if (lockedCap != null && actual > lockedCap + 0.009) {
+    return {
+      success: false,
+      error: `结算金额不能超过车主已确认的最终报价（¥${lockedCap}）`,
+      statusCode: 400,
+    };
+  }
+
   const rate = (parseFloat(o.commission_rate) || 0) / 100;
   const commissionFinal = roundMoney(actual * rate);
   const paid = parseFloat(o.commission_paid_amount) || 0;

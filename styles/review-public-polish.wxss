@@ -1,0 +1,330 @@
+/**
+ * 店铺详情评价列表 & 评价 Tab 流 · 公示信息视觉优化
+ * 依赖 design-system 变量（由页面 wxss 已间接引入）
+ */
+
+/* ---------- 本单信息总容器：浅底 + 圆角 + 内边距，与卡片白底分层 ---------- */
+.rv-order-surface {
+  padding: var(--space-lg);
+  background: linear-gradient(165deg, rgba(37, 99, 235, 0.04) 0%, var(--bg-page) 42%);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* 区块小标题：左色条 + 字重，减少「一行灰字」单调感 */
+.rv-field-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.rv-field-mark {
+  width: 6rpx;
+  height: 28rpx;
+  border-radius: 3rpx;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+.rv-field-mark--gold {
+  background: linear-gradient(180deg, var(--accent) 0%, #CA8A04 100%);
+}
+.rv-field-mark--muted {
+  background: var(--text-hint);
+  opacity: 0.5;
+}
+.rv-field-label {
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.rv-chip-row {
+  margin-bottom: 0;
+}
+.rv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.rv-chip {
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  border: 1rpx solid var(--border);
+  max-width: 100%;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+.rv-hint-1 {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--text-hint);
+  line-height: 1.4;
+  margin-top: var(--space-xs);
+}
+
+/* 方案承诺标签区 */
+.rv-promise-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.rv-promise-tag {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--fs-cap);
+  color: var(--text-primary);
+  background: var(--primary-bg);
+  border-radius: var(--radius-md);
+  border: 1rpx solid rgba(37, 99, 235, 0.18);
+  max-width: 100%;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+/* 结算金额：独立条，金色强调数字 */
+.rv-settlement-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--accent-bg);
+  border-radius: var(--radius-md);
+  border: 1rpx solid rgba(234, 179, 8, 0.35);
+}
+.rv-settlement-label-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.rv-settlement-label {
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.rv-settlement-amount {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* 报价历程 */
+.rv-quote-panel {
+  padding-top: var(--space-xs);
+}
+.rv-quote-summary {
+  display: block;
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  border-left: 6rpx solid var(--primary-light);
+  margin-bottom: var(--space-md);
+}
+
+.rv-qprop-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-md) var(--space-md) 0;
+  margin-bottom: var(--space-sm);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+.rv-qprop-card:last-child {
+  margin-bottom: 0;
+}
+.rv-qprop-card--pre {
+  border-color: rgba(37, 99, 235, 0.2);
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.06) 0%, var(--bg-card) 28%);
+}
+.rv-qprop-rail {
+  width: 8rpx;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.rv-qprop-card--pre .rv-qprop-rail {
+  background: linear-gradient(180deg, var(--primary-light) 0%, var(--primary) 100%);
+}
+.rv-qprop-main {
+  flex: 1;
+  min-width: 0;
+  padding-right: var(--space-sm);
+}
+.rv-qprop-head-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+.rv-qprop-title {
+  font-size: var(--fs-cap);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.45;
+  flex: 1;
+  min-width: 0;
+}
+.rv-qprop-money {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+.rv-qprop-time {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--text-hint);
+  margin-top: var(--space-xs);
+}
+.rv-qprop-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-md);
+  padding: var(--space-xs) 0;
+  font-size: var(--fs-cap);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* 评价流：订单信息区顶部分隔 */
+.rv-feed-order-block {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+
+/* 星级条：浅底 */
+.rv-stars-bar {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-xs) var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  margin-top: var(--space-sm);
+}
+
+/* 默认摘要：减负阅读 */
+.rv-digest-line {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.5;
+}
+.rv-quote-inline {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.45;
+}
+.rv-collapsed-obj {
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border-left: 6rpx solid var(--primary);
+}
+.rv-primary-pair {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+.rv-primary-thumb {
+  width: 220rpx;
+  height: 160rpx;
+  border-radius: var(--radius-md);
+  background: var(--bg-placeholder);
+  flex-shrink: 0;
+}
+.rv-more-images-hint,
+.rv-no-primary-hint {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.45;
+}
+.rv-evidence-toggle-wrap {
+  margin-top: var(--space-lg);
+  padding: var(--space-md) 0;
+  border-top: 1rpx solid var(--border-light);
+}
+.rv-evidence-toggle {
+  font-weight: 600;
+}
+.rv-evidence-toggle-hint {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.4;
+}
+.rv-quote-privacy-note {
+  display: block;
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  line-height: 1.45;
+}
+
+/* 极简评价 v3：顶栏标签 + 系统节点卡 */
+.rv-minimal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 8rpx;
+}
+.rv-minimal-tag {
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  color: var(--text-secondary);
+}
+.rv-minimal-tag--ok {
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #16a34a;
+}
+.rv-minimal-tag--warn {
+  border-color: rgba(234, 179, 8, 0.45);
+  color: #ca8a04;
+}
+.rv-minimal-tag--muted {
+  color: var(--text-hint);
+}
+.rv-minimal-tag--star {
+  border-color: transparent;
+  background: transparent;
+  letter-spacing: 2rpx;
+}
+.rv-minimal-tag--ai {
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--primary);
+}
+.rv-system-checks-card {
+  margin-bottom: var(--space-lg);
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+}
+.rv-sys-node {
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border);
+}
+.rv-sys-node:last-child {
+  border-bottom: none;
+}

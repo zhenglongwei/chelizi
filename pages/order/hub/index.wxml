@@ -16,7 +16,7 @@
     </view>
     <view class="order-empty card" wx:if="{{!repairLoading && repairList.length === 0}}">
       <text class="text-muted fs-body">暂无维修订单</text>
-      <navigator class="order-login-link fs-cap" url="/pages/damage/upload/index">去发单竞价</navigator>
+      
     </view>
     <scroll-view wx:elif="{{repairList.length > 0}}" class="order-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onRepairLoadMore">
       <view class="order-item card" wx:for="{{repairList}}" wx:key="order_id" data-id="{{item.order_id}}" bindtap="onRepairItemTap">

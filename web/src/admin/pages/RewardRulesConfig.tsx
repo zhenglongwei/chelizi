@@ -42,7 +42,6 @@ export default function RewardRulesConfig() {
   const [vehicleForm] = Form.useForm();
   const [orderForm] = Form.useForm();
   const [complianceForm] = Form.useForm();
-  const [commissionForm] = Form.useForm();
 
   useEffect(() => {
     loadConfig();
@@ -122,18 +121,6 @@ export default function RewardRulesConfig() {
         upgradeReviewHours: rewardRules.upgradeReviewHours ?? 24,
       });
 
-      // 模块 5：佣金配置
-      commissionForm.setFieldsValue({
-        commissionTier1Max: rewardRules.commissionTier1Max ?? 5000,
-        commissionTier2Max: rewardRules.commissionTier2Max ?? 20000,
-        commissionTier1Rate: rewardRules.commissionTier1Rate ?? 8,
-        commissionTier2Rate: rewardRules.commissionTier2Rate ?? 10,
-        commissionTier3Rate: rewardRules.commissionTier3Rate ?? 12,
-        commissionDownMinRatio: rewardRules.commissionDownMinRatio ?? 50,
-        commissionUpMaxRatio: rewardRules.commissionUpMaxRatio ?? 120,
-        commissionDownPercent: rewardRules.commissionDownPercent ?? 1,
-        commissionUpPercent: rewardRules.commissionUpPercent ?? 2,
-      });
     } catch (error: any) {
       console.error('加载配置失败:', error);
       message.error(error?.message || '加载配置失败');
@@ -143,13 +130,13 @@ export default function RewardRulesConfig() {
     }
   };
 
+  /** 不含 commissionRepair，服务端保存时合并保留（见佣金规则配置页） */
   const buildFullConfig = (): Record<string, any> => {
-    const [baseValues, vehicleValues, orderValues, complianceValues, commissionValues] = [
+    const [baseValues, vehicleValues, orderValues, complianceValues] = [
       baseRewardForm.getFieldsValue(),
       vehicleForm.getFieldsValue(),
       orderForm.getFieldsValue(),
       complianceForm.getFieldsValue(),
-      commissionForm.getFieldsValue(),
     ];
     return {
       complexityLevels,
@@ -201,15 +188,6 @@ export default function RewardRulesConfig() {
       complianceRedLine: complianceValues?.complianceRedLine ?? 70,
       upgradeMaxPer3Months: complianceValues?.upgradeMaxPer3Months ?? 2,
       upgradeReviewHours: complianceValues?.upgradeReviewHours ?? 24,
-      commissionTier1Max: commissionValues?.commissionTier1Max ?? 5000,
-      commissionTier2Max: commissionValues?.commissionTier2Max ?? 20000,
-      commissionTier1Rate: commissionValues?.commissionTier1Rate ?? 8,
-      commissionTier2Rate: commissionValues?.commissionTier2Rate ?? 10,
-      commissionTier3Rate: commissionValues?.commissionTier3Rate ?? 12,
-      commissionDownMinRatio: commissionValues?.commissionDownMinRatio ?? 50,
-      commissionUpMaxRatio: commissionValues?.commissionUpMaxRatio ?? 120,
-      commissionDownPercent: commissionValues?.commissionDownPercent ?? 1,
-      commissionUpPercent: commissionValues?.commissionUpPercent ?? 2,
     };
   };
 
@@ -264,7 +242,6 @@ export default function RewardRulesConfig() {
         vehicleForm.validateFields().catch(() => null),
         orderForm.validateFields().catch(() => null),
         complianceForm.validateFields().catch(() => null),
-        commissionForm.validateFields().catch(() => null),
       ]);
       const config = buildFullConfig();
       await saveRewardRulesConfig(config);
@@ -277,7 +254,7 @@ export default function RewardRulesConfig() {
     }
   };
 
-  const       complexityColumns = [
+  const complexityColumns = [
     { title: '等级', dataIndex: 'level', key: 'level', width: 60 },
     { title: '维修项目关键词', dataIndex: 'project_type', key: 'project_type', ellipsis: true, render: (v: string) => v || '-' },
     { title: '固定奖励(元)', dataIndex: 'fixed_reward', key: 'fixed_reward', width: 100 },
@@ -299,7 +276,7 @@ export default function RewardRulesConfig() {
     <div className="reward-rules-config" style={{ padding: '0 24px' }}>
       <Title level={2}>奖励金规则配置</Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        按《全指标底层逻辑梳理》第四章配置奖励金规则，运营后台可直接编辑，无需代码调整。
+        按《全指标底层逻辑梳理》第四章配置奖励金规则（模块1～4）。维修/标品佣金比例请在侧栏「佣金规则配置」维护。
       </Text>
 
       <Tabs
@@ -521,46 +498,6 @@ export default function RewardRulesConfig() {
                     <InputNumber min={1} max={72} style={{ width: 120 }} addonAfter="小时" />
                   </Form.Item>
                   <Text type="secondary">个税：单次 ≤800 元个税为 0，超过 800 元由平台承担。</Text>
-                </Form>
-              </Card>
-            ),
-          },
-          {
-            key: '5',
-            label: '模块5 佣金配置',
-            children: (
-              <Card title="服务商佣金配置（按订单金额分级 + 合规率浮动）" loading={loading}>
-                <Form form={commissionForm} layout="vertical">
-                  <Title level={5}>订单金额分级对应的佣金比例</Title>
-                  <Form.Item name="commissionTier1Max" label="第一档金额上限（元）" tooltip="5000元以内">
-                    <InputNumber min={0} style={{ width: 200 }} addonAfter="元" />
-                  </Form.Item>
-                  <Form.Item name="commissionTier1Rate" label="第一档佣金比例（%）">
-                    <InputNumber min={0} max={100} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Form.Item name="commissionTier2Max" label="第二档金额上限（元）" tooltip="5000～20000">
-                    <InputNumber min={0} style={{ width: 200 }} addonAfter="元" />
-                  </Form.Item>
-                  <Form.Item name="commissionTier2Rate" label="第二档佣金比例（%）">
-                    <InputNumber min={0} max={100} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Form.Item name="commissionTier3Rate" label="第三档佣金比例（%）" tooltip="20000元以上">
-                    <InputNumber min={0} max={100} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Divider />
-                  <Title level={5}>合规率/投诉率浮动规则</Title>
-                  <Form.Item name="commissionDownPercent" label="下调比例（%）" tooltip="合规率≥95%、投诉率≤1%时下调">
-                    <InputNumber min={0} max={10} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Form.Item name="commissionDownMinRatio" label="下调后最低不低于基准的（%）">
-                    <InputNumber min={0} max={100} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Form.Item name="commissionUpPercent" label="上调比例（%）" tooltip="合规率<80%或违规时上调">
-                    <InputNumber min={0} max={10} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
-                  <Form.Item name="commissionUpMaxRatio" label="上调后最高不超过基准的（%）">
-                    <InputNumber min={100} max={200} style={{ width: 120 }} addonAfter="%" />
-                  </Form.Item>
                 </Form>
               </Card>
             ),

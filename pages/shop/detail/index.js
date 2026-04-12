@@ -12,32 +12,28 @@ const {
 } = require('../../../utils/api');
 const { runUserBookingFlow } = require('../../../utils/user-booking-flow');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
+const { buildQuoteProposalDisplayList, buildQuoteJourneySummary } = require('../../../utils/quote-proposal-display');
+const {
+  parseObjectiveBool,
+  buildObjectiveSummary,
+  computeTotalImageCount,
+  isObjectiveAnswersV3,
+  buildV3ObjectiveSummary
+} = require('../../../utils/review-public-display');
+const { formatMethodsSummary } = require('../../../utils/parts-verification-labels');
+const { enrichReviewV3PublicCard } = require('../../../utils/review-v3-public-display');
 
 const logger = getLogger('ShopDetail');
 
-/** 客观题布尔（兼容接口 1/0、字符串） */
-function parseObjectiveBool(v) {
-  if (v === true || v === 1) return true;
-  if (v === false || v === 0) return false;
-  if (typeof v === 'string') {
-    const s = v.trim().toLowerCase();
-    if (s === '1' || s === 'true') return true;
-    if (s === '0' || s === 'false') return false;
-  }
-  return null;
-}
-
-function buildObjectiveSummary(q1, q2, q3) {
-  const list = [q1, q2, q3].filter((x) => x !== null);
-  if (!list.length) return '';
-  const yes = list.filter((x) => x === true).length;
-  const n = list.length;
-  if (n === 3) {
-    if (yes === 3) return '三项核验均通过';
-    if (yes === 0) return '三项均未通过';
-    return `${yes} 项通过 · ${3 - yes} 项未通过`;
-  }
-  return `${yes}/${n} 项为「是」`;
+function buildPartsMerchantVerifyLine(pd) {
+  if (!pd || typeof pd !== 'object') return '';
+  const methods = Array.isArray(pd.merchant_methods) ? pd.merchant_methods : [];
+  const note = pd.merchant_verify_note != null ? String(pd.merchant_verify_note).trim() : '';
+  if (!methods.length && !note) return '';
+  let line = '';
+  if (methods.length) line = '店方验真方式：' + formatMethodsSummary(methods);
+  if (note) line += (line ? ' ' : '') + '（' + note.slice(0, 120) + '）';
+  return line;
 }
 
 // 有效阅读：单次最多 180 秒，总最多 300 秒
@@ -116,7 +112,7 @@ Page({
       this.setData({
         shop: {
           ...shop,
-          logo: shop.logo || '/images/logo/logo_white.png',
+          logo: shop.logo || '/images/brand/brand-app-icon-zhejian.png',
           categories: shop.categories || [],
           certifications: shop.certifications || [],
           services: shop.services || [],
@@ -159,19 +155,105 @@ Page({
         const amt = r.amount;
         const amountText = amt != null ? (Number.isInteger(amt) ? String(amt) : amt.toFixed(2)) : '';
         const oa = r.objective_answers || {};
-        const objQ1 = parseObjectiveBool(oa.q1_progress_synced);
-        const objQ2 = parseObjectiveBool(oa.q2_parts_shown);
-        const objQ3 = parseObjectiveBool(oa.q3_fault_resolved);
-        const hasObjectives = objQ1 != null || objQ2 != null || objQ3 != null;
-        const objectiveSummary = hasObjectives ? buildObjectiveSummary(objQ1, objQ2, objQ3) : '';
+        const reviewFormVersion3 = isObjectiveAnswersV3(oa);
+        let objQ1;
+        let objQ2;
+        let objQ3;
+        let hasObjectives;
+        let objectiveSummary;
+        if (reviewFormVersion3) {
+          objQ1 = null;
+          objQ2 = null;
+          objQ3 = null;
+          hasObjectives = true;
+          objectiveSummary = buildV3ObjectiveSummary(oa);
+        } else {
+          objQ1 = parseObjectiveBool(oa.q1_progress_synced);
+          objQ2 = parseObjectiveBool(oa.q2_parts_shown);
+          objQ3 = parseObjectiveBool(oa.q3_fault_resolved);
+          hasObjectives = objQ1 != null || objQ2 != null || objQ3 != null;
+          objectiveSummary = hasObjectives ? buildObjectiveSummary(objQ1, objQ2, objQ3) : '';
+        }
+        const systemChecks = r.review_system_checks || null;
         const repairItems = Array.isArray(r.repair_items) ? r.repair_items : [];
         const partPromiseLines = Array.isArray(r.part_promise_lines) ? r.part_promise_lines : [];
         const materialPhotos = Array.isArray(r.material_photos) ? r.material_photos : [];
-        return {
+        const beforeImgs = (() => {
+          try {
+            return typeof r.before_images === 'string' ? JSON.parse(r.before_images || '[]') : (r.before_images || []);
+          } catch (_) {
+            return [];
+          }
+        })();
+        const afterImgs = (() => {
+          try {
+            return typeof r.after_images === 'string' ? JSON.parse(r.after_images || '[]') : (r.after_images || []);
+          } catch (_) {
+            return [];
+          }
+        })();
+        const completionImgs = (() => {
+          try {
+            return typeof r.completion_images === 'string' ? JSON.parse(r.completion_images || '[]') : (r.completion_images || []);
+          } catch (_) {
+            return [];
+          }
+        })();
+        const quoteProposalDisplay = buildQuoteProposalDisplayList(r.quote_proposal_history || []);
+        const q0 = quoteProposalDisplay[0];
+        const quoteJourneyNeedsToggle =
+          quoteProposalDisplay.length > 1 ||
+          !!(q0 && q0.photo_urls && q0.photo_urls.length > 0);
+        const totalImageCount = computeTotalImageCount({
+          before_images: beforeImgs,
+          after_images: afterImgs,
+          completion_images: completionImgs,
+          material_photos: materialPhotos
+        });
+        const repairItemsLine = repairItems.length ? repairItems.join('、') : '';
+        const partPromiseLineText = partPromiseLines.length ? partPromiseLines.join(' · ') : '';
+        const hasSystemQuoteNodes = !!(
+          systemChecks &&
+          systemChecks.quote_flow &&
+          Array.isArray(systemChecks.quote_flow.nodes) &&
+          systemChecks.quote_flow.nodes.length
+        );
+        const partsMerchantVerifyLine = buildPartsMerchantVerifyLine(
+          systemChecks && systemChecks.parts_delivery
+        );
+        let v3DualStars = false;
+        let repairRatingText = '';
+        let serviceRatingText = '';
+        if (reviewFormVersion3) {
+          const re = parseInt(oa.repair_effect_star, 10);
+          const sv = parseInt(oa.service_experience_star, 10);
+          if (!Number.isNaN(re) && re >= 1 && re <= 5 && !Number.isNaN(sv) && sv >= 1 && sv <= 5) {
+            v3DualStars = true;
+            repairRatingText = '★'.repeat(re) + '☆'.repeat(5 - re);
+            serviceRatingText = '★'.repeat(sv) + '☆'.repeat(5 - sv);
+          }
+        }
+        return enrichReviewV3PublicCard({
           ...r,
+          before_images: beforeImgs,
+          after_images: afterImgs,
+          completion_images: completionImgs,
           repair_items: repairItems,
           part_promise_lines: partPromiseLines,
           material_photos: materialPhotos,
+          quote_credential_urls: r.quote_credential_urls || [],
+          quoteProposalDisplay,
+          quoteJourneySummary: buildQuoteJourneySummary(quoteProposalDisplay),
+          quoteJourneyNeedsToggle,
+          quoteJourneyExpanded: false,
+          showReviewImages: false,
+          repairItemsLine,
+          partPromiseLineText,
+          hasSystemQuoteNodes,
+          v3DualStars,
+          repairRatingText,
+          serviceRatingText,
+          totalImageCount,
           contentPreview: content.length > 60 ? content.slice(0, 60) + '...' : content,
           expanded: false,
           liked: !!r.is_liked,
@@ -187,8 +269,11 @@ Page({
           objQ2,
           objQ3,
           hasObjectives,
-          objectiveSummary
-        };
+          objectiveSummary,
+          reviewFormVersion3,
+          systemChecks,
+          partsMerchantVerifyLine,
+        });
       });
 
       const updates = {
@@ -267,27 +352,106 @@ Page({
   },
 
   onExpandReview(e) {
-    const idx = e.currentTarget.dataset.index;
+    const d = e.detail || {};
+    let idx = d.index != null ? d.index : e.currentTarget.dataset.index;
+    if (idx == null || idx === '') return;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
     const reviews = [...this.data.reviews];
-    if (!reviews[idx]) return;
+    if (Number.isNaN(idx) || !reviews[idx]) return;
     reviews[idx].expanded = true;
     this.setData({ reviews });
     setTimeout(() => this.startReadingObserver(reviews[idx].review_id), 100);
   },
 
-  /** 车主核验区：新手阅读说明（信息架构补充，非改题意） */
-  onObjectiveReaderTip() {
-    wx.showModal({
-      title: '如何读「车主核验」',
-      content:
-        '这三项由完成订单的车主在平台必答题中确认，帮您从「过程是否透明、配件是否可信、问题是否修好」三个角度快速扫一眼。\n\n' +
-        '① 透明：进度、增项与费用是否及时同步，减少擅自加价风险。\n' +
-        '② 核对：是否当面看到换下件与装配件；本单若有「新配件留档」图为服务商完工时上传，可与订单中的配件等级承诺（如原厂、大厂件）对照包装与标识。\n' +
-        '③ 结果：针对本次送修症状是否排除，而非笼统说「车没问题」。\n\n' +
-        '请结合下方实拍、新配件留档与文字评价综合判断；单项为「否」时建议重点阅读正文与图片。',
-      showCancel: false,
-      confirmText: '知道了'
-    });
+  onToggleShopQuoteJourney(e) {
+    const d = e.detail || {};
+    let idx =
+      d.index != null
+        ? d.index
+        : e.currentTarget.dataset.index != null
+          ? e.currentTarget.dataset.index
+          : e.currentTarget.dataset.ridx;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
+    const reviews = [...this.data.reviews];
+    if (Number.isNaN(idx) || !reviews[idx]) return;
+    reviews[idx].quoteJourneyExpanded = !reviews[idx].quoteJourneyExpanded;
+    this.setData({ reviews });
+  },
+
+  onToggleReviewImages(e) {
+    const d = e.detail || {};
+    let idx =
+      d.index != null
+        ? d.index
+        : e.currentTarget.dataset.index != null
+          ? e.currentTarget.dataset.index
+          : e.currentTarget.dataset.ridx;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
+    const reviews = [...this.data.reviews];
+    if (Number.isNaN(idx) || !reviews[idx]) return;
+    reviews[idx].showReviewImages = !reviews[idx].showReviewImages;
+    this.setData({ reviews });
+    if (reviews[idx].showReviewImages) {
+      setTimeout(() => this.startReadingObserver(reviews[idx].review_id), 100);
+    }
+  },
+
+  onTogglePubV3Expand(e) {
+    const d = e.detail || {};
+    let idx = d.index != null ? d.index : e.currentTarget.dataset.index;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
+    const key = (d.key != null ? d.key : e.currentTarget.dataset.key) || '';
+    const reviews = [...this.data.reviews];
+    const r = reviews[idx];
+    if (Number.isNaN(idx) || !r || !r.pubExpand || !key) return;
+    const pe = { ...r.pubExpand, [key]: !r.pubExpand[key] };
+    r.pubExpand = pe;
+    this.setData({ reviews });
+    if (pe[key]) {
+      setTimeout(() => this.startReadingObserver(r.review_id), 100);
+    }
+  },
+
+  onPreviewReviewImagesRow(e) {
+    const d = e.detail || {};
+    let idx =
+      d.index != null
+        ? d.index
+        : e.currentTarget.dataset.index != null
+          ? e.currentTarget.dataset.index
+          : e.currentTarget.dataset.ridx;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
+    const group = (d.group != null ? d.group : e.currentTarget.dataset.group) || '';
+    const current = (d.current != null ? d.current : e.currentTarget.dataset.current) || '';
+    const rev = this.data.reviews[idx];
+    if (!rev) return;
+    let urls = [];
+    if (group === 'before') urls = rev.before_images || [];
+    else if (group === 'after') urls = rev.after_images || [];
+    else if (group === 'completion') urls = rev.completion_images || [];
+    else if (group === 'material') urls = rev.material_photos || [];
+    else if (group === 'quoteCred') urls = rev.pubQuoteCredentialUrls || [];
+    urls = (urls || []).filter(Boolean);
+    if (!urls.length) return;
+    wx.previewImage({ urls, current: current || urls[0] });
+  },
+
+  onPreviewShopQuotePhoto(e) {
+    const d = e.detail || {};
+    let idx =
+      d.index != null
+        ? d.index
+        : e.currentTarget.dataset.index != null
+          ? e.currentTarget.dataset.index
+          : e.currentTarget.dataset.ridx;
+    idx = typeof idx === 'number' ? idx : parseInt(idx, 10);
+    let qpidx = d.qpidx != null ? d.qpidx : e.currentTarget.dataset.qpidx;
+    qpidx = typeof qpidx === 'number' ? qpidx : parseInt(qpidx, 10);
+    const url = d.url != null ? d.url : e.currentTarget.dataset.url;
+    const rev = this.data.reviews[idx];
+    if (!rev || !rev.quoteProposalDisplay || Number.isNaN(qpidx) || !rev.quoteProposalDisplay[qpidx]) return;
+    const urls = rev.quoteProposalDisplay[qpidx].photo_urls || [];
+    if (urls.length) wx.previewImage({ urls, current: url || urls[0] });
   },
 
   startReadingObserver(reviewId) {

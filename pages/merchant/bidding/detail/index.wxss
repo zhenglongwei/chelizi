@@ -1,5 +1,6 @@
-/* 竞价详情与报价 - M05，报价明细：损失部位、维修方案、配件类型、单价数量 */
+/* 竞价详情与报价 - M05；报价明细表单与订单「修改报价单」共用 merchant-quote-form */
 @import '/styles/design-system.wxss';
+@import '/styles/merchant-quote-form.wxss';
 
 .merchant-bidding-detail {
   padding: var(--page-padding-x);
@@ -15,72 +16,221 @@
   margin-bottom: var(--space-lg);
 }
 
-/* 定损报告卡片 */
-.bidding-detail-card .detail-card-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-}
-
-.bidding-detail-card .detail-card-title {
-  color: var(--text-primary);
-}
-
-.bidding-detail-card .detail-card-badge {
+.detail-card-badge {
   padding: 4rpx var(--space-sm);
   background: var(--accent-bg);
   color: var(--accent);
   border-radius: var(--radius-sm);
 }
 
-/* 事故照片（定损依据） */
-.detail-photos-section {
+/* 车主定损依据（优先阅读） */
+.merchant-owner-evidence {
+  border: 2rpx solid var(--primary);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.06);
+}
+
+.merchant-evidence-head {
   margin-bottom: var(--space-lg);
-  padding-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
   border-bottom: 1rpx solid var(--border-light);
 }
 
-.detail-photos-title {
+.merchant-evidence-title {
   display: block;
-  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
 }
 
-.detail-photos-grid {
+.merchant-evidence-priority {
+  display: block;
+  color: var(--primary);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.merchant-evidence-block-label {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.merchant-evidence-photos-block {
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-evidence-photos-grid {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
 }
 
-.detail-photo-item {
-  width: 160rpx;
-  height: 160rpx;
+.merchant-evidence-photo-item {
+  width: 200rpx;
+  height: 200rpx;
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-placeholder);
+  border: 1rpx solid var(--border);
 }
 
-.detail-photo-thumb {
+.merchant-evidence-photo-thumb {
   width: 100%;
   height: 100%;
 }
 
-.detail-user-desc {
+.merchant-evidence-empty-photos {
   margin-bottom: var(--space-lg);
   padding: var(--space-md);
   background: var(--bg-page);
   border-radius: var(--radius-sm);
 }
 
-.detail-user-desc-title {
-  display: block;
-  margin-bottom: var(--space-xs);
+.merchant-evidence-desc-block {
+  margin-bottom: var(--space-lg);
 }
 
-.detail-user-desc-text {
+.merchant-evidence-desc-body {
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
+  border-left: 6rpx solid var(--primary);
+}
+
+.merchant-evidence-desc-text {
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.6;
+}
+
+.merchant-evidence-no-desc {
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-evidence-meta {
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+
+/* AI 分析报告（折叠） */
+.merchant-ai-report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+}
+
+.merchant-ai-report-head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.merchant-ai-report-hint {
+  line-height: 1.4;
+}
+
+.merchant-ai-report-head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.merchant-ai-badge {
+  flex-shrink: 0;
+}
+
+.merchant-ai-report-arrow {
+  width: 28rpx;
+  height: 28rpx;
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+
+.merchant-ai-report-body {
+  padding-top: var(--space-md);
+  margin-top: var(--space-sm);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.merchant-ai-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+  margin-bottom: var(--space-sm);
+}
+
+.merchant-ai-human-block {
+  margin-bottom: var(--space-md);
+}
+
+.merchant-ai-human-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+}
+
+.merchant-ai-line {
+  padding: 6rpx 0;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.merchant-ai-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+  line-height: 1.5;
+}
+
+/* 报价工具条（Excel / AI / 拍照） */
+.merchant-quote-toolbar {
+  margin-top: var(--space-md);
+}
+
+.merchant-quote-toolbar-row {
+  margin-top: var(--space-sm);
+}
+
+.merchant-quote-toolbar-row--dual {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-sm);
+}
+
+.merchant-quote-tool-btn {
+  margin: 0;
+  font-size: var(--fs-cap);
+  line-height: 1.45;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  box-sizing: border-box;
+}
+
+.merchant-quote-tool-btn--half {
+  flex: 1;
+  min-width: 0;
+}
+
+.merchant-quote-tool-btn--full {
+  width: 100%;
+}
+
+.merchant-quote-tool-btn--outline {
+  color: var(--primary);
+  background: var(--accent-bg);
+  border: 1rpx solid var(--primary);
+}
+
+.merchant-quote-tool-btn--ghost {
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
 }
 
 .detail-vehicle-row,
@@ -167,78 +317,7 @@
   margin-top: var(--space-xs);
 }
 
-.quote-ai-action {
-  margin-top: var(--space-md);
-}
-
-.quote-section {
-  margin-bottom: var(--space-xl);
-}
-
-.quote-section-title {
-  display: block;
-  color: var(--text-primary);
-  margin-bottom: var(--space-xs);
-}
-
-.quote-section-hint {
-  display: block;
-  margin-bottom: var(--space-sm);
-}
-
-.quote-ai-btn {
-  font-size: var(--fs-body);
-  color: var(--primary);
-  background: var(--accent-bg);
-  border: 1rpx solid var(--primary);
-  border-radius: var(--radius-sm);
-  padding: var(--space-sm) var(--space-lg);
-}
-
-.quote-items-list {
-  margin-bottom: var(--space-lg);
-}
-
-/* 增值服务 */
-.quote-value-added {
-  margin-bottom: var(--space-lg);
-}
-.quote-value-added-title {
-  display: block;
-  margin-bottom: var(--space-xs);
-}
-.quote-value-added-hint {
-  display: block;
-  margin-bottom: var(--space-sm);
-}
-.quote-value-added-list {
-  margin-top: var(--space-sm);
-}
-.quote-value-added-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-.quote-value-added-input {
-  flex: 1;
-  font-size: var(--fs-body);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--bg-page);
-  border: 1rpx solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.quote-value-added-del {
-  font-size: var(--fs-sm);
-  color: var(--danger);
-  flex-shrink: 0;
-}
-.quote-value-added-add {
-  padding: var(--space-md);
-  text-align: center;
-  border: 2rpx dashed var(--border);
-  border-radius: var(--radius-sm);
-}
+/* quote-ai-*、quote-import-* 见 merchant-quote-form.wxss */
 
 .quoted-value-added {
   margin-top: var(--space-md);
@@ -252,186 +331,6 @@
 }
 .quoted-value-added-item {
   padding: var(--space-xs) 0;
-}
-
-/* 报价项目块：第1行损失部位、第2行维修方案+配件类型(换时) */
-.quote-item-block {
-  padding: var(--space-md);
-  margin-bottom: var(--space-md);
-  background: var(--bg-page);
-  border-radius: var(--radius-sm);
-  position: relative;
-}
-
-.quote-item-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-
-.quote-item-line:last-of-type {
-  margin-bottom: 0;
-}
-
-.quote-item-line1 .quote-item-label,
-.quote-item-line2 .quote-item-label {
-  flex-shrink: 0;
-  width: 140rpx;
-  font-size: var(--fs-cap);
-  color: var(--text-secondary);
-}
-
-.quote-item-input {
-  flex: 1;
-  font-size: var(--fs-body);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--bg-card);
-  border: 1rpx solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.quote-item-line2 {
-  flex-wrap: wrap;
-}
-
-.quote-item-line2 .quote-item-picker {
-  flex: 1;
-  min-width: 140rpx;
-}
-
-.quote-item-picker-parts {
-  margin-left: var(--space-sm);
-}
-
-.quote-item-picker {
-  flex: 1;
-  font-size: var(--fs-body);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--bg-card);
-  border: 1rpx solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-}
-
-.quote-item-picker:empty::before,
-.quote-item-picker:empty::after {
-  content: none;
-}
-
-.quote-item-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 1rpx solid var(--border-light);
-}
-.quote-item-del {
-  font-size: var(--fs-sm);
-  color: var(--danger);
-  padding: var(--space-xs) var(--space-md);
-}
-.quote-item-del:active {
-  opacity: 0.7;
-}
-
-.quote-item-add {
-  padding: var(--space-md);
-  text-align: center;
-  border: 2rpx dashed var(--border);
-  border-radius: var(--radius-sm);
-}
-
-/* 汇总区：总报价、工期、质保、备注 */
-.quote-summary-section {
-  padding-top: var(--space-lg);
-  margin-top: var(--space-lg);
-  border-top: 1rpx solid var(--border-light);
-}
-
-.quote-total-block {
-  margin-bottom: var(--space-lg);
-}
-
-.quote-total-label {
-  display: block;
-  margin-bottom: var(--space-sm);
-}
-
-.quote-total-input-wrap {
-  display: flex;
-  align-items: center;
-  padding: var(--space-md) var(--space-lg);
-  background: var(--primary-bg);
-  border: 1rpx solid var(--primary);
-  border-radius: var(--radius-md);
-}
-
-.quote-total-prefix {
-  font-size: var(--fs-h3);
-  font-weight: 600;
-  color: var(--primary);
-  margin-right: var(--space-sm);
-}
-
-.quote-total-input {
-  flex: 1;
-  font-size: var(--fs-h3);
-  font-weight: 600;
-  color: var(--primary);
-  min-width: 0;
-}
-
-.quote-extra-block {
-  display: flex;
-  align-items: center;
-  gap: var(--space-lg);
-  margin-bottom: var(--space-lg);
-  padding: var(--space-md) var(--space-lg);
-  background: var(--bg-page);
-  border-radius: var(--radius-md);
-  border: 1rpx solid var(--border);
-}
-
-.quote-extra-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.quote-extra-divider {
-  width: 1rpx;
-  height: 48rpx;
-  background: var(--border);
-  flex-shrink: 0;
-}
-
-.quote-extra-label {
-  flex-shrink: 0;
-}
-
-.quote-extra-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.quote-extra-input {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--fs-body);
-  border: 1rpx solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  text-align: center;
-}
-
-.quote-extra-unit {
-  flex-shrink: 0;
-  font-size: var(--fs-cap);
-  color: var(--text-secondary);
 }
 
 .quote-remark-row {

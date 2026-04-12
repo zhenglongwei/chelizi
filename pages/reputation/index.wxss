@@ -2,6 +2,39 @@
  * 口碑首页 - 以《设计规范.md》为准
  * 页边距：主内容区使用 var(--page-padding-x)（32rpx）
  */
+@import '../reviews/feed/index.wxss';
+
+.rep-merged-feed.feed-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-left: calc(-1 * var(--page-padding-x));
+  margin-right: calc(-1 * var(--page-padding-x));
+  width: calc(100% + 2 * var(--page-padding-x));
+  box-sizing: border-box;
+}
+
+.rep-main-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-2xl);
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.rep-main-tab {
+  font-size: var(--fs-h3);
+  color: var(--text-secondary);
+  padding: var(--space-xs) 0;
+}
+
+.rep-main-tab.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .rep-page {
   display: flex;
   flex-direction: column;

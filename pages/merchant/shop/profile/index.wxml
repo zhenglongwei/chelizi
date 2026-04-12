@@ -107,8 +107,8 @@
           <text class="section-title fs-body fw-bold">人员与品牌授权</text>
         </view>
         <view class="merchant-form-item profile-form-item-first">
-          <text class="merchant-form-label fs-body">技师持证情况</text>
-          <text class="text-muted fs-cap profile-field-hint">头像、称呼、等级、从业年限；等级参照国家职业资格</text>
+          <text class="merchant-form-label fs-body">技师持证情况<text class="fs-cap text-muted">（选填）</text></text>
+          <text class="text-muted fs-cap profile-field-hint">填写后可提升店铺得分；头像、称呼、等级、从业年限，等级参照国家职业资格</text>
           <view class="technician-list">
             <view class="technician-card" wx:for="{{technicians}}" wx:key="id">
               <image class="technician-avatar" src="{{item.avatar_url || '/images/icon/person.png'}}" mode="aspectFill"/>
@@ -180,7 +180,7 @@
     </view>
     <view class="technician-modal-row">
       <text class="technician-modal-label">职业证书</text>
-      <text class="text-muted fs-cap">上传证书后可按证书等级选择；不传则默认为普通技工</text>
+      <text class="text-muted fs-cap">上传后 AI 按证上原文识别（职业技能等级或检测维修水平评价均可）；不传则默认为普通技工</text>
       <view class="technician-modal-cert" bindtap="onTechnicianCertTap">
         <image wx:if="{{technicianForm.certificate_url}}" src="{{technicianForm.certificate_url}}" mode="aspectFit"/>
         <text wx:else class="technician-cert-placeholder">上传职业证书照片</text>
@@ -188,7 +188,7 @@
     </view>
     <view class="technician-modal-row">
       <text class="technician-modal-label">等级</text>
-      <text class="text-muted fs-cap" wx:if="{{!technicianForm.certificate_url}}">无证书时固定为普通技工</text>
+      <text class="text-muted fs-cap" wx:if="{{!technicianForm.certificate_url}}">无证书时等级固定为普通技工</text>
       <picker mode="selector" range="{{technicianLevelOptions}}" range-key="label" value="{{technicianLevelIndex}}" bindchange="onTechnicianLevelChange" disabled="{{!technicianForm.certificate_url}}">
         <view class="technician-modal-picker {{!technicianForm.certificate_url ? 'disabled' : ''}}">{{technicianLevelLabel || '请选择'}}</view>
       </picker>

@@ -6,6 +6,9 @@ const { getToken, updateUserProfile, uploadImage, getUserProfile, authPhoneByCod
 
 const logger = getLogger('Profile');
 
+/** 未点「保存」时的头像/昵称草稿，避免去车辆页返回后被 loadCurrentProfile 覆盖 */
+const PROFILE_DRAFT_KEY = 'profile_edit_draft';
+
 Page({
   data: {
     avatarUrl: '',
@@ -27,7 +30,74 @@ Page({
       wx.redirectTo({ url: '/pages/auth/login/index' });
       return;
     }
+    this._skipVehicleRefreshOnce = true;
     this.loadCurrentProfile();
+  },
+
+  onShow() {
+    if (!getToken()) return;
+    // 首次展示已在 onLoad 中拉全量；之后从车辆页返回只刷新手机号与车辆数，不覆盖未保存的头像/昵称
+    if (this._skipVehicleRefreshOnce) {
+      this._skipVehicleRefreshOnce = false;
+      return;
+    }
+    this.refreshPhoneAndVehiclesOnly();
+  },
+
+  saveDraftToStorage() {
+    try {
+      const { avatarUrl, nickname } = this.data;
+      wx.setStorageSync(PROFILE_DRAFT_KEY, {
+        avatarUrl: avatarUrl || '',
+        nickname: nickname || '',
+        ts: Date.now()
+      });
+    } catch (_) {}
+  },
+
+  readDraftFromStorage() {
+    try {
+      return wx.getStorageSync(PROFILE_DRAFT_KEY) || null;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  clearDraftStorage() {
+    try {
+      wx.removeStorageSync(PROFILE_DRAFT_KEY);
+    } catch (_) {}
+  },
+
+  /** 仅同步手机号、车辆数（供 onShow 使用） */
+  async refreshPhoneAndVehiclesOnly() {
+    try {
+      const [profile, vehiclesRes] = await Promise.all([
+        getUserProfile(),
+        getUserVehicles().catch(() => ({ list: [] }))
+      ]);
+      if (!profile) return;
+      const phone = profile.phone || '';
+      const masked = phone ? (phone.slice(0, 3) + '****' + phone.slice(-4)) : '';
+      this.setData({
+        phone: masked || '',
+        phoneRaw: phone,
+        vehicleCount: (vehiclesRes?.list || []).length
+      });
+    } catch (err) {
+      logger.warn('刷新手机号/车辆数失败', err);
+    }
+  },
+
+  applyDraftOverServer(avatarFromServer, nicknameFromServer) {
+    const draft = this.readDraftFromStorage();
+    if (!draft || !draft.ts) {
+      return { avatarUrl: avatarFromServer || '', nickname: nicknameFromServer || '' };
+    }
+    return {
+      avatarUrl: draft.avatarUrl !== undefined ? draft.avatarUrl : (avatarFromServer || ''),
+      nickname: draft.nickname !== undefined ? draft.nickname : (nicknameFromServer || '')
+    };
   },
 
   async loadCurrentProfile() {
@@ -39,13 +109,14 @@ Page({
       if (profile) {
         const phone = profile.phone || '';
         const masked = phone ? (phone.slice(0, 3) + '****' + phone.slice(-4)) : '';
+        const merged = this.applyDraftOverServer(profile.avatar_url, profile.nickname);
         this.setData({
-          avatarUrl: profile.avatar_url || '',
-          nickname: profile.nickname || '',
+          avatarUrl: merged.avatarUrl,
+          nickname: merged.nickname,
           phone: masked || '',
           phoneRaw: phone,
           vehicleCount: (vehiclesRes?.list || []).length,
-          canSubmit: !!(profile.avatar_url || profile.nickname)
+          canSubmit: !!(merged.avatarUrl || (merged.nickname && merged.nickname.trim()))
         });
       }
     } catch (err) {
@@ -58,9 +129,10 @@ Page({
     if (code) {
       try {
         ui.showLoading('获取中...');
-        const res = await authPhoneByCode(code);
+        await authPhoneByCode(code);
         ui.hideLoading();
         ui.showSuccess('手机号已绑定');
+        // 合并草稿，避免刷新覆盖未保存的头像/昵称
         this.loadCurrentProfile();
       } catch (err) {
         ui.hideLoading();
@@ -95,12 +167,14 @@ Page({
     const { avatarUrl } = e.detail || {};
     if (!avatarUrl) return;
     this.setData({ avatarUrl, canSubmit: true });
+    this.saveDraftToStorage();
     logger.info('选择头像', { avatarUrl });
   },
 
   onNicknameInput(e) {
     const nickname = e.detail.value || '';
     this.setData({ nickname, canSubmit: !!nickname.trim() || !!this.data.avatarUrl });
+    this.saveDraftToStorage();
   },
 
   async onSubmit() {
@@ -130,6 +204,7 @@ Page({
       if (updateData.nickname) user.nickname = updateData.nickname;
       if (updateData.avatar_url) user.avatar_url = updateData.avatar_url;
       wx.setStorageSync('user', user);
+      this.clearDraftStorage();
 
       ui.showSuccess('保存成功');
       logger.info('资料保存成功', updateData);

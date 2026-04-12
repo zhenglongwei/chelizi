@@ -1,9 +1,17 @@
 // 服务商订单详情 - M07
 const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
-const { getMerchantToken, getMerchantOrder, acceptOrder, updateOrderStatus, merchantUploadImage, respondCancelRequest, updateRepairPlan } = require('../../../../utils/api');
+const {
+  getMerchantToken,
+  getMerchantOrder,
+  acceptOrder,
+  updateOrderStatus,
+  merchantUploadImage,
+  respondCancelRequest
+} = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
 const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
+const { PARTS_VERIFICATION_METHODS } = require('../../../../utils/parts-verification-labels');
 
 const logger = getLogger('MerchantOrderDetail');
 
@@ -23,7 +31,12 @@ Page({
     materialPhotos: [],
     materialPhotoUrls: [],
     durationCountdownText: '',
-    durationCountdownExpired: false
+    durationCountdownExpired: false,
+    leadTechName: '',
+    partsVerificationMethods: PARTS_VERIFICATION_METHODS,
+    partsVerifyPicks: {},
+    partsVerifyNotProvided: false,
+    partsVerifyNote: ''
   },
 
   _durationTimer: null,
@@ -40,6 +53,16 @@ Page({
       wx.redirectTo({ url: '/pages/merchant/login?redirect=' + encodeURIComponent('/pages/merchant/order/detail/index?id=' + id) });
       return;
     }
+    this._merchantOrderFirstShow = true;
+    this.loadOrder();
+  },
+
+  onShow() {
+    if (!this.data.orderId || !getMerchantToken()) return;
+    if (this._merchantOrderFirstShow) {
+      this._merchantOrderFirstShow = false;
+      return;
+    }
     this.loadOrder();
   },
 
@@ -52,27 +75,57 @@ Page({
       const quote = res.quote || {};
       const planItems = (rp && rp.items && rp.items.length) ? rp.items : (quote.items || []);
       const planValueAdded = (rp && rp.value_added_services && rp.value_added_services.length) ? rp.value_added_services : (quote.value_added_services || []);
-      const materialAuditing = res.status === 1 && res.material_audit_status === 'pending';
+      const materialAuditPendingAi = res.status === 1 && res.material_audit_status === 'pending';
+      const materialAuditManualReview = res.status === 1 && res.material_audit_status === 'manual_review';
+      const materialAuditing = materialAuditPendingAi || materialAuditManualReview;
       const materialAuditRejected = res.status === 1 && res.material_audit_status === 'rejected';
-      const canEditPlan = !materialAuditing && res.status === 1 && (res.repair_plan_status === 0 || res.repair_plan_status === undefined);
+      const hasPreQuote = !!res.pre_quote_snapshot;
+      const fqsRaw = res.final_quote_status != null ? parseInt(res.final_quote_status, 10) : 0;
+      const fqs = Number.isNaN(fqsRaw) ? 0 : fqsRaw;
+      const canEditPlan =
+        !materialAuditing &&
+        res.status === 1 &&
+        (res.repair_plan_status === 0 || res.repair_plan_status === undefined) &&
+        !hasPreQuote;
+      const canSubmitFinalQuote =
+        !materialAuditing && res.status === 1 && hasPreQuote && fqs !== 1;
+      const finalQuotePending = hasPreQuote && fqs === 1;
+      const finalQuoteLocked = hasPreQuote && fqs === 2;
+      // 有预报价的订单完工均须负责人/验真（选厂价或锁价后一致）
+      const needLeadTech = hasPreQuote;
       const planPendingConfirm = res.status === 1 && res.repair_plan_status === 1;
+      const completeDisabled =
+        materialAuditing || planPendingConfirm || finalQuotePending;
       let statusText = STATUS_MAP[res.status] || '未知';
-      if (materialAuditing) statusText = '正在审核材料';
+      if (materialAuditPendingAi) statusText = '正在审核材料';
+      else if (materialAuditManualReview) statusText = '材料人工审核中';
       else if (materialAuditRejected) statusText = '审核未通过';
+      let completeBtnText = '维修完成';
+      if (materialAuditPendingAi) completeBtnText = '正在审核材料';
+      else if (materialAuditManualReview) completeBtnText = '人工审核中';
+      else if (planPendingConfirm) completeBtnText = '请等待车主确认维修方案';
+      else if (finalQuotePending) completeBtnText = '请等待车主确认报价';
       this.setData({
         order: {
           ...res,
           status_text: statusText,
           commission_rate: crDisplay,
           displayAmount: (rp && rp.amount != null) ? rp.amount : res.quoted_amount,
-          displayDuration: rp && rp.duration,
-          displayWarranty: rp && rp.warranty
+          displayDuration: rp && rp.duration
         },
         planItems,
         planValueAdded,
         canEditPlan,
+        canSubmitFinalQuote,
+        finalQuotePending,
+        finalQuoteLocked,
+        needLeadTech,
+        completeDisabled,
+        completeBtnText,
         planPendingConfirm,
         materialAuditing,
+        materialAuditPendingAi,
+        materialAuditManualReview,
         materialAuditRejected,
         materialAuditRejectReason: res.material_audit_reject_reason || ''
       });
@@ -158,8 +211,18 @@ Page({
       sizeType: ['compressed'],
       success: async (res) => {
         const files = (res.tempFiles || []).slice(0, count);
-        const keyUrls = type === 'repair' ? 'repairPhotoUrls' : type === 'settlement' ? 'settlementPhotoUrls' : 'materialPhotoUrls';
-        const keyPhotos = type === 'repair' ? 'repairPhotos' : type === 'settlement' ? 'settlementPhotos' : 'materialPhotos';
+        const keyUrls =
+          type === 'repair'
+            ? 'repairPhotoUrls'
+            : type === 'settlement'
+              ? 'settlementPhotoUrls'
+              : 'materialPhotoUrls';
+        const keyPhotos =
+          type === 'repair'
+            ? 'repairPhotos'
+            : type === 'settlement'
+              ? 'settlementPhotos'
+              : 'materialPhotos';
         for (const f of files) {
           try {
             const url = await merchantUploadImage(f.tempFilePath);
@@ -174,11 +237,63 @@ Page({
       }
     });
   },
+  onTogglePartsVerifyMethod(e) {
+    if (this.data.materialAuditing) return;
+    const key = e.currentTarget.dataset.key;
+    if (!key) return;
+    const picks = { ...(this.data.partsVerifyPicks || {}) };
+    if (picks[key]) delete picks[key];
+    else picks[key] = true;
+    this.setData({ partsVerifyPicks: picks, partsVerifyNotProvided: false });
+  },
+
+  onPartsVerifyNotProvidedChange(e) {
+    if (this.data.materialAuditing) return;
+    const on = !!(e.detail && e.detail.value);
+    this.setData({
+      partsVerifyNotProvided: on,
+      partsVerifyPicks: on ? {} : this.data.partsVerifyPicks
+    });
+  },
+
+  onPartsVerifyNoteInput(e) {
+    this.setData({ partsVerifyNote: e.detail.value || '' });
+  },
+
+  buildPartsVerificationPayload() {
+    if (!this.data.needLeadTech) return { ok: true, data: null };
+    if (this.data.partsVerifyNotProvided) {
+      return { ok: true, data: { not_provided: true } };
+    }
+    const selected = Object.keys(this.data.partsVerifyPicks || {}).filter((k) => this.data.partsVerifyPicks[k]);
+    if (!selected.length) {
+      return { ok: false, msg: '请选择配件验真方式，或勾选「暂不填写验真说明」' };
+    }
+    if (selected.indexOf('other') >= 0) {
+      const note = String(this.data.partsVerifyNote || '').trim();
+      if (note.length < 2) {
+        return { ok: false, msg: '选择「其他」时请简短说明验真方式' };
+      }
+      return { ok: true, data: { methods: selected, note } };
+    }
+    return { ok: true, data: { methods: selected } };
+  },
+
   onDelEvidencePhoto(e) {
     if (this.data.materialAuditing) return;
     const { type, index } = e.currentTarget.dataset;
-    const keyUrls = type === 'repair' ? 'repairPhotoUrls' : type === 'settlement' ? 'settlementPhotoUrls' : 'materialPhotoUrls';
-    const keyPhotos = type === 'repair' ? 'repairPhotos' : type === 'settlement' ? 'settlementPhotos' : 'materialPhotos';
+    const keyUrls =
+      type === 'repair'
+        ? 'repairPhotoUrls'
+        : type === 'settlement'
+          ? 'settlementPhotoUrls'
+          : 'materialPhotoUrls';
+    const keyPhotos =
+      type === 'repair'
+        ? 'repairPhotos'
+        : type === 'settlement'
+          ? 'settlementPhotos'
+          : 'materialPhotos';
     const urls = [...(this.data[keyUrls] || [])];
     const imgs = [...(this.data[keyPhotos] || [])];
     urls.splice(index, 1);
@@ -208,17 +323,44 @@ Page({
         requestMerchantSubscribe('material_audit');
         this.setData({ updating: true });
         try {
+          const ev = {
+            repair_photos: repairPhotoUrls,
+            settlement_photos: settlementPhotoUrls,
+            material_photos: materialPhotoUrls
+          };
+          if (this.data.needLeadTech) {
+            const name = (this.data.leadTechName || '').trim();
+            if (!name) {
+              ui.showWarning('请填写负责维修的技师或负责人');
+              this.setData({ updating: false });
+              return;
+            }
+            ev.lead_technician = { source: 'manual', name };
+            const pv = this.buildPartsVerificationPayload();
+            if (!pv.ok) {
+              ui.showWarning(pv.msg);
+              this.setData({ updating: false });
+              return;
+            }
+            if (pv.data) ev.parts_verification = pv.data;
+          }
           const res = await updateOrderStatus(this.data.orderId, {
             status: 2,
-            completion_evidence: {
-              repair_photos: repairPhotoUrls,
-              settlement_photos: settlementPhotoUrls,
-              material_photos: materialPhotoUrls
-            }
+            completion_evidence: ev
           });
           const isAuditing = res && res.status === 'auditing';
           ui.showSuccess(isAuditing ? '正在审核材料，请稍后查看结果' : '已标记为待确认');
-          this.setData({ repairPhotos: [], repairPhotoUrls: [], settlementPhotos: [], settlementPhotoUrls: [], materialPhotos: [], materialPhotoUrls: [] });
+          this.setData({
+            repairPhotos: [],
+            repairPhotoUrls: [],
+            settlementPhotos: [],
+            settlementPhotoUrls: [],
+            materialPhotos: [],
+            materialPhotoUrls: [],
+            partsVerifyPicks: {},
+            partsVerifyNotProvided: false,
+            partsVerifyNote: ''
+          });
           this.loadOrder();
         } catch (err) {
           logger.error('更新状态失败', err);
@@ -264,5 +406,15 @@ Page({
         }
       }
     });
+  },
+
+  onSubmitFinalQuote() {
+    const { orderId, canSubmitFinalQuote } = this.data;
+    if (!canSubmitFinalQuote) return;
+    wx.navigateTo({ url: '/pages/merchant/order/repair-plan-edit/index?id=' + orderId + '&mode=final' });
+  },
+
+  onLeadTechInput(e) {
+    this.setData({ leadTechName: e.detail.value || '' });
   }
 });

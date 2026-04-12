@@ -7,13 +7,14 @@ import {
   Space,
   Button,
   message,
-  Tag,
+  DatePicker,
 } from 'antd';
 import { DollarOutlined, WalletOutlined, FileTextOutlined } from '@ant-design/icons';
 import { callCloudFunction } from '../utils/api';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
 export default function SettlementManagement() {
   const [loading, setLoading] = useState(false);
@@ -21,15 +22,17 @@ export default function SettlementManagement() {
   const [refunds, setRefunds] = useState<any[]>([]);
   const [deposits, setDeposits] = useState<any[]>([]);
   const [commissionLedger, setCommissionLedger] = useState<any[]>([]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
+    dayjs().subtract(89, 'day'),
+    dayjs(),
+  ]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const result = await callCloudFunction('getSettlements', { type: 'all' });
+      const start = dateRange[0].format('YYYY-MM-DD');
+      const end = dateRange[1].format('YYYY-MM-DD');
+      const result = await callCloudFunction('getSettlements', { start, end });
       if (result.success) {
         setSettlements(result.data.settlements || []);
         setRefunds(result.data.refunds || []);
@@ -46,11 +49,35 @@ export default function SettlementManagement() {
     }
   };
 
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const orderKindLabel = (k: string) =>
+    k === 'product' ? '标品订单' : k === 'repair' ? '维修单' : k === 'unknown' ? '未识别' : k || '-';
+
   const commissionColumns = [
+    {
+      title: '订单类型',
+      dataIndex: 'orderKind',
+      key: 'orderKind',
+      width: 100,
+      render: (k: string) => orderKindLabel(k),
+    },
     { title: '订单号', dataIndex: 'orderNo', key: 'orderNo' },
     { title: '服务商', dataIndex: 'merchantName', key: 'merchantName' },
-    { title: '订单金额', dataIndex: 'orderAmount', key: 'orderAmount', render: (val: number) => `¥${val}` },
-    { title: '佣金金额', dataIndex: 'commission', key: 'commission', render: (val: number) => `¥${val}` },
+    {
+      title: '订单金额',
+      dataIndex: 'orderAmount',
+      key: 'orderAmount',
+      render: (val: number) => `¥${Number(val ?? 0).toFixed(2)}`,
+    },
+    {
+      title: '佣金金额',
+      dataIndex: 'commission',
+      key: 'commission',
+      render: (val: number) => `¥${Number(val ?? 0).toFixed(2)}`,
+    },
     { title: '佣金收款状态', dataIndex: 'commissionStatus', key: 'commissionStatus' },
     { 
       title: '结算时间', 
@@ -61,9 +88,22 @@ export default function SettlementManagement() {
   ];
 
   const refundColumns = [
+    {
+      title: '订单类型',
+      dataIndex: 'orderKind',
+      key: 'orderKind',
+      width: 100,
+      render: (k: string) => orderKindLabel(k),
+    },
     { title: '订单号', dataIndex: 'orderNo', key: 'orderNo' },
+    { title: '评价ID', dataIndex: 'reviewId', key: 'reviewId', ellipsis: true },
     { title: '车主', dataIndex: 'ownerName', key: 'ownerName' },
-    { title: '奖励金金额', dataIndex: 'refundAmount', key: 'refundAmount', render: (val: number) => `¥${val}` },
+    {
+      title: '奖励金金额',
+      dataIndex: 'refundAmount',
+      key: 'refundAmount',
+      render: (val: number) => `¥${Number(val ?? 0).toFixed(2)}`,
+    },
     {
       title: '订单分级',
       dataIndex: 'reward_tier',
@@ -172,8 +212,8 @@ export default function SettlementManagement() {
           columns={commissionColumns}
           dataSource={settlements}
           loading={loading}
-          rowKey="orderNo"
-          pagination={{ pageSize: 10 }}
+          rowKey={(r) => `${r.orderKind || 'x'}-${r.orderNo}`}
+          pagination={{ pageSize: 15, showSizeChanger: true }}
         />
       ),
     },
@@ -190,8 +230,8 @@ export default function SettlementManagement() {
           columns={refundColumns}
           dataSource={refunds}
           loading={loading}
-          rowKey={(r) => r.transaction_id || r.orderNo || String(Math.random())}
-          pagination={{ pageSize: 10 }}
+          rowKey={(r) => r.reviewId || r.transaction_id || `${r.orderNo}-${r.review_stage}`}
+          pagination={{ pageSize: 15, showSizeChanger: true }}
         />
       ),
     },
@@ -241,10 +281,20 @@ export default function SettlementManagement() {
   ];
 
   return (
-    <div className="settlement-management">
+    <div className="settlement-management" style={{ padding: '0 24px' }}>
       <Title level={2}>结算管理</Title>
-      
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        佣金结算含<strong>维修完工单</strong>与<strong>已支付标品订单</strong>（平台抽成可为 0）；奖励金管理按评价维度列出，含应发为 0 或未产生流水账的记录。切换 Tab 前请先点「查询」刷新。
+      </Text>
+
       <Card>
+        <Space wrap style={{ marginBottom: 16 }}>
+          <Text>全局时间范围：</Text>
+          <RangePicker value={dateRange} onChange={(v) => v && v[0] && v[1] && setDateRange([v[0], v[1]])} />
+          <Button type="primary" onClick={loadData} loading={loading}>
+            查询
+          </Button>
+        </Space>
         <Tabs items={tabItems} />
       </Card>
     </div>

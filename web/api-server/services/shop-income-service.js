@@ -12,6 +12,15 @@ function roundMoney(y) {
   return Math.round(parseFloat(y) * 100) / 100;
 }
 
+/** 生产库若未跑 20260325，ledger 表无 order_id 列 */
+function isMissingOrderIdColumnError(err) {
+  const msg = String(err && (err.sqlMessage || err.message) || '');
+  return (
+    (err && (err.code === 'ER_BAD_FIELD_ERROR' || err.errno === 1054))
+    && msg.includes('order_id')
+  );
+}
+
 async function getSetting(connOrPool, key, def) {
   const exec = connOrPool.execute.bind(connOrPool);
   try {
@@ -127,12 +136,26 @@ async function settlePaidRepairOrder(conn, orderId, opts = {}) {
       [shopSettle, ord.shop_id]
     );
     const ledgerId = genLedgerId();
-    await conn.execute(
-      `INSERT INTO merchant_shop_income_ledger
-       (ledger_id, shop_id, type, amount, balance_after, product_order_id, order_id, remark)
-       VALUES (?, ?, 'repair_order_settle', ?, ?, NULL, ?, ?)`,
-      [ledgerId, ord.shop_id, shopSettle, newBal, ord.order_id, `维修单自费入账 ${ord.order_id}`]
-    );
+    const remark = `维修单自费入账 ${ord.order_id}`;
+    try {
+      await conn.execute(
+        `INSERT INTO merchant_shop_income_ledger
+         (ledger_id, shop_id, type, amount, balance_after, product_order_id, order_id, remark)
+         VALUES (?, ?, 'repair_order_settle', ?, ?, NULL, ?, ?)`,
+        [ledgerId, ord.shop_id, shopSettle, newBal, ord.order_id, remark]
+      );
+    } catch (e) {
+      if (isMissingOrderIdColumnError(e)) {
+        await conn.execute(
+          `INSERT INTO merchant_shop_income_ledger
+           (ledger_id, shop_id, type, amount, balance_after, product_order_id, remark)
+           VALUES (?, ?, 'repair_order_settle', ?, ?, NULL, ?)`,
+          [ledgerId, ord.shop_id, shopSettle, newBal, remark]
+        );
+      } else {
+        throw e;
+      }
+    }
   }
 
   await conn.execute(
@@ -151,11 +174,23 @@ async function settlePaidRepairOrder(conn, orderId, opts = {}) {
 async function listIncomeLedger(pool, shopId, { page = 1, limit = 20 } = {}) {
   const off = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
   const lim = Math.min(100, Math.max(1, limit));
-  const [rows] = await pool.execute(
+  const sqlFull =
     `SELECT ledger_id, type, amount, balance_after, product_order_id, order_id, withdraw_id, remark, created_at
-     FROM merchant_shop_income_ledger WHERE shop_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
-    [shopId, lim, off]
-  );
+     FROM merchant_shop_income_ledger WHERE shop_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`;
+  const sqlLegacy =
+    `SELECT ledger_id, type, amount, balance_after, product_order_id, withdraw_id, remark, created_at
+     FROM merchant_shop_income_ledger WHERE shop_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`;
+  let rows;
+  try {
+    [rows] = await pool.execute(sqlFull, [shopId, lim, off]);
+  } catch (e) {
+    if (isMissingOrderIdColumnError(e)) {
+      [rows] = await pool.execute(sqlLegacy, [shopId, lim, off]);
+      rows = rows.map((r) => ({ ...r, order_id: null }));
+    } else {
+      throw e;
+    }
+  }
   const [[{ c }]] = await pool.execute(
     'SELECT COUNT(*) as c FROM merchant_shop_income_ledger WHERE shop_id = ?',
     [shopId]

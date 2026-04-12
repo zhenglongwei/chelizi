@@ -4,7 +4,11 @@
  */
 
 const reviewLikeService = require('./review-like-service');
+const orderQuoteProposalService = require('./order-quote-proposal-service');
 const { parseCompletionEvidence, parseRepairPlanEnrichment } = require('../utils/review-order-display');
+const quoteProposalPublic = require('../utils/quote-proposal-public-list');
+const { sanitizeQuoteProposalHistoryForPublicList } = require('../utils/quote-proposal-public-sanitize');
+const { applyGranularPublicImages, sanitizeSystemChecksForUserFacing } = require('../utils/review-public-system-sanitize');
 
 const LEVEL_NAMES = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
 
@@ -152,7 +156,8 @@ async function getReviewFeed(pool, query) {
     `SELECT r.*, u.nickname, u.avatar_url, u.level as user_level,
        s.shop_id, s.name as shop_name, s.logo as shop_logo, s.address as shop_address, s.district as shop_district,
        s.latitude as shop_lat, s.longitude as shop_lng,
-       o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence
+       o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence,
+       o.pre_quote_snapshot, o.accepted_at
      FROM reviews r
      JOIN users u ON r.user_id = u.user_id
      JOIN orders o ON r.order_id = o.order_id
@@ -196,14 +201,30 @@ async function getReviewFeed(pool, query) {
     } catch (_) {}
   }
 
+  /** 到店多轮报价：随评价公示 */
+  const proposalsByOrderId = new Map();
+  try {
+    if (reviews.length > 0 && (await orderQuoteProposalService.proposalsTableExists(pool))) {
+      const oids = [...new Set(reviews.map((row) => row.order_id))];
+      await Promise.all(
+        oids.map(async (oid) => {
+          const list = await orderQuoteProposalService.listFormatted(pool, oid);
+          if (list && list.length) proposalsByOrderId.set(oid, list);
+        })
+      );
+    }
+  } catch (_) {}
+
   return {
     success: true,
     data: {
       list: reviews.map(r => {
         const stats = likeStats[r.review_id] || {};
         let amount = r.actual_amount != null ? parseFloat(r.actual_amount) : (r.quoted_amount != null ? parseFloat(r.quoted_amount) : null);
-        const { material_photos } = parseCompletionEvidence(r.completion_evidence);
-        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key);
+        let { material_photos } = parseCompletionEvidence(r.completion_evidence);
+        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key, {
+          stripLinePrices: true,
+        });
         const objAnswers = (() => {
           try {
             return typeof r.objective_answers === 'string' ? JSON.parse(r.objective_answers || '{}') : (r.objective_answers || {});
@@ -224,9 +245,55 @@ async function getReviewFeed(pool, query) {
             return typeof r.after_images === 'string' ? JSON.parse(r.after_images || '[]') : (r.after_images || []);
           } catch (_) { return []; }
         })();
+        const faultImgs = (() => {
+          try {
+            return typeof r.fault_evidence_images === 'string'
+              ? JSON.parse(r.fault_evidence_images || '[]')
+              : r.fault_evidence_images || [];
+          } catch (_) {
+            return [];
+          }
+        })();
 
         const userLevel = r.user_level != null ? parseInt(r.user_level, 10) : 1;
         const levelName = LEVEL_NAMES[userLevel] || LEVEL_NAMES[1];
+
+        let preSnap = null;
+        try {
+          preSnap =
+            typeof r.pre_quote_snapshot === 'string' && r.pre_quote_snapshot
+              ? JSON.parse(r.pre_quote_snapshot)
+              : r.pre_quote_snapshot || null;
+        } catch (_) {
+          preSnap = null;
+        }
+        const headPlan = quoteProposalPublic.planHasDisplayablePreQuote(preSnap)
+          ? preSnap
+          : r.quoted_amount != null
+            ? { amount: parseFloat(r.quoted_amount) }
+            : null;
+        let rawProps = proposalsByOrderId.get(r.order_id) || [];
+        rawProps = quoteProposalPublic.prependPreQuoteProposalToList(rawProps, headPlan, r.accepted_at);
+        rawProps = sanitizeQuoteProposalHistoryForPublicList(rawProps);
+
+        const granular = applyGranularPublicImages(r, {
+          before_images: beforeImgs,
+          after_images: afterImgs,
+          completion_images: completionImgs,
+          material_photos: material_photos,
+          fault_evidence_images: Array.isArray(faultImgs) ? faultImgs : [],
+          settlement_list_image: r.settlement_list_image || null,
+        });
+        const {
+          before_images: beforeOut,
+          after_images: afterOut,
+          completion_images: completionOut,
+          material_photos: materialOut,
+          settlement_list_image: settlementPub,
+        } = granular;
+        const quote_credential_urls = [];
+        const settleUrl = settlementPub != null ? String(settlementPub).trim() : '';
+        if (settleUrl) quote_credential_urls.push(settleUrl);
 
         return {
           review_id: r.review_id,
@@ -248,11 +315,11 @@ async function getReviewFeed(pool, query) {
           content: r.content,
           repair_items: repairItems,
           part_promise_lines: part_promise_lines,
-          material_photos,
+          material_photos: materialOut,
           amount,
-          before_images: beforeImgs,
-          after_images: afterImgs,
-          completion_images: completionImgs,
+          before_images: beforeOut,
+          after_images: afterOut,
+          completion_images: completionOut,
           objective_answers: objAnswers,
           ai_analysis: typeof r.ai_analysis === 'string' ? JSON.parse(r.ai_analysis || '{}') : (r.ai_analysis || {}),
           like_count: r.like_count ?? stats.like_count ?? 0,
@@ -269,6 +336,9 @@ async function getReviewFeed(pool, query) {
             address: r.shop_address,
             district: r.shop_district,
           },
+          quote_proposal_history: rawProps,
+          quote_credential_urls,
+          review_system_checks: sanitizeSystemChecksForUserFacing(r.review_system_checks),
         };
       }),
       total: Number(total),

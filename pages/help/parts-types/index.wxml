@@ -1,0 +1,40 @@
+<!-- 报价与配件说明（车主向） -->
+<custom-nav-bar title="报价与配件说明" showBack="{{true}}" />
+<view class="page-root parts-help-page" style="{{pageRootStyle}}">
+  <scroll-view
+    class="parts-help-scroll"
+    scroll-y
+    scroll-with-animation
+    scroll-into-view="{{scrollIntoView}}"
+    style="{{scrollViewStyle}}"
+  >
+    <view id="help-prequote" class="parts-help-section card {{prequoteHighlight ? 'parts-help-highlight' : ''}}">
+      <text class="parts-help-section-title fs-body fw-bold">预报价说明</text>
+      <text class="parts-help-line fs-cap text-muted">· 竞价页金额为维修厂根据您上传的照片与文字描述给出的参考价，车辆尚未到店检测。</text>
+      <text class="parts-help-line fs-cap text-muted">· 到店拆检后，实际损伤、维修方案、配件档次与总价均可能变化；最终以订单内与维修厂确认的「最终报价」为准。</text>
+      <text class="parts-help-line fs-cap text-muted">· 下方「配件类型」与报价明细中换件旁的名称一致，便于您对照理解。</text>
+    </view>
+
+    <view class="parts-help-section card">
+      <text class="parts-help-section-title fs-body fw-bold">配件类型（平台五类）</text>
+      <text class="parts-help-intro fs-cap text-muted">名称与小程序报价模板、订单明细中的「配件类型」字段一致。</text>
+    </view>
+
+    <view
+      wx:for="{{partBlocks}}"
+      wx:key="name"
+      id="help-part-{{index}}"
+      class="parts-help-section card {{highlightIndex === index ? 'parts-help-highlight' : ''}}"
+    >
+      <text class="parts-help-name fs-body fw-medium">{{item.name}}</text>
+      <text class="parts-help-summary fs-cap text-muted">{{item.summary}}</text>
+      <view class="parts-help-more-head" bindtap="toggleMore" data-index="{{index}}">
+        <text class="fs-cap text-primary">{{expandedFlags[index] ? '收起' : '常见说明'}}</text>
+        <text class="parts-help-more-arrow">{{expandedFlags[index] ? '▲' : '▼'}}</text>
+      </view>
+      <text wx:if="{{expandedFlags[index]}}" class="parts-help-more-body fs-cap text-muted">{{item.more}}</text>
+    </view>
+
+    <view class="parts-help-bottom-pad"/>
+  </scroll-view>
+</view>

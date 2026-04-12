@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS shops (
   qualification_status TINYINT UNSIGNED DEFAULT 0 COMMENT '资质审核状态 0-待审核 1-通过 2-驳回待修改',
   qualification_audit_reason VARCHAR(500) DEFAULT NULL COMMENT '待审核/驳回原因',
   qualification_withdrawn TINYINT UNSIGNED DEFAULT 0 COMMENT '资质是否已撤回：0=否 1=是',
+  warranty_card_template_id TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '电子质保凭证默认卡面样式 1-6（见 order-warranty-card-service CARD_TEMPLATES）',
   status TINYINT UNSIGNED DEFAULT 1 COMMENT '状态 0-禁用 1-启用',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -170,8 +171,10 @@ CREATE TABLE IF NOT EXISTS quotes (
   quote_status TINYINT UNSIGNED DEFAULT 0 COMMENT '0-有效 1-成交 2-已失效',
   quote_valid_until DATETIME DEFAULT NULL COMMENT '报价有效期截止时间，默认 created_at+3天',
   duration INT UNSIGNED DEFAULT 3 COMMENT '预计工期（天）',
-  warranty INT UNSIGNED DEFAULT 12 COMMENT '质保期限（月）',
+  warranty INT UNSIGNED DEFAULT 12 COMMENT '兼容列：按分项 max(warranty_months) 写入，接口与前端不展示整单质保',
   remark TEXT DEFAULT NULL COMMENT '备注',
+  quote_import_source VARCHAR(32) DEFAULT NULL COMMENT 'manual|excel_upload|ocr_photo',
+  quote_import_file_url VARCHAR(500) DEFAULT NULL COMMENT '导入来源文件或图URL',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   
@@ -180,7 +183,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   INDEX idx_shop_id (shop_id),
   FOREIGN KEY (bidding_id) REFERENCES biddings(bidding_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='报价表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='报价表（产品侧：预报价=据照片与描述、无实物检测的报价行）';
 
 -- ========================================================
 -- 6. 订单表 (orders)
@@ -191,10 +194,11 @@ CREATE TABLE IF NOT EXISTS orders (
   bidding_id VARCHAR(32) NOT NULL COMMENT '竞价ID',
   user_id VARCHAR(32) NOT NULL COMMENT '用户ID',
   shop_id VARCHAR(32) NOT NULL COMMENT '维修厂ID',
-  quote_id VARCHAR(32) NOT NULL COMMENT '报价ID',
+  quote_id VARCHAR(32) NOT NULL COMMENT 'quotes.quote_id，选中的预报价行',
   quoted_amount DECIMAL(10, 2) NOT NULL COMMENT '报价金额',
   actual_amount DECIMAL(10, 2) DEFAULT NULL COMMENT '实际金额',
-  deviation_rate DECIMAL(5, 2) DEFAULT NULL COMMENT '偏差率(%)',
+  deviation_rate DECIMAL(5, 2) DEFAULT NULL COMMENT '偏差率(%) 预报价vs终报价为主',
+  deviation_rate_settlement DECIMAL(5, 2) DEFAULT NULL COMMENT '终报价vs结算稽核',
   commission_rate DECIMAL(4, 2) DEFAULT 12.00 COMMENT '佣金比例(%)',
   commission DECIMAL(10, 2) DEFAULT NULL COMMENT '佣金金额（与暂计/最终对齐展示）',
   commission_status VARCHAR(32) DEFAULT NULL COMMENT 'waived_insurance|legacy_exempt|paid_provisional|arrears|awaiting_pay|pending_owner_repair_pay|finalized',
@@ -217,9 +221,17 @@ CREATE TABLE IF NOT EXISTS orders (
   status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态: 0-待维修 1-维修中 2-待验收 3-已完成 4-已取消',
   accepted_at DATETIME DEFAULT NULL COMMENT '服务商接单时间（接单时写入，用于撤单30分钟判断）',
   completion_evidence JSON DEFAULT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
-  repair_plan JSON DEFAULT NULL COMMENT '当前维修方案 {items,value_added_services?,amount?,duration?,warranty?}，接单时从quote复制',
-  repair_plan_status TINYINT UNSIGNED DEFAULT 0 COMMENT '0=已确认 1=待车主确认',
+  warranty_card_template_id TINYINT UNSIGNED DEFAULT NULL COMMENT '本单电子质保凭证卡面样式 1-6（完工提交时写入，空则取店铺默认）',
+  platform_warranty_card JSON DEFAULT NULL COMMENT '电子质保凭证存证快照（车主确认完成后固化）',
+  repair_plan JSON DEFAULT NULL COMMENT '当前维修方案 {items,value_added_services?,amount?,duration?}（质保仅 items[].warranty_months），锁价后与final_quote_snapshot一致',
+  repair_plan_status TINYINT UNSIGNED DEFAULT 0 COMMENT '0=已确认 1=待车主确认（历史兼容）',
   repair_plan_adjusted_at DATETIME DEFAULT NULL COMMENT '最近一次维修方案调整时间',
+  pre_quote_snapshot JSON DEFAULT NULL COMMENT '预报价快照（与选厂一致；整体第1次报价）',
+  final_quote_snapshot JSON DEFAULT NULL COMMENT '确认报价快照（车主锁价后；产品侧称确认报价/已锁价）',
+  final_quote_status TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0未发起1待车主确认2已锁价',
+  final_quote_submitted_at DATETIME DEFAULT NULL COMMENT '服务商提交最终报价时间',
+  final_quote_confirmed_at DATETIME DEFAULT NULL COMMENT '车主确认锁价时间',
+  loss_assessment_documents JSON DEFAULT NULL COMMENT '保险车定损单等附件',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   completed_at DATETIME DEFAULT NULL COMMENT '完成时间',
@@ -234,6 +246,24 @@ CREATE TABLE IF NOT EXISTS orders (
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
   FOREIGN KEY (quote_id) REFERENCES quotes(quote_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
+
+-- 订单到店报价多轮（每轮证明材料 + 车主确认；与 migration-20260328-order-quote-proposals.sql 一致）
+CREATE TABLE IF NOT EXISTS order_quote_proposals (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  proposal_id VARCHAR(32) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  shop_id VARCHAR(32) NOT NULL,
+  revision_no INT UNSIGNED NOT NULL COMMENT '到店后第几笔报价记录，从1递增；产品展示=整体第(revision_no+1)次报价，如1→二次报价（到店后）',
+  quote_snapshot JSON NOT NULL COMMENT '{items,value_added_services,amount,duration}（质保仅分项 warranty_months）',
+  evidence JSON NOT NULL COMMENT '{photo_urls[],loss_assessment_documents?,supplement_note?}',
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0=待车主确认 1=已确认 2=已拒绝',
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at DATETIME DEFAULT NULL,
+  resolver_user_id VARCHAR(32) DEFAULT NULL COMMENT '确认/拒绝的车主 user_id',
+  INDEX idx_order_id (order_id),
+  INDEX idx_order_pending (order_id, status),
+  CONSTRAINT fk_oqp_order FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单到店报价轮次（多轮确认）';
 
 -- ========================================================
 -- 6a. 订单撤单申请表 (order_cancel_requests)
@@ -268,7 +298,7 @@ CREATE TABLE IF NOT EXISTS material_audit_tasks (
   order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
   shop_id VARCHAR(32) NOT NULL COMMENT '店铺ID',
   completion_evidence JSON NOT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending=待审核 passed=通过 rejected=不通过',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending=AI待跑/排队 manual_review=待人工 passed=通过 rejected=不通过',
   reject_reason VARCHAR(500) DEFAULT NULL COMMENT '不通过原因',
   ai_details JSON DEFAULT NULL COMMENT 'AI 审核详情',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -308,8 +338,12 @@ CREATE TABLE IF NOT EXISTS reviews (
   after_images JSON DEFAULT NULL COMMENT '维修后照片',
   ai_analysis JSON DEFAULT NULL COMMENT 'AI分析结果',
   is_anonymous TINYINT UNSIGNED DEFAULT 0 COMMENT '是否匿名 0-否 1-是',
+  review_images_public TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '1=对外展示本评价全部相关图 0=公示不下发图URL',
+  review_public_media JSON DEFAULT NULL COMMENT '分项公示勾选；NULL=沿用 review_images_public',
+  review_system_checks JSON DEFAULT NULL COMMENT '报价流程/外观修复度等系统与AI校验快照',
   like_count INT UNSIGNED DEFAULT 0 COMMENT '点赞数',
   dislike_count INT UNSIGNED DEFAULT 0 COMMENT '踩数量（负向权重）',
+  content_quality VARCHAR(20) DEFAULT NULL COMMENT '内容质量 invalid/valid/premium/标杆/维权参考/爆款（与 migration-20260219 一致）',
   content_quality_level TINYINT UNSIGNED DEFAULT 1 COMMENT '内容质量等级 1-4',
   q3_weight_excluded TINYINT UNSIGNED DEFAULT 0 COMMENT '商户申诉有效时剔除q3权重 0-否 1-是',
   vehicle_model_key VARCHAR(100) DEFAULT NULL COMMENT '车型键 brand|model 用于同车型统计',
@@ -919,7 +953,7 @@ CREATE TABLE IF NOT EXISTS blacklist (
 -- 防刷配置（第二阶段）
 INSERT INTO settings (`key`, `value`, `description`) VALUES
 ('antifraud_order_same_shop_days', '30', '同用户同商户订单统计天数'),
-('antifraud_order_same_shop_max', '3', '同用户同商户周期内最大订单数'),
+('antifraud_order_same_shop_max', '5', '同用户同商户周期内最大订单数'),
 ('antifraud_new_user_days', '7', '新用户判定天数'),
 ('antifraud_new_user_order_max', '5', '新用户周期内最大订单数'),
 ('antifraud_l1_monthly_cap', '100', 'L1 订单每月奖励金封顶（元）'),

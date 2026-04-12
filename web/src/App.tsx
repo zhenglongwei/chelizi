@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import FairPricePage from './pages/FairPricePage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import ProductDetail from './pages/ProductDetail';
@@ -13,11 +14,13 @@ import DisputeManagement from './admin/pages/DisputeManagement';
 import DataStatistics from './admin/pages/DataStatistics';
 import SystemConfig from './admin/pages/SystemConfig';
 import RewardRulesConfig from './admin/pages/RewardRulesConfig';
+import CommissionRulesConfig from './admin/pages/CommissionRulesConfig';
 import ReviewAudit from './admin/pages/ReviewAudit';
 import AppealReviewManagement from './admin/pages/AppealReviewManagement';
 import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
 import OrderCancelRequests from './admin/pages/OrderCancelRequests';
+import MaterialAuditTasks from './admin/pages/MaterialAuditTasks';
 import ShopProductAudit from './admin/pages/ShopProductAudit';
 import CorpIncomeWithdraw from './admin/pages/CorpIncomeWithdraw';
 import { useAuth } from './admin/hooks/useAuth';
@@ -27,6 +30,7 @@ function App() {
     <Routes>
       {/* 公司官网路由 */}
       <Route path="/" element={<HomePage />} />
+      <Route path="/fair-price" element={<FairPricePage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/product/:productId" element={<ProductDetail />} />
@@ -45,11 +49,13 @@ function App() {
         <Route path="merchants" element={<MerchantManagement />} />
         <Route path="orders" element={<OrderManagement />} />
         <Route path="order-cancel-requests" element={<OrderCancelRequests />} />
+        <Route path="material-audit-tasks" element={<MaterialAuditTasks />} />
         <Route path="settlement" element={<SettlementManagement />} />
         <Route path="disputes" element={<DisputeManagement />} />
         <Route path="statistics" element={<DataStatistics />} />
         <Route path="config" element={<SystemConfig />} />
         <Route path="reward-rules" element={<RewardRulesConfig />} />
+        <Route path="commission-rules" element={<CommissionRulesConfig />} />
         <Route path="review-audit" element={<ReviewAudit />} />
         <Route path="appeal-reviews" element={<AppealReviewManagement />} />
         <Route path="complexity-upgrade" element={<ComplexityUpgrade />} />

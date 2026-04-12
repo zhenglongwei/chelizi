@@ -1,0 +1,8 @@
+{
+  "name": "zhejian-workspace",
+  "private": true,
+  "description": "辙见小程序 + API，根目录仅用于跨目录脚本",
+  "scripts": {
+    "sync:config": "node scripts/sync-miniprogram-config.js"
+  }
+}

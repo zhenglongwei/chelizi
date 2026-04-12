@@ -1,0 +1,71 @@
+@import '../../../styles/design-system.wxss';
+
+.parts-help-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+.parts-help-scroll {
+  box-sizing: border-box;
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.parts-help-section {
+  margin-bottom: var(--space-lg);
+}
+
+.parts-help-highlight {
+  box-shadow: 0 0 0 2rpx var(--primary);
+}
+
+.parts-help-section-title {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+.parts-help-line {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.55;
+}
+
+.parts-help-intro {
+  display: block;
+  line-height: 1.5;
+  margin-top: var(--space-xs);
+}
+
+.parts-help-name {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+}
+
+.parts-help-summary {
+  display: block;
+  line-height: 1.55;
+}
+
+.parts-help-more-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.parts-help-more-arrow {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+}
+
+.parts-help-more-body {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.55;
+}
+
+.parts-help-bottom-pad {
+  height: var(--space-2xl);
+}

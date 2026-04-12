@@ -1,0 +1,25 @@
+@import '../../styles/review-linear.wxss';
+@import '../../styles/review-v3-public-display.wxss';
+
+.review-public-card-root {
+  width: 100%;
+}
+
+.intro-line {
+  display: block;
+}
+
+.section-label {
+  display: block;
+  margin-top: var(--space-md);
+}
+
+.verify-line {
+  display: block;
+  margin-top: var(--space-md);
+}
+
+.empty-hint {
+  display: block;
+  margin-top: var(--space-md);
+}

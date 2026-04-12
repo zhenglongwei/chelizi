@@ -20,11 +20,35 @@
           <text class="report-label">预估费用</text>
           <text class="report-value">{{report.total_estimate[0]}}-{{report.total_estimate[1]}} 元</text>
         </view>
-        <view class="report-damages" wx:if="{{report.damages && report.damages.length}}">
-          <view class="fs-body fw-bold">损伤部位</view>
-          <view class="report-damage-item" wx:for="{{report.damages}}" wx:key="index">
-            <text class="fs-body">{{item.part}}：{{item.type}}</text>
+        <view class="report-damages">
+          <view class="report-human-section">
+            <view class="fs-body fw-bold report-human-title">明显损伤</view>
+            <block wx:if="{{report.human_display.obvious_damage && report.human_display.obvious_damage.length}}">
+              <view class="report-damage-item" wx:for="{{report.human_display.obvious_damage}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body" wx:else>暂无明显可见损伤</text>
           </view>
+          <view class="report-human-section">
+            <view class="fs-body fw-bold report-human-title">可能损伤</view>
+            <block wx:if="{{report.human_display.possible_damage && report.human_display.possible_damage.length}}">
+              <view class="report-damage-item" wx:for="{{report.human_display.possible_damage}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body" wx:else>暂无待进一步确认项</text>
+          </view>
+          <view class="report-human-section">
+            <view class="fs-body fw-bold report-human-title">维修建议</view>
+            <block wx:if="{{report.human_display.repair_advice && report.human_display.repair_advice.length}}">
+              <view class="report-damage-item" wx:for="{{report.human_display.repair_advice}}" wx:key="index">
+                <text class="fs-body">· {{item}}</text>
+              </view>
+            </block>
+            <text class="text-muted fs-body" wx:else>暂无专项建议</text>
+          </view>
+          <view class="report-disclaimer text-muted fs-sm">本分析结果仅供参考，具体请以实车检测与正规维修厂意见为准。</view>
         </view>
       </view>
       <view class="report-actions">

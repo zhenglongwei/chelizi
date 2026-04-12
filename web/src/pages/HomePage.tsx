@@ -28,6 +28,7 @@ export default function HomePage() {
             <Link to="/">首页</Link>
             <Link to="/about">关于我们</Link>
             <Link to="/contact">联系我们</Link>
+            <Link to="/fair-price">历史成交参考价</Link>
             <Link to="/admin/login">管理后台</Link>
           </nav>
         </div>
@@ -90,6 +91,20 @@ export default function HomePage() {
               </Card>
             </Col>
           </Row>
+        </section>
+
+        <section className="intro-section" style={{ paddingTop: 0 }}>
+          <Card style={{ maxWidth: 720, margin: '0 auto' }}>
+            <Title level={4} style={{ marginTop: 0 }}>
+              同车型历史成交参考价
+            </Title>
+            <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              官网补充能力：按车型关键词查看平台内匿名聚合的参考区间（样本不足时诚实提示）。竞价维修仍以小程序内多家报价为准。
+            </Paragraph>
+            <Button type="primary" onClick={() => navigate('/fair-price')}>
+              去查询
+            </Button>
+          </Card>
         </section>
 
         {/* Products Section */}

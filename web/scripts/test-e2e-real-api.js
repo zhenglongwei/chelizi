@@ -214,10 +214,12 @@ async function main() {
     body: {
       bidding_id: biddingId,
       amount: 3600,
-      items: [{ name: '钣金喷漆', price: 2200 }, { name: '工时费', price: 1400 }],
+      items: [
+        { damage_part: '钣金喷漆', repair_type: '修', price: 2200, warranty_months: 12 },
+        { damage_part: '工时费', repair_type: '修', price: 1400, warranty_months: 12 },
+      ],
       value_added_services: [],
       duration: 3,
-      warranty: 12,
       remark: 'E2E测试报价',
     },
   });
@@ -233,10 +235,12 @@ async function main() {
           body: {
             bidding_id: biddingId,
             amount: 3600,
-            items: [{ name: '钣金喷漆', price: 2200 }, { name: '工时费', price: 1400 }],
+            items: [
+              { damage_part: '钣金喷漆', repair_type: '修', price: 2200, warranty_months: 12 },
+              { damage_part: '工时费', repair_type: '修', price: 1400, warranty_months: 12 },
+            ],
             value_added_services: [],
             duration: 3,
-            warranty: 12,
             remark: 'E2E测试报价',
           },
         });
@@ -277,6 +281,8 @@ async function main() {
     repair_photos: ['https://example.com/repair.jpg'],
     settlement_photos: ['https://example.com/settlement.jpg'],
     material_photos: ['https://example.com/material.jpg'],
+    lead_technician: { source: 'manual', name: '测试技师' },
+    parts_verification: { methods: ['official', 'qr_scan'] },
   };
   const statusRes = await request('PUT', `/api/v1/merchant/orders/${orderId}/status`, {
     headers: { Authorization: `Bearer ${merchantToken}` },

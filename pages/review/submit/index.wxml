@@ -1,4 +1,4 @@
-<!-- 主评价页 - 固定问题、材料、自主评价 -->
+<!-- 主评价页 · 极简 v3（店头→四维星+折叠证据→补充与图→店端素材授权） -->
 <custom-nav-bar title="评价" showBack="{{true}}" />
 <view class="page-root review-page" style="{{pageRootStyle}}">
   <block wx:if="{{loading}}">
@@ -13,9 +13,16 @@
   <block wx:elif="{{submitted}}">
     <view class="review-success card">
       <text class="fs-h3 fw-bold text-success">评价提交成功</text>
-      <text class="fs-body text-muted" style="margin-top: var(--space-md);" wx:if="{{!isInvalidReview}}">奖励金 {{rewardAmount}} 元已到账</text>
-      <text class="fs-body text-muted" style="margin-top: var(--space-md);" wx:elif="{{isInvalidReview}}">未达有效标准，无法获得奖励金。改进后可追评提升等级</text>
-      <text class="fs-sm text-weak" style="margin-top: var(--space-sm);">随时可追评，有机会提升等级获得更多奖励金</text>
+      <text class="fs-body text-muted" style="margin-top: var(--space-md);" wx:if="{{!isInvalidReview && !pendingHumanAudit}}">奖励金 {{rewardAmount}} 元已到账</text>
+      <block wx:elif="{{pendingHumanAudit}}">
+        <text class="fs-body fw-medium" style="margin-top: var(--space-md); display: block;">正在人工审核，请稍候</text>
+        <text class="fs-body text-muted" style="margin-top: var(--space-sm); display: block;">您的评价已收到，平台将尽快完成复核。</text>
+        <text class="fs-sm text-weak" style="margin-top: var(--space-md); display: block;" wx:if="{{invalidReason}}">（参考：{{invalidReason}}）</text>
+      </block>
+      <block wx:elif="{{isInvalidReview}}">
+        <text class="fs-body text-muted" style="margin-top: var(--space-md);">未达有效标准，无法获得奖励金。</text>
+        <text class="fs-body text-primary" style="margin-top: var(--space-sm); display: block;" wx:if="{{invalidReason}}">主要原因：{{invalidReason}}</text>
+      </block>
       <view class="review-success-actions">
         <button class="btn-primary" wx:if="{{reviewId}}" bindtap="onToFollowup">去追评</button>
         <button class="btn-primary" bindtap="onToOrder">查看订单</button>
@@ -24,175 +31,183 @@
     </view>
   </block>
   <block wx:else>
-    <!-- 顶部合规提示（固定，醒目） -->
     <view class="review-compliance review-compliance-highlight">
-      <text class="review-compliance-text">奖励仅与评价内容的完整性、真实性挂钩，与评价正负倾向完全无关，差评达标也可全额领取奖励。</text>
+      <text class="review-compliance-text">奖励与内容真实性、完整性相关，与好评/差评无关。系统留痕材料仅供对照；每行星级均需您本人确认，平台不对维修结果作鉴定结论。</text>
     </view>
 
     <scroll-view class="review-scroll" scroll-y style="{{scrollStyle}}">
-      <!-- 维修厂信息 -->
+      <!-- 1 店头 -->
+      <view class="review-section card review-shop-head">
+        <view class="review-shop-head-row">
+          <image class="review-shop-logo" src="{{info.shop_logo || '/images/brand/brand-app-icon-zhejian.png'}}" mode="aspectFill"/>
+          <view class="review-shop-head-main">
+            <text class="fs-body fw-bold text-primary">{{info.shop_name || '维修厂'}}</text>
+            <text class="text-muted fs-cap review-shop-addr" wx:if="{{info.shop_address_line}}">{{info.shop_address_line}}</text>
+            <text class="text-weak fs-sm" wx:else>地址以门店登记为准</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 2 四维星级 + 折叠系统留痕 -->
       <view class="review-section card">
-        <view class="review-section-title fs-body fw-bold">维修厂</view>
-        <text class="fs-body">{{info.shop_name || '维修厂'}}</text>
-      </view>
+        <view class="review-section-title fs-body fw-bold">请您评价</view>
+        <text class="text-weak fs-sm" style="display:block;margin-bottom:var(--space-md);">请完成四项星级。点各题下方可展开查看报价记录、订单侧材料与店方验真说明（仅供参考）。您在本页上传的照片将默认参与公示；店端留档图是否公开由下方授权项决定。</text>
 
-      <!-- 系统核验结果（6项，用户不答） -->
-      <view class="review-section card review-verification" wx:if="{{orderVerification}}">
-        <view class="review-section-title fs-body fw-bold">系统已核验</view>
-        <view class="review-verification-text {{orderVerificationAllOk ? 'text-success' : 'text-weak'}}">
-          {{orderVerificationAllOk ? '报价与结算金额一致、无额外新增项目、服务商一致、工期与质保已核验，无异常' : '部分核验项需关注，请如实填写下方评价'}}
+        <!-- 1 报价透明度 -->
+        <view class="review-v3-linear-block">
+          <view class="review-v3-star-head">
+            <text class="review-v3-linear-q fs-body fw-medium">1. 报价透明度</text>
+            <view class="review-stars review-stars-lg">
+              <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+                <text class="review-star {{s <= v3.quote_transparency_star ? 'filled' : ''}}" data-field="quote_transparency_star" data-s="{{s}}" bindtap="onV3FiveStarTap">{{s <= v3.quote_transparency_star ? '★' : '☆'}}</text>
+              </block>
+            </view>
+          </view>
+          <view class="review-expand-hint text-muted fs-sm" bindtap="onToggleExpand" data-key="quote">
+            <text>{{expandQuote ? '▲ 收起' : '▼ 查看'}}报价记录与凭证图</text>
+          </view>
+          <view wx:if="{{expandQuote}}" class="review-expand-body">
+            <text class="text-weak fs-sm">以下为订单内记录的报价节点与变动原因，供打「报价透明度」星级时对照。</text>
+            <view class="review-quote-node" wx:for="{{quoteDisplayNodes}}" wx:for-item="qn" wx:for-index="qni" wx:key="qni">
+              <text class="fs-body fw-medium">{{qn.short_label}}</text>
+              <text class="text-muted fs-sm" style="display:block;">{{qn.amount != null ? '¥' + qn.amount : '金额 —'}}{{qn.status_text ? ' · ' + qn.status_text : ''}}</text>
+              <text class="text-weak fs-cap" wx:if="{{qn.change_note}}" style="display:block;margin-top:4rpx;">变动原因：{{qn.change_note}}</text>
+            </view>
+            <text class="fs-body text-muted" wx:if="{{!quoteDisplayNodes.length}}">暂无报价节点记录</text>
+            <text class="fs-body fw-medium" style="display:block;margin-top:var(--space-md);" wx:if="{{quoteEvidenceImages.length}}">结算单与定损材料（如有）</text>
+            <view class="review-evidence-grid" wx:if="{{quoteEvidenceImages.length}}" style="margin-top:var(--space-xs);">
+              <image wx:for="{{quoteEvidenceImages}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill"/>
+            </view>
+          </view>
         </view>
-      </view>
 
-      <!-- 二、用户必答（3道） -->
-      <view class="review-section card">
-        <view class="review-section-title fs-body fw-bold">请回答以下问题</view>
-        <view class="review-plan-compare" wx:if="{{planCompare && planCompare.hasDiff}}">
-          <view class="review-plan-compare-title">维修方案有调整</view>
-          <view class="review-plan-compare-row">
-            <view class="review-plan-compare-col">
-              <text class="review-plan-compare-label">原方案（下单时）</text>
-              <view class="review-plan-compare-item" wx:for="{{planCompare.originalItems}}" wx:key="*this">{{item}}</view>
-              <view class="review-plan-compare-meta" wx:if="{{planCompare.originalAmount != null || planCompare.originalDuration != null || planCompare.originalWarranty != null}}">金额 ¥{{planCompare.originalAmount || '-'}} · 工期{{planCompare.originalDuration || '-'}}天 · 质保{{planCompare.originalWarranty || '-'}}月</view>
-            </view>
-            <view class="review-plan-compare-col">
-              <text class="review-plan-compare-label">最终方案（维修时）</text>
-              <view class="review-plan-compare-item" wx:for="{{planCompare.finalItems}}" wx:key="*this">{{item}}</view>
-              <view class="review-plan-compare-meta" wx:if="{{planCompare.finalAmount != null || planCompare.finalDuration != null || planCompare.finalWarranty != null}}">金额 ¥{{planCompare.finalAmount || '-'}} · 工期{{planCompare.finalDuration || '-'}}天 · 质保{{planCompare.finalWarranty || '-'}}月</view>
+        <!-- 2 故障整体修复（含外观） -->
+        <view class="review-v3-linear-block">
+          <view class="review-v3-star-head">
+            <text class="review-v3-linear-q fs-body fw-medium">2. 故障整体修复程度</text>
+            <view class="review-stars review-stars-lg">
+              <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+                <text class="review-star {{s <= v3.repair_effect_star ? 'filled' : ''}}" data-field="repair_effect_star" data-s="{{s}}" bindtap="onV3FiveStarTap">{{s <= v3.repair_effect_star ? '★' : '☆'}}</text>
+              </block>
             </view>
           </view>
-        </view>
-        <view class="review-objective">
-          <text class="fs-body">1. 维修过程中，修理厂有没有主动给你同步过维修进度？</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">包括进度、增项与费用：配件到货、开工、发现新问题是否提前沟通；费用变动是否事先说明，无先斩后奏</text>
-          <radio-group bindchange="onQ1" class="review-radio-group">
-            <label><radio value="true" checked="{{answers.q1_progress_synced === true}}"/>是</label>
-            <label><radio value="false" checked="{{answers.q1_progress_synced === false}}"/>否</label>
-          </radio-group>
-        </view>
-        <view class="review-objective">
-          <text class="fs-body">2. 更换配件时，修理厂有没有给你展示新配件、以及换下来的旧配件？</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">便于核对货对板与承诺是否兑现。平台还要求店端上传新配件留档图，其他车主可在店铺评价里对照订单中的配件等级（如原厂、大厂件）。</text>
-          <radio-group bindchange="onQ2" class="review-radio-group">
-            <label><radio value="true" checked="{{answers.q2_parts_shown === true}}"/>是</label>
-            <label><radio value="false" checked="{{answers.q2_parts_shown === false}}"/>否</label>
-          </radio-group>
-        </view>
-        <view class="review-objective">
-          <text class="fs-body">3. 修完车之后，你当初报修的车辆问题，已经完全解决了？</text>
-          <radio-group bindchange="onQ3" class="review-radio-group">
-            <label><radio value="true" checked="{{answers.q3_fault_resolved === true}}"/>是</label>
-            <label><radio value="false" checked="{{answers.q3_fault_resolved === false}}"/>否</label>
-          </radio-group>
-        </view>
-        <!-- 第3题选否时：用户举证故障凭证（选填，提升反馈权重） -->
-        <view class="review-fault-evidence" wx:if="{{answers.q3_fault_resolved === false}}">
-          <text class="fs-body">故障凭证（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">可上传故障灯实拍、异响录音/视频等，有助于提升反馈权重</text>
-          <view class="review-upload-grid">
-            <view class="review-upload-item" wx:for="{{module3.faultEvidenceDisplayList}}" wx:key="index">
-              <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
-              <view class="review-del" data-index="{{index}}" bindtap="onM3DelFaultEvidence"><text class="review-del-text">×</text></view>
+          <view class="review-expand-hint text-muted fs-sm" bindtap="onToggleExpand" data-key="repair">
+            <text>{{expandRepair ? '▲ 收起' : '▼ 查看'}}维修前后对照图</text>
+          </view>
+          <view wx:if="{{expandRepair}}" class="review-expand-body">
+            <text class="text-weak fs-sm">维修前照片来自您提交竞价时的定损/上报；维修后照片来自服务商提交「维修完成」时的完工凭证。下列为订单侧留痕，供打「整体修复程度」星级时对照。</text>
+            <text class="fs-body fw-medium" style="display:block;margin-top:var(--space-md);" wx:if="{{beforeEvidenceImages.length}}">维修前（竞价/定损上报）</text>
+            <view class="review-evidence-grid" wx:if="{{beforeEvidenceImages.length}}" style="margin-top:var(--space-xs);">
+              <image wx:for="{{beforeEvidenceImages}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill"/>
             </view>
-            <view class="review-upload-btn" wx:if="{{!module3.faultEvidenceDisplayList || module3.faultEvidenceDisplayList.length < 5}}" bindtap="onM3ChooseFaultEvidence">
-              <text class="review-add-text">+</text>
-              <text class="text-muted fs-cap">添加</text>
+            <text class="fs-body fw-medium" style="display:block;margin-top:var(--space-md);" wx:if="{{repairEvidenceImages.length}}">维修后（服务商完工凭证）</text>
+            <view class="review-evidence-grid" wx:if="{{repairEvidenceImages.length}}" style="margin-top:var(--space-xs);">
+              <image wx:for="{{repairEvidenceImages}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill"/>
             </view>
+            <text class="text-muted fs-sm" style="display:block;margin-top:var(--space-md);" wx:if="{{!beforeEvidenceImages.length && !repairEvidenceImages.length}}">本单暂无维修前/后对照图片记录。</text>
           </view>
         </view>
-      </view>
 
-      <!-- 二、材料 -->
-      <view class="review-section card">
-        <view class="review-section-title fs-body fw-bold">材料</view>
-        <text class="text-weak fs-sm" style="display: block; margin-bottom: var(--space-md);">服务商已提供的材料不可修改或删除，您可添加更多</text>
-        <view class="review-upload-row">
-          <text class="fs-body">维修结算清单（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">盖有服务商公章的维修结算清单，材料为服务商义务，缺失不影响您的奖励金</text>
-          <view class="review-upload-single" wx:if="{{!module3.settlement_list_image && !module3.settlement_list_url}}" bindtap="onM3ChooseSettlement">
-            <text class="review-add-text">+</text>
-            <text class="text-muted fs-cap">上传</text>
-          </view>
-          <view class="review-upload-item" wx:else>
-            <image class="review-thumb" src="{{module3.settlement_list_image || module3.settlement_list_url}}" mode="aspectFill"/>
-            <text class="review-source-tag" wx:if="{{module3.settlementFromMerchant}}">服务商</text>
-            <view class="review-del" wx:if="{{!module3.settlementFromMerchant}}" bindtap="onM3DelSettlement"><text class="review-del-text">×</text></view>
-          </view>
-        </view>
-        <view class="review-upload-row">
-          <text class="fs-body">维修过程材料（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料为服务商义务，您可补充上传。材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
-          <view class="review-upload-grid">
-            <view class="review-upload-item" wx:for="{{module2.materialDisplayList}}" wx:key="index">
-              <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
-              <text class="review-source-tag" wx:if="{{item.fromMerchant}}">服务商</text>
-              <view class="review-del" wx:if="{{!item.fromMerchant}}" data-index="{{index}}" bindtap="onM2DelMaterial"><text class="review-del-text">×</text></view>
+        <!-- 3 配件与材料可溯源度 -->
+        <view class="review-v3-linear-block">
+          <view class="review-v3-star-head">
+            <text class="review-v3-linear-q fs-body fw-medium">3. 配件与材料可溯源度</text>
+            <view class="review-stars review-stars-lg">
+              <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+                <text class="review-star {{s <= v3.parts_traceability_star ? 'filled' : ''}}" data-field="parts_traceability_star" data-s="{{s}}" bindtap="onV3FiveStarTap">{{s <= v3.parts_traceability_star ? '★' : '☆'}}</text>
+              </block>
             </view>
-            <view class="review-upload-btn" bindtap="onM2ChooseMaterial">
-              <text class="review-add-text">+</text>
-              <text class="text-muted fs-cap">添加</text>
+          </view>
+          <view class="review-expand-hint text-muted fs-sm" bindtap="onToggleExpand" data-key="parts">
+            <text>{{expandParts ? '▲ 收起' : '▼ 查看'}}店端配件留档与验真说明</text>
+          </view>
+          <view wx:if="{{expandParts}}" class="review-expand-body">
+            <text class="text-weak fs-sm">下列为店端配件留档图及店方填写的验真方式（订单侧记录），供打「配件可溯源度」星级时对照。</text>
+            <view class="review-evidence-grid" wx:if="{{partsEvidenceImages.length}}">
+              <image wx:for="{{partsEvidenceImages}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill"/>
             </view>
+            <text class="fs-body" style="display:block;margin-top:var(--space-md);">{{merchantVerifyLine}}</text>
+            <button class="btn-secondary review-mini-btn" size="mini" bindtap="onOwnerVerifyTap">快捷记录验真（选填）</button>
           </view>
         </view>
-        <view class="review-upload-row">
-          <text class="fs-body">完工实拍图（选填）</text>
-          <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">与维修项目匹配的完工实拍，材料为服务商义务。材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
-          <view class="review-upload-grid">
-            <view class="review-upload-item" wx:for="{{module3.completionDisplayList}}" wx:key="index">
-              <image class="review-thumb" src="{{item.url || item}}" mode="aspectFill"/>
-              <text class="review-source-tag" wx:if="{{item.fromMerchant}}">服务商</text>
-              <view class="review-del" wx:if="{{!item.fromMerchant}}" data-index="{{index}}" bindtap="onM3DelCompletion"><text class="review-del-text">×</text></view>
-            </view>
-            <view class="review-upload-btn" wx:if="{{!module3.completionDisplayList || module3.completionDisplayList.length < 8}}" bindtap="onM3ChooseCompletion">
-              <text class="review-add-text">+</text>
-              <text class="text-muted fs-cap">添加</text>
-            </view>
-          </view>
-        </view>
-      </view>
 
-      <!-- 三、自主评价（模块 5：核心操作区） -->
-      <view class="review-section card review-self-section {{inputFocused ? 'review-input-focused' : ''}}">
-        <view class="review-section-title fs-body fw-bold">自主评价（必填）</view>
-        <!-- 极简指引：仅当未聚焦且非老用户时展示完整；聚焦时仅保留悬浮小贴士 -->
-        <view class="review-guide-simple" wx:if="{{!inputFocused && !guideCollapsedByDefault}}">
-          <text class="review-guide-simple-title">💡 优质奖励解锁</text>
-          <text class="review-guide-simple-desc">写清价格、服务、效果、避坑建议任意 1 点，即可解锁优质奖励金（基础奖励 + 50%～100% 浮动）</text>
-          <view class="review-guide-simple-btn" bindtap="onShowDetailGuide">查看详细指引</view>
+        <!-- 系统提示（客观题辅助，只读） -->
+        <view class="review-v3-linear-block review-v3-linear-info" wx:for="{{objectiveHintsList}}" wx:key="code">
+          <text class="review-v3-linear-q fs-body fw-medium">提示（系统）</text>
+          <text class="text-muted fs-sm" style="display:block;margin-top:var(--space-xs);">{{item.text}}</text>
         </view>
-        <!-- 老用户：仅保留核心激励短句 -->
-        <view class="review-guide-mini" wx:elif="{{!inputFocused && guideCollapsedByDefault}}">
-          <text class="review-guide-mini-text">💡 真实细节越多，奖励越高，好评差评都有奖</text>
-          <view class="review-guide-simple-btn review-guide-simple-btn-sm" bindtap="onShowDetailGuide">查看详细指引</view>
+
+        <!-- 4 服务态度 -->
+        <view class="review-v3-linear-block">
+          <view class="review-v3-star-head">
+            <text class="review-v3-linear-q fs-body fw-medium">4. 服务态度</text>
+            <view class="review-stars review-stars-lg">
+              <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+                <text class="review-star {{s <= v3.service_experience_star ? 'filled' : ''}}" data-field="service_experience_star" data-s="{{s}}" bindtap="onV3FiveStarTap">{{s <= v3.service_experience_star ? '★' : '☆'}}</text>
+              </block>
+            </view>
+          </view>
         </view>
-        <!-- 输入聚焦时：悬浮小贴士 -->
-        <view class="review-guide-float" wx:if="{{inputFocused}}">
-          <text class="review-guide-float-text">💡 小贴士：真实细节越多，奖励越高，好评差评都有奖</text>
-        </view>
-        <!-- 输入框 + 字数统计 -->
+
+        <!-- 5 补充说明与图片 -->
+        <view class="review-v3-linear-block">
+          <text class="review-v3-linear-q fs-body fw-medium">5. 补充说明与图片（选填）</text>
+        <text class="text-weak fs-sm" style="display:block;margin-bottom:var(--space-md);">补充说明不超过 200 字。图片统一在此上传（完工、结算、定损、举证等均可，最多 12 张）。</text>
         <view class="review-textarea-wrap">
-          <text class="review-word-count">{{contentLength}}/500</text>
-          <textarea class="review-textarea" placeholder="请写下您的真实维修体验，拒绝「不错、很好」这类空泛内容～例：报价和最终结算完全一致，没有隐形消费，师傅全程同步维修进度，还给免费测了胎压，同车型车友可以放心来" value="{{module3.content}}" bindinput="onM3Content" bindfocus="onContentFocus" bindblur="onContentBlur" placeholder-class="review-textarea-placeholder"/>
+          <text class="review-word-count">{{contentLength}}/200</text>
+          <textarea class="review-textarea" placeholder="选填，真实细节有助于其他车主参考" value="{{module3.content}}" bindinput="onM3Content" maxlength="200" placeholder-class="review-textarea-placeholder"/>
         </view>
-        <view class="review-section-title fs-body" style="margin-top: var(--space-md);">必选星级</view>
-        <view class="review-sub-row" wx:for="{{ratingItems}}" wx:key="key">
-          <text class="fs-sm">{{item.label}}</text>
-          <view class="review-stars review-stars-sm">
-            <text class="review-star {{s <= item.value ? 'filled' : ''}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this" data-key="{{item.key}}" data-value="{{s}}" bindtap="onRatingTap">{{s <= item.value ? '★' : '☆'}}</text>
+        <view class="review-upload-row">
+          <text class="fs-body">补充图片（选填）</text>
+          <view class="review-upload-grid">
+            <view class="review-upload-item" wx:for="{{ownerExtraImages}}" wx:for-index="oidx" wx:key="oidx">
+              <image class="review-thumb" src="{{item}}" mode="aspectFill" data-current="{{item}}" bindtap="onPreviewOwnerExtraImages"/>
+              <view class="review-del" data-index="{{oidx}}" catchtap="onOwnerExtraDel"><text class="review-del-text">×</text></view>
+            </view>
+            <view class="review-upload-btn" wx:if="{{ownerExtraImages.length < 12}}" bindtap="onChooseOwnerExtra">
+              <text class="review-add-text">+</text>
+              <text class="text-muted fs-cap">上传</text>
+            </view>
+          </view>
+        </view>
+        </view>
+      </view>
+
+      <!-- 对外授权 -->
+      <view class="review-section card">
+        <view class="review-section-title fs-body fw-bold">对外展示授权</view>
+        <text class="text-weak fs-sm" style="display:block;margin-bottom:var(--space-md);">您在本页上传的照片视为同意参与公示（由服务端写入公示列表）。下列三项仅控制店端留档、维修前后对照、结算单据位等订单侧素材是否在店铺评价列表、口碑流中公开展示；若订单中暂无对应图片，勾选后对外也不会出现该部分内容。提交后不可改。</text>
+        <view class="review-v3-privacy-row" bindtap="onPublicMediaToggle" data-key="exterior_before_after">
+          <text class="review-v3-check {{review_public_media.exterior_before_after ? 'on' : ''}}">{{review_public_media.exterior_before_after ? '☑' : '☐'}}</text>
+          <view class="review-v3-privacy-body">
+            <text class="fs-body">公开维修前/后对照图</text>
+            <text class="text-weak fs-cap">订单侧维修前/后对照类素材是否对外展示</text>
+          </view>
+        </view>
+        <view class="review-v3-privacy-row" bindtap="onPublicMediaToggle" data-key="parts_contrast">
+          <text class="review-v3-check {{review_public_media.parts_contrast ? 'on' : ''}}">{{review_public_media.parts_contrast ? '☑' : '☐'}}</text>
+          <view class="review-v3-privacy-body">
+            <text class="fs-body">公开店端配件留档图</text>
+            <text class="text-weak fs-cap">店端配件留档类素材是否对外展示</text>
+          </view>
+        </view>
+        <view class="review-v3-privacy-row" bindtap="onPublicMediaToggle" data-key="settlement_docs">
+          <text class="review-v3-check {{review_public_media.settlement_docs ? 'on' : ''}}">{{review_public_media.settlement_docs ? '☑' : '☐'}}</text>
+          <view class="review-v3-privacy-body">
+            <text class="fs-body">公开结算单据图</text>
+            <text class="text-weak fs-cap">对外结算单据位相关图是否展示（首张补充图等规则以后端为准）</text>
           </view>
         </view>
       </view>
 
-      <!-- 奖励金预估 -->
       <view class="review-section card review-reward" wx:if="{{rewardPreview}}">
         <view class="review-section-title fs-body fw-bold">奖励金预估</view>
         <view class="review-reward-total">
-          <text class="text-muted fs-sm">预计可获奖励金</text>
+          <text class="text-muted fs-sm">预计可获（以实际审核为准）</text>
           <text class="fs-body text-gold fw-bold">¥{{rewardPreview.total_reward}}</text>
         </view>
       </view>
 
-      <!-- 匿名 -->
       <view class="review-section card">
         <view class="review-anonymous">
           <text class="fs-body">匿名评价</text>
@@ -204,54 +219,9 @@
     </scroll-view>
 
     <view class="review-footer">
-      <button class="btn-primary review-submit-btn" bindtap="onSubmit" disabled="{{submitting}}">
+      <button class="btn-primary review-submit-btn" bindtap="onSubmit" disabled="{{submitting || !canSubmit}}">
         {{submitting ? '提交中...' : '提交评价 (' + progressText + ')'}}
       </button>
-    </view>
-
-    <!-- 侧边栏：详细指引（点击「查看详细指引」展开） -->
-    <view class="review-detail-guide-mask {{detailGuideVisible ? 'review-detail-guide-mask-show' : ''}}" bindtap="onHideDetailGuide" catchtouchmove="onPreventMove"/>
-    <view class="review-detail-guide-drawer {{detailGuideVisible ? 'review-detail-guide-drawer-show' : ''}}">
-      <view class="review-detail-guide-header">
-        <text class="review-detail-guide-title">评价详细指引</text>
-        <view class="review-detail-guide-close" bindtap="onHideDetailGuide">×</view>
-      </view>
-      <scroll-view class="review-detail-guide-body" scroll-y>
-        <view class="review-detail-guide-part">
-          <text class="review-detail-guide-part-title">第一部分：优质内容怎么写？照着填就对了</text>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-check">✅</text>
-            <text class="review-detail-guide-check-text">价格情况：有无中途加价、隐形消费，与报价是否一致</text>
-          </view>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-check">✅</text>
-            <text class="review-detail-guide-check-text">服务细节：师傅技术、维修效率、沟通体验怎么样</text>
-          </view>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-check">✅</text>
-            <text class="review-detail-guide-check-text">维修效果：修完后车辆使用感受，问题是否彻底解决</text>
-          </view>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-check">✅</text>
-            <text class="review-detail-guide-check-text">车主建议：给同车型车友的避坑提醒、选择建议（高价值爆款内容）</text>
-          </view>
-        </view>
-        <view class="review-detail-guide-part">
-          <text class="review-detail-guide-part-title">第二部分：实打实的现金收益</text>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-dot">▫️</text>
-            <text class="review-detail-guide-check-text">基础奖励：完成必答项 + 有效内容，按维修复杂度拿 30-300 元</text>
-          </view>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-dot">▫️</text>
-            <text class="review-detail-guide-check-text">优质奖励金：基础有效无浮动；优质高价值 +50%；爆款标杆 +100%</text>
-          </view>
-          <view class="review-detail-guide-item">
-            <text class="review-detail-guide-dot">▫️</text>
-            <text class="review-detail-guide-check-text">长效收益：评价被点赞、帮其他车主成交，持续拿追加奖金，上不封顶</text>
-          </view>
-        </view>
-      </scroll-view>
     </view>
   </block>
 </view>

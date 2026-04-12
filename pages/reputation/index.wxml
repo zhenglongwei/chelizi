@@ -1,57 +1,180 @@
-<!-- 口碑首页 - 评价为核心定位 -->
-<custom-nav-bar title="口碑" />
+<!-- 口碑：店铺列表 + 评价流 -->
+<custom-nav-bar title="口碑" showBack="{{false}}" />
 <view class="page-root rep-page" style="{{pageRootStyle}}">
-  <!-- 搜索栏 -->
-  <view class="rep-search-wrap">
-    <view class="input-wrap rep-search" bindtap="onSearchTap">
-      <image class="rep-search-icon" src="/images/icon/search.png" mode="aspectFit"/>
-      <text class="rep-search-ph text-muted fs-body">搜索维修厂、车型、维修项目</text>
-    </view>
+  <view class="rep-main-tabs">
+    <view
+      class="rep-main-tab {{mainTab === 'shop' ? 'active' : ''}}"
+      data-tab="shop"
+      bindtap="onMainTabChange"
+    >店铺</view>
+    <view
+      class="rep-main-tab {{mainTab === 'reviews' ? 'active' : ''}}"
+      data-tab="reviews"
+      bindtap="onMainTabChange"
+    >评价</view>
   </view>
 
-  <scroll-view
-    class="rep-scroll"
-    scroll-y
-    style="{{scrollStyle}}"
-    refresher-enabled="{{true}}"
-    refresher-triggered="{{refreshing}}"
-    bindrefresherrefresh="onPullRefresh"
-  >
-    <!-- 口碑好店 -->
-    <view class="rep-section">
-      <view class="rep-section-head">
-        <text class="rep-section-title">口碑好店</text>
-        <text class="rep-section-more text-muted fs-cap" bindtap="goToMoreShops">更多</text>
+  <block wx:if="{{mainTab === 'shop'}}">
+    <view class="rep-search-wrap">
+      <view class="input-wrap rep-search" bindtap="onSearchTap">
+        <image class="rep-search-icon" src="/images/icon/search.png" mode="aspectFit"/>
+        <text class="rep-search-ph text-muted fs-body">搜索维修厂、车型、维修项目</text>
       </view>
-      <view class="rep-loading text-muted fs-body" wx:if="{{loading}}">加载中...</view>
-      <view class="rep-empty text-muted fs-body" wx:elif="{{!loading && reputationShops.length === 0}}">暂无口碑好店</view>
-      <view class="rep-shop-list" wx:else>
-        <view class="rep-shop-card card" wx:for="{{reputationShops}}" wx:key="shop_id" bindtap="goToShopDetail" data-id="{{item.shop_id}}">
-          <image class="rep-shop-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
-          <view class="rep-shop-logo rep-shop-logo-ph" wx:else></view>
-          <view class="rep-shop-info-wrap">
-            <view class="rep-shop-info">
-              <text class="rep-shop-name text-primary fs-body fw-bold">{{item.name}}</text>
-              <view class="rep-shop-rating">
-                <text class="rep-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
-                <text class="rep-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
-              </view>
-              <text class="rep-shop-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
-              <text class="rep-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
-              <view class="rep-shop-foot">
-                <view class="rep-badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
-                  <text class="fs-cap">{{item.badgeText}}</text>
+    </view>
+
+    <scroll-view
+      class="rep-scroll"
+      scroll-y
+      style="{{scrollStyle}}"
+      refresher-enabled="{{true}}"
+      refresher-triggered="{{refreshing}}"
+      bindrefresherrefresh="onPullRefresh"
+    >
+      <view class="rep-section">
+        <view class="rep-section-head">
+          <text class="rep-section-title">口碑好店</text>
+          <text class="rep-section-more text-muted fs-cap" bindtap="goToMoreShops">更多</text>
+        </view>
+        <view class="rep-loading text-muted fs-body" wx:if="{{shopListLoading}}">加载中...</view>
+        <view class="rep-empty text-muted fs-body" wx:elif="{{!shopListLoading && reputationShops.length === 0}}">暂无口碑好店</view>
+        <view class="rep-shop-list" wx:else>
+          <view class="rep-shop-card card" wx:for="{{reputationShops}}" wx:key="shop_id" bindtap="goToShopDetail" data-id="{{item.shop_id}}">
+            <image class="rep-shop-logo" src="{{item.logo}}" mode="aspectFill" wx:if="{{item.logo}}"/>
+            <view class="rep-shop-logo rep-shop-logo-ph" wx:else></view>
+            <view class="rep-shop-info-wrap">
+              <view class="rep-shop-info">
+                <text class="rep-shop-name text-primary fs-body fw-bold">{{item.name}}</text>
+                <view class="rep-shop-rating">
+                  <text class="rep-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                  <text class="rep-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
                 </view>
-                <view class="rep-shop-addr text-muted fs-cap">
-                  <image class="rep-addr-icon" src="/images/icon/location.png" mode="aspectFit"/>
-                  <text class="rep-shop-addr-txt">{{item.locationText}}</text>
+                <text class="rep-shop-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
+                <text class="rep-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
+                <view class="rep-shop-foot">
+                  <view class="rep-badge {{item.badgeClass}}" wx:if="{{item.badgeText}}">
+                    <text class="fs-cap">{{item.badgeText}}</text>
+                  </view>
+                  <view class="rep-shop-addr text-muted fs-cap">
+                    <image class="rep-addr-icon" src="/images/icon/location.png" mode="aspectFit"/>
+                    <text class="rep-shop-addr-txt">{{item.locationText}}</text>
+                  </view>
                 </view>
               </view>
+              <image class="rep-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
             </view>
-            <image class="rep-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
           </view>
         </view>
       </view>
+    </scroll-view>
+  </block>
+
+  <view wx:else class="feed-page rep-merged-feed">
+    <view class="feed-sort-bar">
+      <view
+        class="feed-sort-item {{sort === 'quality' ? 'active' : ''}}"
+        data-sort="quality"
+        bindtap="onSortChange"
+      >质量优先</view>
+      <view
+        class="feed-sort-item {{sort === 'time' ? 'active' : ''}}"
+        data-sort="time"
+        bindtap="onSortChange"
+      >最新</view>
+      <view
+        class="feed-sort-item {{sort === 'distance' ? 'active' : ''}}"
+        data-sort="distance"
+        bindtap="onSortChange"
+      >距离</view>
     </view>
-  </scroll-view>
+
+    <block wx:if="{{loading && reviews.length === 0}}">
+      <view class="feed-loading text-muted fs-body">加载中...</view>
+    </block>
+
+    <scroll-view
+      wx:else
+      class="feed-scroll"
+      scroll-y
+      style="{{scrollStyle}}"
+      bindscrolltolower="loadMore"
+    >
+      <view class="feed-list" wx:if="{{reviews.length}}">
+        <view
+          class="feed-card card rv-linear-item"
+          wx:for="{{reviews}}"
+          wx:for-index="rIdx"
+          wx:key="review_id"
+          id="feed-review-{{item.review_id}}"
+          data-review-id="{{item.review_id}}"
+        >
+          <navigator
+            class="feed-shop-row"
+            url="/pages/shop/detail/index?id={{item.shop.shop_id}}"
+            open-type="navigate"
+          >
+            <image class="feed-shop-logo" src="{{item.shop.logo || '/images/brand/brand-app-icon-zhejian.png'}}" mode="aspectFill"/>
+            <view class="feed-shop-info">
+              <text class="feed-shop-name text-primary fs-body fw-bold">{{item.shop.name}}</text>
+              <text class="feed-shop-addr text-muted fs-cap">{{item.shop.district || item.shop.address || ''}}</text>
+            </view>
+            <image class="feed-shop-arrow" src="/images/icon/right.png" mode="aspectFit"/>
+          </navigator>
+
+          <view class="feed-review-head">
+            <image
+              class="feed-user-avatar"
+              src="{{(item.user && item.user.avatar_url) ? item.user.avatar_url : '/images/brand/brand-app-icon-zhejian.png'}}"
+              mode="aspectFill"
+            />
+            <text class="feed-user text-primary fs-body">{{item.user.nickname}}</text>
+            <text class="feed-level text-weak fs-sm" wx:if="{{item.user.level_name}}">{{item.user.level_name}}</text>
+            <text class="feed-date text-weak fs-cap">{{item.dateText}}</text>
+          </view>
+
+          <review-public-card
+            review="{{item}}"
+            index="{{rIdx}}"
+            collapsedContentClass="feed-content-collapsed"
+            expandBtnClass="feed-expand-btn text-primary fs-sm"
+            bind:expandtext="onExpandReview"
+            bind:togglepub="onTogglePubV3Expand"
+            bind:togglereviewimages="onToggleReviewImages"
+            bind:togglequotejourney="onToggleQuoteJourney"
+            bind:previewimages="onPreviewFeedReviewImagesRow"
+            bind:previewquotephoto="onPreviewFeedQuotePhoto"
+          />
+
+          <view class="feed-badge text-weak fs-sm" wx:if="{{item.isLowRating}}">该用户已完成全部评价要求，全额领取对应奖励</view>
+          <view class="feed-appeal" wx:if="{{item.is_my_review && item.order_id}}" bindtap="onAppealTap" data-order-id="{{item.order_id}}">
+            <text class="text-primary fs-sm">对维修有异议？发起申诉</text>
+          </view>
+          <view class="feed-owner-verify text-danger fs-sm" wx:if="{{item.has_owner_verify_badge}}">车主验证・真实避坑</view>
+
+          <view class="feed-actions">
+            <view class="feed-like" wx:if="{{!item.is_my_review}}" bindtap="onLikeReview" data-index="{{rIdx}}" data-review-id="{{item.review_id}}">
+              <image class="feed-like-icon" src="{{item.liked ? '/images/icon/liked.png' : '/images/icon/like.png'}}" mode="aspectFit"/>
+              <text class="text-muted fs-cap">{{item.like_count || 0}} 点赞</text>
+              <text class="text-weak fs-sm" wx:if="{{item.post_verify_count > 0}}"> · {{item.post_verify_count}}位车主验证有用</text>
+            </view>
+            <view class="feed-like text-weak fs-cap" wx:else>
+              <text>{{item.like_count || 0}} 点赞</text>
+            </view>
+            <view class="feed-dislike {{item.disliked ? 'disliked' : ''}}" wx:if="{{!item.is_my_review && !item.liked}}" bindtap="onDislikeReview" data-index="{{rIdx}}" data-review-id="{{item.review_id}}">
+              <text class="feed-dislike-icon">👎</text>
+              <text class="text-muted fs-cap">{{item.dislike_count || 0}} 踩</text>
+            </view>
+            <view class="feed-dislike disliked" wx:elif="{{!item.is_my_review && item.disliked}}">
+              <text class="feed-dislike-icon">👎</text>
+              <text class="text-weak fs-cap">{{item.dislike_count || 0}} 踩</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="feed-more text-muted fs-cap" wx:if="{{loadingMore}}">加载更多...</view>
+      <view class="feed-more text-muted fs-cap" wx:elif="{{!hasMore && reviews.length > 0}}">— 没有更多了 —</view>
+      <view class="feed-empty text-muted fs-body" wx:elif="{{!loading && reviews.length === 0}}">暂无评价</view>
+      <view class="feed-bottom-pad"></view>
+    </scroll-view>
+  </view>
 </view>

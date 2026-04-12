@@ -17,9 +17,11 @@ function parseCompletionEvidence(ev) {
 /**
  * @param {string|object|null} repairPlanStrOrObj
  * @param {string|null} repairProjectKey
+ * @param {{ stripLinePrices?: boolean }} [options] stripLinePrices 为 true 时配件承诺行不含分项价（公示列表）
  * @returns {{ repairItems: string[], part_promise_lines: string[] }}
  */
-function parseRepairPlanEnrichment(repairPlanStrOrObj, repairProjectKey) {
+function parseRepairPlanEnrichment(repairPlanStrOrObj, repairProjectKey, options = {}) {
+  const stripLinePrices = !!options.stripLinePrices;
   let repairItems = [];
   let partPromiseLines = [];
   try {
@@ -34,7 +36,14 @@ function parseRepairPlanEnrichment(repairPlanStrOrObj, repairProjectKey) {
         if (!part) return '';
         const rt = it.repair_type || '维修';
         const pt = it.repair_type === '换' && it.parts_type ? ' · ' + String(it.parts_type).trim() : '';
-        return `${part}：${rt}${pt}`;
+        const pr =
+          !stripLinePrices && it.price != null && !Number.isNaN(parseFloat(it.price))
+            ? ` · ¥${it.price}`
+            : '';
+        const wm = it.warranty_months != null && !Number.isNaN(parseInt(it.warranty_months, 10))
+          ? ` · 质保${it.warranty_months}月`
+          : '';
+        return `${part}：${rt}${pt}${pr}${wm}`;
       })
       .filter(Boolean);
   } catch (_) {}

@@ -1,128 +1,247 @@
 <custom-nav-bar title="资金账户" showBack="{{true}}" />
 <view class="page-root" style="{{pageRootStyle}}">
-  <view class="card">
-    <text class="fs-body fw-bold text-primary" style="display:block;margin-bottom:8rpx;">佣金说明（请按订单类型理解）</text>
-    <text class="fs-cap text-muted" style="display:block;margin-bottom:8rpx;">· 保险理赔单：理赔款由保险公司直接付给门店；平台佣金在「账户余额」里先按报价扣款，结算后再多退少补，可用下方「微信支付佣金」补缴。</text>
-    <text class="fs-cap text-muted" style="display:block;">· 车主自费单：车主把维修款付给平台后，服务费在支付里已扣除，余款记入「标品货款」可提现；这类单一般不会再出现在「待缴佣金」里。</text>
-  </view>
-  <view class="card">
-    <view class="row-between">
-      <text class="fs-h3 fw-bold text-primary">账户余额</text>
-      <text class="fs-h3 fw-bold" style="color: var(--success);">¥{{walletBalance}}</text>
-    </view>
-    <text class="fs-cap text-muted">冻结：¥{{walletFrozen}} · 模式：{{modeLabel}}</text>
-    <view style="margin-top: var(--space-md);">
-      <text class="fs-cap text-muted">扣款方式</text>
-      <view style="margin-top: var(--space-sm);">
-        <button class="btn-outline" size="mini" bindtap="onSetMode" data-mode="auto">自动扣余额</button>
-        <button class="btn-outline" size="mini" bindtap="onSetMode" data-mode="per_order">逐单微信支付</button>
+  <view class="section section-tabs">
+    <view class="segment-bar">
+      <view
+        class="segment-item {{activeAccountTab === 'commission' ? 'segment-item-active' : ''}}"
+        bindtap="onAccountTabTap"
+        data-tab="commission"
+      >
+        <text>平台佣金</text>
+      </view>
+      <view
+        class="segment-item {{activeAccountTab === 'income' ? 'segment-item-active' : ''}}"
+        bindtap="onAccountTabTap"
+        data-tab="income"
+      >
+        <text>标品货款</text>
       </view>
     </view>
+    <text class="tab-hint">两类资金分账，互不混用</text>
   </view>
 
-  <view class="card">
-    <view class="row-between">
-      <text class="fs-h3 fw-bold text-primary">标品货款</text>
-      <text class="fs-h3 fw-bold" style="color: var(--success);">¥{{incomeBalance}}</text>
-    </view>
-    <text class="fs-cap text-muted">提现处理中冻结：¥{{incomeFrozen}}（车主购买店内标品并支付成功后入账，与上方佣金余额无关）</text>
-    <view style="margin-top: var(--space-md);">
-      <text class="fs-cap text-muted">提现方式</text>
-      <radio-group class="income-withdraw-mode" value="{{incomeWithdrawMode}}" bindchange="onIncomeWithdrawModeChange">
-        <label class="radio-row"><radio value="wechat" /> 微信零钱（即时发起，需在小程序确认收款）</label>
-        <label class="radio-row"><radio value="corp" /> 对公转账（登记账户信息，财务打款后后台核销）</label>
-      </radio-group>
-      <input class="input" type="digit" placeholder="提现金额（元）" value="{{incomeWithdrawAmount}}" bindinput="onIncomeWithdrawInput" />
-      <block wx:if="{{incomeWithdrawMode === 'wechat'}}">
-        <input wx:if="{{showIncomeRealName}}" class="input" placeholder="真实姓名（与微信实名一致，≥2000元必填）" value="{{incomeRealName}}" bindinput="onIncomeRealNameInput" />
-        <view style="margin-top: var(--space-sm); display: flex; flex-wrap: wrap; gap: 12rpx;">
-          <button class="btn-outline" size="mini" bindtap="onIncomeWithdrawAll">全部提现</button>
-          <button class="btn-outline" size="mini" bindtap="onCancelIncomeWithdraw" disabled="{{incomeWithdrawLoading}}">取消待确认提现</button>
+  <!-- 平台佣金 -->
+  <block wx:if="{{activeAccountTab === 'commission'}}">
+    <view class="section">
+      <view class="card card-hero">
+        <view class="row-between row-hero">
+          <text class="label-hero">可用余额</text>
+          <text class="amount-hero">¥{{walletBalance}}</text>
         </view>
-        <button class="btn-primary" style="margin-top: var(--space-sm);" bindtap="onIncomeWithdraw" loading="{{incomeWithdrawLoading}}">提现到微信零钱</button>
-        <text class="fs-cap text-muted" style="margin-top: var(--space-sm); display: block;">需已绑定微信；单日限额与最低金额与平台设置一致。</text>
-      </block>
-      <block wx:else>
-        <input class="input" placeholder="对公户名（与营业执照一致）" value="{{corpCompanyName}}" bindinput="onCorpFieldInput" data-field="corpCompanyName" />
-        <input class="input" placeholder="开户银行" value="{{corpBankName}}" bindinput="onCorpFieldInput" data-field="corpBankName" />
-        <input class="input" type="number" placeholder="银行账号（数字）" value="{{corpBankAccount}}" bindinput="onCorpFieldInput" data-field="corpBankAccount" />
-        <input class="input" placeholder="开户支行（选填）" value="{{corpBankBranch}}" bindinput="onCorpFieldInput" data-field="corpBankBranch" />
-        <input class="input" placeholder="联系人（选填）" value="{{corpContactName}}" bindinput="onCorpFieldInput" data-field="corpContactName" />
-        <input class="input" type="number" placeholder="联系电话（选填）" value="{{corpContactPhone}}" bindinput="onCorpFieldInput" data-field="corpContactPhone" />
-        <input class="input" placeholder="备注（选填）" value="{{corpRemark}}" bindinput="onCorpFieldInput" data-field="corpRemark" />
-        <view style="margin-top: var(--space-sm); display: flex; flex-wrap: wrap; gap: 12rpx;">
-          <button class="btn-outline" size="mini" bindtap="onIncomeWithdrawAll">全部提现</button>
-          <button class="btn-outline" size="mini" bindtap="onCancelCorpWithdraw" disabled="{{incomeWithdrawLoading}}">撤销待审核对公申请</button>
+        <view class="meta-line">
+          <text>冻结 ¥{{walletFrozen}}</text>
+          <text class="meta-dot">·</text>
+          <text>扣款：{{modeLabel}}</text>
         </view>
-        <button class="btn-primary" style="margin-top: var(--space-sm);" bindtap="onCorpWithdrawSubmit" loading="{{incomeWithdrawLoading}}">提交对公提现申请</button>
-        <text class="fs-cap text-muted" style="margin-top: var(--space-sm); display: block;">提交后金额冻结，财务打款后由后台核销；驳回或您撤销后退回可提现余额。</text>
-      </block>
+        <view class="mode-row">
+          <text class="fs-cap text-muted mode-label">扣款方式</text>
+          <radio-group class="commission-deduct-mode" value="{{deductMode}}" bindchange="onDeductModeChange">
+            <label class="radio-row radio-row-block {{deductMode === 'auto' ? 'radio-row-selected' : ''}} {{deductModeSaving ? 'radio-row-disabled' : ''}}">
+              <radio class="radio-inline" value="auto" disabled="{{deductModeSaving}}" color="#2563EB" />
+              <view class="radio-row-text">
+                <text class="radio-row-title">自动扣余额</text>
+                <text class="fs-cap text-muted radio-row-desc">产生佣金时从本页可用余额划扣，请先保证余额充足</text>
+              </view>
+            </label>
+            <label class="radio-row radio-row-block {{deductMode === 'per_order' ? 'radio-row-selected' : ''}} {{deductModeSaving ? 'radio-row-disabled' : ''}}">
+              <radio class="radio-inline" value="per_order" disabled="{{deductModeSaving}}" color="#2563EB" />
+              <view class="radio-row-text">
+                <text class="radio-row-title">逐单微信支付</text>
+                <text class="fs-cap text-muted radio-row-desc">每笔佣金单独走微信支付，不自动从余额扣</text>
+              </view>
+            </label>
+          </radio-group>
+        </view>
+      </view>
     </view>
-  </view>
 
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">对公提现记录</text>
-    <view class="ledger-item" wx:for="{{incomeCorpList}}" wx:key="request_id">
-      <text class="fs-body">¥{{item.amount}} · {{item.status_label}}</text>
-      <text class="fs-cap text-muted" style="display: block;">{{item.company_name}} · {{item.bank_name}} · {{item.bank_account_no}}</text>
-      <text class="fs-cap text-muted">{{item.created_at}}</text>
-      <text wx:if="{{item.admin_remark}}" class="fs-cap text-muted">说明：{{item.admin_remark}}</text>
+    <view class="section" wx:if="{{pendingOrders.length}}">
+      <view class="section-head section-head-inline">
+        <text class="section-title">待办</text>
+        <text class="section-badge">{{pendingOrders.length}} 笔</text>
+      </view>
+      <view class="card card-alert">
+        <text class="fs-body fw-bold text-primary">待缴佣金订单</text>
+        <text class="fs-cap text-muted sub-hint">保险理赔等场景需在报价扣款后按单补缴或结算调整</text>
+        <view class="order-pending" wx:for="{{pendingOrders}}" wx:key="order_id">
+          <view class="order-pending-head">
+            <text class="fs-body order-id">{{item.order_id}}</text>
+            <text class="fs-cap text-muted">应付约 ¥{{item.needPay}} · {{item.commission_status}}</text>
+          </view>
+          <button class="btn-primary btn-inline" size="mini" bindtap="onPayOrder" data-id="{{item.order_id}}">微信支付佣金</button>
+        </view>
+      </view>
     </view>
-    <text wx:if="{{!incomeCorpList.length}}" class="fs-cap text-muted">暂无对公提现记录</text>
-  </view>
 
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">标品货款明细</text>
-    <view class="ledger-item" wx:for="{{incomeLedger}}" wx:key="ledger_id">
-      <text class="fs-body">{{item.type_label}}</text>
-      <text class="fs-cap text-muted" style="display: block;">
-        {{item.amount >= 0 ? '+' : ''}}{{item.amount}} 元 · 余额 {{item.balance_after != null ? item.balance_after : '--'}}
-      </text>
-      <text class="fs-cap text-muted">{{item.created_at}}</text>
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">账户充值</text>
+        <text class="section-desc">向佣金余额充值，用于自动扣款或补缴</text>
+      </view>
+      <view class="card">
+        <view class="action-block">
+          <input class="input input-inline" type="digit" placeholder="金额（元）" value="{{rechargeAmount}}" bindinput="onRechargeInput" />
+          <button class="btn-primary btn-block" bindtap="onRecharge">微信充值</button>
+        </view>
+      </view>
+      <view class="collapse-bar" bindtap="toggleRefundBlock">
+        <text class="collapse-bar-text">{{showRefundBlock ? '收起' : '展开'}}原路退款</text>
+        <text class="collapse-bar-chevron">{{showRefundBlock ? '▲' : '▼'}}</text>
+      </view>
+      <view class="card" wx:if="{{showRefundBlock}}">
+        <view class="action-block">
+          <text class="action-label">原路退款</text>
+          <input class="input input-inline" type="digit" placeholder="退款金额（元）" value="{{refundAmount}}" bindinput="onRefundInput" />
+          <button class="btn-primary btn-block btn-warn" bindtap="onRefund">申请退款</button>
+          <text class="fs-cap text-muted action-hint">可退 ≈ 当前余额 − 冻结；按充值记录 FIFO 原路退回</text>
+        </view>
+      </view>
     </view>
-    <text wx:if="{{!incomeLedger.length}}" class="fs-cap text-muted">暂无记录</text>
-  </view>
 
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">充值</text>
-    <input class="input" type="digit" placeholder="金额（元）" value="{{rechargeAmount}}" bindinput="onRechargeInput" />
-    <button class="btn-primary" bindtap="onRecharge">微信充值</button>
-  </view>
-
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">原路退款</text>
-    <input class="input" type="digit" placeholder="退款金额（元）" value="{{refundAmount}}" bindinput="onRefundInput" />
-    <button class="btn-primary" bindtap="onRefund" style="background: var(--warning);">申请退款</button>
-    <text class="fs-cap text-muted" style="margin-top: var(--space-sm); display: block;">可退余额 = 当前余额 − 冻结；按充值记录 FIFO 原路退回。</text>
-  </view>
-
-  <view class="card" wx:if="{{pendingOrders.length}}">
-    <text class="fs-body fw-bold text-primary">待缴佣金订单</text>
-    <view class="order-pending" wx:for="{{pendingOrders}}" wx:key="order_id">
-      <text class="fs-body">{{item.order_id}}</text>
-      <text class="fs-cap text-muted" style="display: block;">状态 {{item.commission_status}} · 应付约 ¥{{item.needPay}}</text>
-      <button class="btn-primary" size="mini" bindtap="onPayOrder" data-id="{{item.order_id}}">微信支付佣金</button>
+    <view class="section">
+      <view class="collapse-bar collapse-bar-muted" bindtap="toggleFinalizeBlock">
+        <text class="collapse-bar-text">{{showFinalizeBlock ? '收起' : '展开'}}订单结算补充（运营）</text>
+        <text class="collapse-bar-chevron">{{showFinalizeBlock ? '▲' : '▼'}}</text>
+      </view>
+      <text wx:if="{{!showFinalizeBlock}}" class="fs-cap text-muted collapse-inline-hint">阶段 B：按运营要求提交实际金额与支付凭证</text>
+      <view class="card card-muted" wx:if="{{showFinalizeBlock}}">
+        <input class="input" placeholder="订单号" value="{{finalizeOrderId}}" bindinput="onFinOrderInput" />
+        <input class="input" type="digit" placeholder="实际维修金额（元）" value="{{finalizeAmount}}" bindinput="onFinAmtInput" />
+        <button class="btn-outline btn-block-first" bindtap="onPickProof">上传支付凭证图</button>
+        <text wx:if="{{proofUrls.length}}" class="fs-cap text-muted proof-count">已选 {{proofUrls.length}} 张</text>
+        <button class="btn-primary btn-block" bindtap="onFinalize">提交审核</button>
+      </view>
     </view>
-  </view>
 
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">阶段 B：提交实际金额与支付凭证</text>
-    <input class="input" placeholder="订单号" value="{{finalizeOrderId}}" bindinput="onFinOrderInput" />
-    <input class="input" type="digit" placeholder="实际维修金额（元）" value="{{finalizeAmount}}" bindinput="onFinAmtInput" />
-    <button class="btn-outline" bindtap="onPickProof">上传支付凭证图</button>
-    <view wx:if="{{proofUrls.length}}" class="fs-cap text-muted">已选 {{proofUrls.length}} 张</view>
-    <button class="btn-primary" bindtap="onFinalize">提交 finalize</button>
-  </view>
-
-  <view class="card">
-    <text class="fs-body fw-bold text-primary">收支明细</text>
-    <view class="ledger-item" wx:for="{{ledger}}" wx:key="ledger_id">
-      <text class="fs-body">{{item.type}}</text>
-      <text class="fs-cap text-muted" style="display: block;">
-        {{item.amount >= 0 ? '+' : ''}}{{item.amount}} 元
-      </text>
-      <text class="fs-cap text-muted">{{item.created_at}}</text>
+    <view class="section">
+      <view class="section-head">
+        <text class="section-title">佣金收支明细</text>
+      </view>
+      <view class="card">
+        <view class="ledger-item" wx:for="{{ledger}}" wx:key="ledger_id">
+          <text class="fs-body">{{item.type}}</text>
+          <text class="fs-cap text-muted ledger-amt">
+            {{item.amount >= 0 ? '+' : ''}}{{item.amount}} 元
+          </text>
+          <text class="fs-cap text-muted">{{item.created_at}}</text>
+        </view>
+        <text wx:if="{{!ledger.length}}" class="empty-tip">暂无记录</text>
+      </view>
     </view>
-    <text wx:if="{{!ledger.length}}" class="fs-cap text-muted">暂无记录</text>
+  </block>
+
+  <!-- 标品货款 -->
+  <block wx:if="{{activeAccountTab === 'income'}}">
+    <view class="section">
+      <view class="card card-hero card-hero-secondary">
+        <view class="row-between row-hero">
+          <text class="label-hero">可提现</text>
+          <text class="amount-hero amount-secondary">¥{{incomeBalance}}</text>
+        </view>
+        <text class="fs-cap text-muted meta-block">提现处理中冻结：¥{{incomeFrozen}}</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="income-sub-segment">
+        <view
+          class="income-sub-item {{incomeSubTab === 'withdraw' ? 'income-sub-item-active' : ''}}"
+          bindtap="onIncomeSubTabTap"
+          data-subtab="withdraw"
+        >
+          <text>提现</text>
+        </view>
+        <view
+          class="income-sub-item {{incomeSubTab === 'corp' ? 'income-sub-item-active' : ''}}"
+          bindtap="onIncomeSubTabTap"
+          data-subtab="corp"
+        >
+          <text>对公记录</text>
+        </view>
+        <view
+          class="income-sub-item {{incomeSubTab === 'ledger' ? 'income-sub-item-active' : ''}}"
+          bindtap="onIncomeSubTabTap"
+          data-subtab="ledger"
+        >
+          <text>货款流水</text>
+        </view>
+      </view>
+
+      <view class="card" wx:if="{{incomeSubTab === 'withdraw'}}">
+        <view class="withdraw-block withdraw-block-flush">
+          <text class="fs-cap text-muted withdraw-label">提现方式</text>
+          <radio-group class="income-withdraw-mode" value="{{incomeWithdrawMode}}" bindchange="onIncomeWithdrawModeChange">
+            <label class="radio-row"><radio value="wechat" /> 微信零钱（需在小程序内确认收款）</label>
+            <label class="radio-row"><radio value="corp" /> 对公转账（登记账户，财务打款后核销）</label>
+          </radio-group>
+          <input class="input" type="digit" placeholder="提现金额（元）" value="{{incomeWithdrawAmount}}" bindinput="onIncomeWithdrawInput" />
+          <block wx:if="{{incomeWithdrawMode === 'wechat'}}">
+            <input wx:if="{{showIncomeRealName}}" class="input" placeholder="真实姓名（与微信实名一致，≥2000 元必填）" value="{{incomeRealName}}" bindinput="onIncomeRealNameInput" />
+            <view class="btn-group btn-group-tight">
+              <button class="btn-outline btn-compact" size="mini" bindtap="onIncomeWithdrawAll">全部提现</button>
+              <button class="btn-outline btn-compact" size="mini" bindtap="onCancelIncomeWithdraw" disabled="{{incomeWithdrawLoading}}">取消待确认提现</button>
+            </view>
+            <button class="btn-primary btn-block" bindtap="onIncomeWithdraw" loading="{{incomeWithdrawLoading}}">提现到微信零钱</button>
+            <text class="fs-cap text-muted action-hint">需已绑定微信；限额与最低金额以平台设置为准</text>
+          </block>
+          <block wx:else>
+            <input class="input" placeholder="对公户名（与营业执照一致）" value="{{corpCompanyName}}" bindinput="onCorpFieldInput" data-field="corpCompanyName" />
+            <input class="input" placeholder="开户银行" value="{{corpBankName}}" bindinput="onCorpFieldInput" data-field="corpBankName" />
+            <input class="input" type="number" placeholder="银行账号（数字）" value="{{corpBankAccount}}" bindinput="onCorpFieldInput" data-field="corpBankAccount" />
+            <input class="input" placeholder="开户支行（选填）" value="{{corpBankBranch}}" bindinput="onCorpFieldInput" data-field="corpBankBranch" />
+            <input class="input" placeholder="联系人（选填）" value="{{corpContactName}}" bindinput="onCorpFieldInput" data-field="corpContactName" />
+            <input class="input" type="number" placeholder="联系电话（选填）" value="{{corpContactPhone}}" bindinput="onCorpFieldInput" data-field="corpContactPhone" />
+            <input class="input" placeholder="备注（选填）" value="{{corpRemark}}" bindinput="onCorpFieldInput" data-field="corpRemark" />
+            <view class="btn-group btn-group-tight">
+              <button class="btn-outline btn-compact" size="mini" bindtap="onIncomeWithdrawAll">全部提现</button>
+              <button class="btn-outline btn-compact" size="mini" bindtap="onCancelCorpWithdraw" disabled="{{incomeWithdrawLoading}}">撤销待审核申请</button>
+            </view>
+            <button class="btn-primary btn-block" bindtap="onCorpWithdrawSubmit" loading="{{incomeWithdrawLoading}}">提交对公提现申请</button>
+            <text class="fs-cap text-muted action-hint">提交后金额冻结；打款后后台核销，驳回或撤销后退回可提现余额</text>
+          </block>
+        </view>
+      </view>
+
+      <view class="card" wx:if="{{incomeSubTab === 'corp'}}">
+        <text class="card-subtitle">对公提现记录</text>
+        <view class="ledger-item" wx:for="{{incomeCorpList}}" wx:key="request_id">
+          <text class="fs-body">¥{{item.amount}} · {{item.status_label}}</text>
+          <text class="fs-cap text-muted ledger-detail">{{item.company_name}} · {{item.bank_name}} · {{item.bank_account_no}}</text>
+          <text class="fs-cap text-muted">{{item.created_at}}</text>
+          <text wx:if="{{item.admin_remark}}" class="fs-cap text-muted">说明：{{item.admin_remark}}</text>
+        </view>
+        <text wx:if="{{!incomeCorpList.length}}" class="empty-tip">暂无对公提现记录</text>
+      </view>
+
+      <view class="card" wx:if="{{incomeSubTab === 'ledger'}}">
+        <text class="card-subtitle">货款流水</text>
+        <view class="ledger-item" wx:for="{{incomeLedger}}" wx:key="ledger_id">
+          <text class="fs-body">{{item.type_label}}</text>
+          <text class="fs-cap text-muted ledger-amt">
+            {{item.amount >= 0 ? '+' : ''}}{{item.amount}} 元 · 余额 {{item.balance_after != null ? item.balance_after : '--'}}
+          </text>
+          <text class="fs-cap text-muted">{{item.created_at}}</text>
+        </view>
+        <text wx:if="{{!incomeLedger.length}}" class="empty-tip">暂无记录</text>
+      </view>
+    </view>
+  </block>
+
+  <view class="section section-foot">
+    <view class="help-bar" bindtap="toggleCommissionHelp">
+      <text class="help-bar-text">{{showCommissionHelp ? '收起' : '展开'}}计佣说明</text>
+      <text class="help-bar-chevron">{{showCommissionHelp ? '▲' : '▼'}}</text>
+    </view>
+    <view class="card card-help" wx:if="{{showCommissionHelp}}">
+      <text class="fs-body fw-bold text-primary help-title">按订单类型理解佣金</text>
+      <view class="help-item">
+        <text class="help-bullet">保险理赔单</text>
+        <text class="fs-cap text-muted">理赔款由保险公司付给门店；平台佣金在「佣金余额」中先按报价扣款，结算后多退少补，可用「微信支付佣金」或充值补缴。</text>
+      </view>
+      <view class="help-item">
+        <text class="help-bullet">车主自费单</text>
+        <text class="fs-cap text-muted">维修款经平台支付时服务费已扣除，余款记入「标品货款」可提现；通常不会出现在「待缴佣金」中。</text>
+      </view>
+    </view>
   </view>
 </view>

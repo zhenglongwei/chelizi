@@ -131,6 +131,9 @@ export async function callCloudFunction(functionName: string, data: any) {
       case 'saveRewardRulesConfig':
         await api.post('/v1/admin/reward-rules/config', data.config);
         return { success: true, message: '保存成功' };
+      case 'saveCommissionRules':
+        await api.put('/v1/admin/commission-rules', data);
+        return { success: true, message: '保存成功' };
       default:
         console.warn(`未映射的云函数: ${functionName}`);
         return { success: false, message: `接口 ${functionName} 暂未实现` };

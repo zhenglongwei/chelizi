@@ -11,6 +11,18 @@ const shopSortService = require('../shop-sort-service');
 
 const LOG_PREFIX = '[BiddingDistribution]';
 
+async function hasTable(pool, tableName) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [tableName]
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 const DEFAULT_CONFIG = {
   filterComplianceMin: 80,
   filterViolationDays: 30,
@@ -32,6 +44,14 @@ const DEFAULT_CONFIG = {
   sameProjectScoreFallback: 5,
   sceneWeightL1L2: 0.35,
   sceneWeightL3L4: 0.6,
+  /** 综合排序：匹配分与报价合理性权重（保险更偏品质，自费更偏价格合理） */
+  quoteSortWeightMatchInsurance: 0.7,
+  quoteSortWeightReasonInsurance: 0.3,
+  quoteSortWeightMatchSelfPay: 0.55,
+  quoteSortWeightReasonSelfPay: 0.45,
+  /** 匹配分内报价历史偏差项：自费放大、保险略降 */
+  matchDeviationWeightInsurance: 0.88,
+  matchDeviationWeightSelfPay: 1.12,
 };
 
 const LEVEL_ORDER = { L1: 1, L2: 2, L3: 3, L4: 4 };
@@ -294,6 +314,12 @@ async function calcMerchantMatchScore(pool, shop, bidding, opts = {}) {
   if (deviation > 30) deviationScore = 0;
   else if (deviation > 10) deviationScore = Math.max(0, 20 - (deviation - 10));
 
+  const isIns = !!opts.isInsuranceBidding;
+  const devW = isIns
+    ? (config.matchDeviationWeightInsurance ?? 0.88)
+    : (config.matchDeviationWeightSelfPay ?? 1.12);
+  deviationScore = Math.min(20, Math.round(deviationScore * devW * 10) / 10);
+
   const sameProjectScore = sameProjectResult.isPriorityMatch
     ? (config.sameProjectScorePriority || 15)
     : (config.sameProjectScoreFallback || 5);
@@ -385,7 +411,20 @@ async function filterShopsForBidding(pool, biddingId, userId) {
 /**
  * 划分梯队并计算匹配分
  */
-async function assignTiers(pool, shops, biddingId, config) {
+async function getBiddingInsuranceFlag(pool, biddingId) {
+  const [rows] = await pool.execute('SELECT insurance_info FROM biddings WHERE bidding_id = ?', [biddingId]);
+  if (!rows.length || rows[0].insurance_info == null) return false;
+  try {
+    const ins = typeof rows[0].insurance_info === 'string'
+      ? JSON.parse(rows[0].insurance_info || '{}')
+      : rows[0].insurance_info || {};
+    return !!(ins && ins.is_insurance);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function assignTiers(pool, shops, biddingId, config, biddingContext = {}) {
   const [biddingRows] = await pool.execute(
     `SELECT b.tier1_window_ends_at, b.created_at FROM biddings b WHERE b.bidding_id = ?`,
     [biddingId]
@@ -396,6 +435,7 @@ async function assignTiers(pool, shops, biddingId, config) {
 
   const shopIds = shops.map((s) => s.shop_id).filter(Boolean);
   const responseMap = await shopSortService.getAvgResponseMinutesByShopIds(pool, shopIds);
+  const isInsuranceBidding = !!biddingContext.isInsuranceBidding;
 
   const scored = [];
   for (const shop of shops) {
@@ -404,6 +444,7 @@ async function assignTiers(pool, shops, biddingId, config) {
       biddingItems: shop.biddingItems || [],
       sameProjectResult: shop.sameProjectResult || {},
       avgResponseMinutes: responseMap.get(shop.shop_id),
+      isInsuranceBidding,
     });
     const compliance = shop.compliance_rate != null ? parseFloat(shop.compliance_rate) : null;
     const isNewShop = shop.isNewShop;
@@ -506,7 +547,8 @@ async function runBiddingDistribution(pool, biddingId) {
 
   console.log(`${LOG_PREFIX} [${biddingId}] 过滤通过 ${shops.length} 家店铺: ${shops.map((s) => `${s.name}(${s.shop_id})`).join(', ')}`);
 
-  const scored = await assignTiers(pool, shops, biddingId, config);
+  const isInsuranceBidding = await getBiddingInsuranceFlag(pool, biddingId);
+  const scored = await assignTiers(pool, shops, biddingId, config, { isInsuranceBidding });
 
   const tier1 = scored.filter((s) => s._tier === 1);
   const tier2 = scored.filter((s) => s._tier === 2);
@@ -562,15 +604,16 @@ async function runBiddingDistribution(pool, biddingId) {
   }
 
   // 保证报价效率：无第一梯队时自动下发第二梯队，无第二梯队时下发第三梯队
+  const BID_MSG_TITLE = '新竞价待报价';
   if (tier1Ids.length > 0) {
-    await sendBiddingMessagesToShops(pool, tier1Ids, biddingId, '新竞价待报价（第一梯队）');
+    await sendBiddingMessagesToShops(pool, tier1Ids, biddingId, BID_MSG_TITLE);
   } else if (tier2Ids.length > 0) {
     await pool.execute('UPDATE biddings SET tier1_window_ends_at = NULL WHERE bidding_id = ?', [biddingId]);
-    await sendBiddingMessagesToShops(pool, tier2Ids, biddingId, '新竞价待报价（第二梯队）');
+    await sendBiddingMessagesToShops(pool, tier2Ids, biddingId, BID_MSG_TITLE);
     console.log(`${LOG_PREFIX} [${biddingId}] 无第一梯队，已直接下发第二梯队 ${tier2Ids.length} 家`);
   } else if (tier3Ids.length > 0) {
     await pool.execute('UPDATE biddings SET tier1_window_ends_at = NULL WHERE bidding_id = ?', [biddingId]);
-    await sendBiddingMessagesToShops(pool, tier3Ids, biddingId, '新竞价待报价（第三梯队）');
+    await sendBiddingMessagesToShops(pool, tier3Ids, biddingId, BID_MSG_TITLE);
     console.log(`${LOG_PREFIX} [${biddingId}] 无一、二梯队，已直接下发第三梯队 ${tier3Ids.length} 家`);
   }
 
@@ -618,7 +661,8 @@ async function getBiddingDistributionDetail(pool, biddingId) {
   const { level: maxLevel } = await complexityService.resolveComplexityFromItems(pool, items);
 
   const shops = await filterShopsForBidding(pool, biddingId, userId);
-  const scored = shops.length > 0 ? await assignTiers(pool, shops, biddingId, config) : [];
+  const isInsuranceBiddingDetail = await getBiddingInsuranceFlag(pool, biddingId);
+  const scored = shops.length > 0 ? await assignTiers(pool, shops, biddingId, config, { isInsuranceBidding: isInsuranceBiddingDetail }) : [];
 
   let diagnostic = null;
   if (shops.length === 0) {
@@ -669,7 +713,7 @@ async function getBiddingDistributionDetail(pool, biddingId) {
     shop_id: r.shop_id,
     name: r.name,
     tier: r.tier,
-    tierName: r.tier === 1 ? '第一梯队' : r.tier === 2 ? '第二梯队' : '第三梯队',
+    tierName: r.tier === 1 ? '分组 1' : r.tier === 2 ? '分组 2' : '分组 3',
     match_score: r.match_score,
     compliance_rate: r.compliance_rate,
     qualification_level: r.qualification_level,
@@ -681,7 +725,7 @@ async function getBiddingDistributionDetail(pool, biddingId) {
     shop_id: s.shop_id,
     name: s.name,
     tier: s._tier,
-    tierName: s._tier === 1 ? '第一梯队' : s._tier === 2 ? '第二梯队' : '第三梯队',
+    tierName: s._tier === 1 ? '分组 1' : s._tier === 2 ? '分组 2' : '分组 3',
     match_score: s._matchScore,
     compliance_rate: s.compliance_rate,
     is_new_shop: s.isNewShop,
@@ -737,7 +781,8 @@ async function isShopVisibleForBidding(pool, shopId, biddingId, status) {
     const shopInList = shops.find((s) => s.shop_id === shopId);
     if (!shopInList) return false;
     const config = await getBiddingDistributionConfig(pool);
-    const scored = await assignTiers(pool, shops, biddingId, config);
+    const isInsuranceBiddingVis = await getBiddingInsuranceFlag(pool, biddingId);
+    const scored = await assignTiers(pool, shops, biddingId, config, { isInsuranceBidding: isInsuranceBiddingVis });
     const shopScored = scored.find((s) => s.shop_id === shopId);
     if (!shopScored) return false;
     return checkTierVisibility(pool, biddingId, shopScored._tier);
@@ -830,9 +875,8 @@ async function sendDelayedBiddingMessagesForShop(pool, shopId) {
     if (!alreadySent) toSend.push({ bidding_id: row.bidding_id, tier: row.tier });
   }
 
-  for (const { bidding_id, tier } of toSend) {
-    const title = tier === 2 ? '新竞价待报价（第二梯队）' : '新竞价待报价（第三梯队）';
-    await sendBiddingMessagesToShops(pool, [shopId], bidding_id, title);
+  for (const { bidding_id } of toSend) {
+    await sendBiddingMessagesToShops(pool, [shopId], bidding_id, '新竞价待报价');
   }
   return toSend.length;
 }
@@ -843,6 +887,10 @@ async function sendDelayedBiddingMessagesForShop(pool, shopId) {
  * 07 文档：有效报价满 N 家后不再推送
  */
 async function sendAllDelayedBiddingMessages(pool) {
+  if (!(await hasTable(pool, 'biddings'))) {
+    console.warn(`${LOG_PREFIX} sendAllDelayedBiddingMessages: 表 biddings 不存在，跳过（请导入 schema 或执行迁移）`);
+    return 0;
+  }
   const config = await getBiddingDistributionConfig(pool);
   const now = new Date();
   const [biddings] = await pool.execute(
@@ -866,8 +914,7 @@ async function sendAllDelayedBiddingMessages(pool) {
       if (d.tier === 3 && (row.valid_quotes || 0) >= 3) continue;
       const alreadySent = await hasReceivedBiddingMessage(pool, d.shop_id, row.bidding_id);
       if (!alreadySent) {
-        const title = d.tier === 2 ? '新竞价待报价（第二梯队）' : '新竞价待报价（第三梯队）';
-        await sendBiddingMessagesToShops(pool, [d.shop_id], row.bidding_id, title);
+        await sendBiddingMessagesToShops(pool, [d.shop_id], row.bidding_id, '新竞价待报价');
         sentCount++;
       }
     }
@@ -877,6 +924,7 @@ async function sendAllDelayedBiddingMessages(pool) {
 
 module.exports = {
   getBiddingDistributionConfig,
+  getBiddingInsuranceFlag,
   parseBiddingItemsWithComplexity,
   checkShopQualificationForBidding,
   hasSameProjectCompletion,

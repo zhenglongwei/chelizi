@@ -10,7 +10,15 @@
 .report-label { color: var(--text-secondary); }
 .report-value { color: var(--text-primary); font-weight: 500; }
 .report-damages, .report-repair { margin-top: var(--space-lg); }
+.report-human-section { margin-top: var(--space-md); }
+.report-human-title { margin-bottom: var(--space-xs); }
 .report-damage-item, .report-repair-item { margin-top: var(--space-sm); color: var(--text-secondary); }
+.report-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+  line-height: 1.5;
+}
 .report-actions { margin-top: var(--space-lg); }
 .report-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); background: var(--primary); color: #fff; }
 .report-bottom-pad { height: var(--space-2xl); }

@@ -8,10 +8,15 @@ const { fetchAndApplyUnreadBadge } = require('../../../utils/message-badge');
 
 const logger = getLogger('DamageUpload');
 
-/** 已是服务端/网络上的图片地址，不可再 wx.uploadFile */
+/**
+ * 已是服务端返回的可公网访问地址，无需再 uploadFile。
+ * 注意：微信本地临时图在部分环境下会表现为 http://tmp/... ，虽以 http 开头但不是公网 URL，必须走 uploadImage。
+ */
 function isRemoteImageUrl(pathOrUrl) {
   const s = String(pathOrUrl || '').trim();
-  return /^https?:\/\//i.test(s);
+  if (!/^https?:\/\//i.test(s)) return false;
+  if (/^https?:\/\/tmp\//i.test(s) || /^https?:\/\/usr\//i.test(s)) return false;
+  return true;
 }
 
 const ACCIDENT_TYPES = [
@@ -52,6 +57,7 @@ Page({
     vehicleEdits: {},
     plateMatchInput: '',
     currentDamages: [],
+    currentHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
     currentRepairSuggestions: [],
     currentDamageLevel: '',
     currentTotalEstimate: [0, 0],
@@ -71,6 +77,8 @@ Page({
   },
 
   onLoad(options) {
+    /** 用于作废「加载历史报告」的异步请求，避免与「新照片重新定损」竞态覆盖结果 */
+    this._reportLoadToken = 0;
     const navH = getNavBarHeight();
     this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px' });
     const sys = getSystemInfo();
@@ -188,6 +196,9 @@ Page({
       return;
     }
     if (analyzing) return;
+
+    // 用户主动重新定损：使进行中的「拉取历史报告」在返回后不再 setData，避免覆盖本次新结果
+    this._reportLoadToken = (this._reportLoadToken || 0) + 1;
 
     this.setData({ analyzing: true, analyzeProgress: 0, progressStyle: 'width: 0%' });
 
@@ -355,7 +366,10 @@ Page({
           overallSeverity: sev,
           damageSummary: v.damageSummary || '',
           damage_level: damageLevel,
-          total_estimate: [estMin, estMax]
+          total_estimate: [estMin, estMax],
+          human_display: v.human_display && typeof v.human_display === 'object'
+            ? v.human_display
+            : { obvious_damage: [], possible_damage: [], repair_advice: [] }
         };
       });
     }
@@ -423,8 +437,18 @@ Page({
     const damageLevel = v?.damage_level || ar.damage_level || report?.damage_level || '';
     const totalEst = v?.total_estimate || ar.total_estimate || report?.total_estimate || [0, 0];
     const currentTotalEstimate = Array.isArray(totalEst) && totalEst.length >= 2 ? totalEst : [0, 0];
+    const hd = v?.human_display;
+    const currentHumanDisplay =
+      hd && typeof hd === 'object'
+        ? {
+            obvious_damage: Array.isArray(hd.obvious_damage) ? hd.obvious_damage : [],
+            possible_damage: Array.isArray(hd.possible_damage) ? hd.possible_damage : [],
+            repair_advice: Array.isArray(hd.repair_advice) ? hd.repair_advice : []
+          }
+        : { obvious_damage: [], possible_damage: [], repair_advice: [] };
     this.setData({
       currentDamages: damages,
+      currentHumanDisplay,
       currentRepairSuggestions: repairSuggestions,
       currentDamageLevel: damageLevel,
       currentTotalEstimate
@@ -538,8 +562,12 @@ Page({
   },
 
   async loadReportAndShowStep2(reportId) {
+    const token = ++this._reportLoadToken;
     try {
       const res = await getDamageReport(reportId);
+      if (token !== this._reportLoadToken) {
+        return;
+      }
       const ar = res.analysis_result || {};
       const vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
       const damages = ar.damages || [];
@@ -577,6 +605,8 @@ Page({
   },
 
   onCloseReport() {
+    // 关闭后可能立即选新图定损，作废尚未返回的历史报告请求
+    this._reportLoadToken = (this._reportLoadToken || 0) + 1;
     ui.showSuccess('已关闭，历史记录可查');
     this.setData({
       step: 1,

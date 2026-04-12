@@ -13,6 +13,21 @@ const SCENE_WEIGHTS = {
   brand: { shop: 0.50, distance: 0.10, price: 0.20, response: 0.20 },
 };
 
+/** 有项目上下文的自费意图：提高报价合理性权重、略降距离权重（与 06 文档付款方维度一致） */
+const SCENE_WEIGHTS_SELF_PAY = {
+  L1L2: { shop: 0.33, distance: 0.22, price: 0.35, response: 0.10 },
+  L3L4: { shop: 0.55, distance: 0.05, price: 0.28, response: 0.12 },
+  brand: { shop: 0.45, distance: 0.08, price: 0.30, response: 0.17 },
+};
+
+function getSceneWeights(scene, payerIntent) {
+  const s = scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2';
+  if (payerIntent === 'self_pay') {
+    return SCENE_WEIGHTS_SELF_PAY[s] || SCENE_WEIGHTS_SELF_PAY.L1L2;
+  }
+  return SCENE_WEIGHTS[s] || SCENE_WEIGHTS.L1L2;
+}
+
 /**
  * 距离反向分（0-100）
  * 公式：(用户设定最大距离 - 门店实际距离) ÷ 用户设定最大距离 × 100
@@ -70,7 +85,7 @@ function normalizeShopScore(shopScoreVal, rating) {
  */
 function calcSortScore(shop, opts = {}) {
   const scene = opts.scene || 'L1L2';
-  const weights = SCENE_WEIGHTS[scene] || SCENE_WEIGHTS.L1L2;
+  const weights = getSceneWeights(scene, opts.payerIntent);
 
   const shopScoreVal = normalizeShopScore(shop.shop_score, shop.rating);
   const distanceScore = opts.distanceKm != null && opts.maxKm != null
@@ -140,6 +155,32 @@ async function getAvgResponseMinutesByShopIds(pool, shopIds) {
  * @param {Array} shops - 店铺列表（含 distance 等）
  * @param {object} opts - { maxKm, scene, userLat, userLng }
  */
+/**
+ * 性价比分：店铺综合得分 + 报价合理性（偏差率），用于有产品上下文的自费比价
+ */
+function calcValueCompositeScore(shop) {
+  const shopScoreVal = normalizeShopScore(shop.shop_score, shop.rating);
+  const priceScore = calcPriceReasonablenessScore(shop.deviation_rate);
+  return Math.round((shopScoreVal * 0.58 + priceScore * 0.42) * 100) / 100;
+}
+
+async function sortShopsByValue(pool, shops) {
+  if (!shops || shops.length === 0) return shops;
+  await ensureShopScores(pool, shops);
+  const scored = shops.map((s) => ({
+    ...s,
+    _value_score: calcValueCompositeScore(s),
+  }));
+  scored.sort((a, b) => {
+    const diff = (b._value_score || 0) - (a._value_score || 0);
+    if (diff !== 0) return diff;
+    const oa = a.total_orders || 0;
+    const ob = b.total_orders || 0;
+    return ob - oa;
+  });
+  return scored;
+}
+
 async function sortShopsByScore(pool, shops, opts = {}) {
   if (!shops || shops.length === 0) return shops;
 
@@ -156,6 +197,7 @@ async function sortShopsByScore(pool, shops, opts = {}) {
       distanceKm,
       maxKm,
       scene,
+      payerIntent: opts.payerIntent,
       avgResponseMinutes: s.avg_response_minutes ?? responseMap.get(s.shop_id),
     });
     scored.push({ ...s, _sort_score: score });
@@ -204,11 +246,15 @@ async function ensureShopScores(pool, shops) {
 
 module.exports = {
   SCENE_WEIGHTS,
+  SCENE_WEIGHTS_SELF_PAY,
+  getSceneWeights,
   calcDistanceScore,
   calcPriceReasonablenessScore,
   calcResponseScore,
   getAvgResponseMinutesByShopIds,
   calcSortScore,
+  calcValueCompositeScore,
+  sortShopsByValue,
   sortShopsByScore,
   ensureShopScores,
 };

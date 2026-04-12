@@ -18,15 +18,12 @@ if (-not (Test-Path $envFile)) {
   Write-Host "[SKIP] web/.env 已存在"
 }
 
-$localExample = Join-Path $root 'config.local.example.js'
-$localFile = Join-Path $root 'config.local.js'
-if (-not (Test-Path $localFile)) {
-  if (Test-Path $localExample) {
-    Copy-Item $localExample $localFile
-    Write-Host "[OK] 已创建 config.local.js（BASE_URL 默认 http://127.0.0.1:3000）"
-  }
+if (Test-Path (Join-Path $root 'package.json')) {
+  Push-Location $root
+  try { npm run sync:config 2>&1 | Out-Host } catch { Write-Host "[WARN] npm run sync:config 失败，请手动在项目根执行" }
+  Pop-Location
 } else {
-  Write-Host "[SKIP] config.local.js 已存在"
+  Write-Host "[INFO] 根目录无 package.json 时，请执行: node scripts/sync-miniprogram-config.js"
 }
 
 $apiDir = Join-Path $root 'web\api-server'

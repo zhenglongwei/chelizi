@@ -25,6 +25,12 @@
   z-index: 101;
   background: transparent;
 }
+
+/* 全局 .card:active 含 scale(0.995)，弹窗内点选 radio/textarea 时易作用到外层卡片，整卡缩放 + 阴影看起来像「剧烈跳动」 */
+.followup-modal .card:active {
+  transform: none;
+  background: var(--bg-card);
+}
 .followup-card {
   max-width: 90%;
   max-height: 85vh;

@@ -7,7 +7,6 @@ Component({
       { pagePath: 'pages/index/index', text: '首页', iconPath: 'home', selectedIconPath: 'home_active' },
       { pagePath: 'pages/reputation/index', text: '口碑', iconPath: 'merchant', selectedIconPath: 'merchant_active' },
       { pagePath: 'pages/damage/upload/index', text: 'AI分析', iconPath: 'camera_tab', selectedIconPath: 'camera_tab_active', isCenter: true },
-      { pagePath: 'pages/reviews/feed/index', text: '评价', iconPath: 'star', selectedIconPath: 'star' },
       { pagePath: 'pages/user/index/index', text: '我的', iconPath: 'person', selectedIconPath: 'person_active' }
     ]
   },

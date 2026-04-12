@@ -79,7 +79,7 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
   let amount = 0;
 
   const [orders] = await pool.execute(
-    `SELECT o.order_id, o.user_id, o.bidding_id, o.quote_id, o.created_at, o.completed_at, o.actual_amount, o.quoted_amount
+    `SELECT o.order_id, o.user_id, o.bidding_id, o.quote_id, o.created_at, o.completed_at, o.actual_amount, o.quoted_amount, o.is_insurance_accident
      FROM orders o
      WHERE o.status = 3 AND o.completed_at >= ? AND o.completed_at <= ?
        AND o.user_id IS NOT NULL`,
@@ -233,10 +233,7 @@ async function computeAndInsertConversionPending(pool, startDate, endDate) {
 }
 
 async function getOrderCommission(pool, order) {
-  const amt = parseFloat(order.actual_amount || order.quoted_amount) || 0;
-  const rules = await rewardCalculator.getRewardRules(pool);
-  const rate = rewardCalculator.calcCommissionRate(rules, amt, null, null, false);
-  return amt * rate;
+  return rewardCalculator.computeOrderCommissionAmount(pool, order);
 }
 
 module.exports = {

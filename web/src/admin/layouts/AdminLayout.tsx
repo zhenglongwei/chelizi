@@ -15,6 +15,8 @@ import {
   RiseOutlined,
   SafetyOutlined,
   RollbackOutlined,
+  PercentageOutlined,
+  ContainerOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import './AdminLayout.css';
@@ -53,6 +55,11 @@ const menuItems = [
     label: '撤单申请',
   },
   {
+    key: '/admin/material-audit-tasks',
+    icon: <ContainerOutlined />,
+    label: '材料人工审核',
+  },
+  {
     key: '/admin/settlement',
     icon: <DollarOutlined />,
     label: '结算管理',
@@ -76,6 +83,11 @@ const menuItems = [
     key: '/admin/reward-rules',
     icon: <GiftOutlined />,
     label: '奖励金规则配置',
+  },
+  {
+    key: '/admin/commission-rules',
+    icon: <PercentageOutlined />,
+    label: '佣金规则配置',
   },
   {
     key: '/admin/review-audit',

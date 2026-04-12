@@ -8,7 +8,9 @@ App({
   globalData: {
     // 注意：根据规范，禁止在此处存储用户信息
     // 用户信息、位置等统一存储在 storage，仅保留系统级数据
-    systemInfo: null
+    systemInfo: null,
+    /** 口碑页子标签：switchTab 无法带 query，旧「评价」页入口通过此项切到「评价」 */
+    reputationSubTab: null
   },
 
   onLaunch(options) {

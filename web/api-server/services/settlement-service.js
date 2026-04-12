@@ -174,7 +174,7 @@ async function settleLikeBonus(pool, startDate, endDate) {
     if (info.weightSum <= 0) continue;
     try {
       const [orders] = await pool.execute(
-        'SELECT o.order_id, o.quoted_amount, o.actual_amount, o.complexity_level, o.shop_id FROM orders o WHERE o.order_id = ?',
+        'SELECT o.order_id, o.quoted_amount, o.actual_amount, o.complexity_level, o.shop_id, o.quote_id, o.is_insurance_accident FROM orders o WHERE o.order_id = ?',
         [info.order_id]
       );
       if (orders.length === 0) continue;
@@ -236,10 +236,7 @@ async function settleLikeBonus(pool, startDate, endDate) {
 }
 
 async function getOrderCommission(pool, order) {
-  const amt = parseFloat(order.actual_amount || order.quoted_amount) || 0;
-  const rules = await rewardCalculator.getRewardRules(pool);
-  const rate = rewardCalculator.calcCommissionRate(rules, amt, null, null, false);
-  return amt * rate;
+  return rewardCalculator.computeOrderCommissionAmount(pool, order);
 }
 
 /**
@@ -294,7 +291,7 @@ async function settlePostVerifyBonus(pool, startDate, endDate) {
   let amount = 0;
 
   const [orders] = await pool.execute(
-    `SELECT o.order_id, o.user_id, o.created_at, o.completed_at, o.actual_amount, o.quoted_amount
+    `SELECT o.order_id, o.user_id, o.created_at, o.completed_at, o.actual_amount, o.quoted_amount, o.quote_id, o.is_insurance_accident
      FROM orders o
      WHERE o.status = 3 AND o.completed_at >= ? AND o.completed_at <= ?`,
     [startDate, endDate]

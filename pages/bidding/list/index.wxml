@@ -18,8 +18,8 @@
   <block wx:else>
     <view class="bidding-tabs">
       <view class="bidding-tab {{status === '' ? 'active' : ''}}" bindtap="onTabTap" data-status="">全部</view>
-      <view class="bidding-tab {{status === '0' ? 'active' : ''}}" bindtap="onTabTap" data-status="0">进行中</view>
-      <view class="bidding-tab {{status === '1' ? 'active' : ''}}" bindtap="onTabTap" data-status="1">已结束</view>
+      <view class="bidding-tab {{status === '0' ? 'active' : ''}}" bindtap="onTabTap" data-status="0">未完成</view>
+      <view class="bidding-tab {{status === '1' ? 'active' : ''}}" bindtap="onTabTap" data-status="1">已关闭</view>
     </view>
     <view class="bidding-empty card" wx:if="{{list.length === 0}}">
       <view class="bidding-empty-icon-wrap">
@@ -38,7 +38,7 @@
             <view class="bidding-card-info">
               <view class="bidding-card-head">
                 <text class="bidding-card-title fs-body fw-bold">{{item.title}}</text>
-                <view class="bidding-status-badge {{item.isOngoing ? 'ongoing' : 'ended'}}">{{item.statusText}}</view>
+                <view class="bidding-status-badge {{item.badgeVariant}}">{{item.statusText}}</view>
               </view>
               <view class="bidding-card-meta">
                 <view class="bidding-meta-item">
@@ -46,8 +46,8 @@
                   <text class="bidding-meta-value">{{item.range_km || 5}}km</text>
                 </view>
                 <view class="bidding-meta-item">
-                  <text class="bidding-meta-label">{{item.isOngoing ? '剩余' : '结束'}}</text>
-                  <text class="bidding-meta-value {{item.isOngoing ? 'text-star' : ''}}">{{item.countdownText}}</text>
+                  <text class="bidding-meta-label">{{item.metaTimeLabel}}</text>
+                  <text class="bidding-meta-value {{item.isOngoing ? 'text-star' : ''}}">{{item.metaTimeValue}}</text>
                 </view>
                 <view class="bidding-meta-item">
                   <text class="bidding-meta-label">报价</text>
@@ -58,9 +58,9 @@
           </view>
           <view class="bidding-card-actions">
             <button plain class="bidding-btn bidding-btn-primary" data-id="{{item.bidding_id}}" catchtap="onViewQuotesTap">查看报价</button>
-            <button wx:if="{{item.isOngoing}}" plain class="bidding-btn bidding-btn-outline" data-id="{{item.bidding_id}}" catchtap="onEndBiddingTap">结束</button>
-            <button wx:elif="{{item.canRecreate}}" plain class="bidding-btn bidding-btn-outline" data-report-id="{{item.report_id}}" catchtap="onRecreateTap">重新发起</button>
-            <button wx:elif="{{item.order_id}}" plain class="bidding-btn bidding-btn-outline" data-order-id="{{item.order_id}}" catchtap="onOrderTap">查看订单</button>
+            <button wx:if="{{item.showEndRound}}" plain class="bidding-btn bidding-btn-outline" data-id="{{item.bidding_id}}" catchtap="onEndBiddingTap">结束本轮</button>
+            <button wx:if="{{item.canRecreate}}" plain class="bidding-btn bidding-btn-outline" data-report-id="{{item.report_id}}" catchtap="onRecreateTap">重新发起</button>
+            <button wx:if="{{item.order_id}}" plain class="bidding-btn bidding-btn-outline" data-order-id="{{item.order_id}}" catchtap="onOrderTap">查看订单</button>
           </view>
         </view>
       </view>

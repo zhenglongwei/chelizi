@@ -143,7 +143,7 @@ async function computeShopScore(pool, shopId, precomputedHard = null) {
 }
 
 /**
- * 持证技师加分（05 文档）：高级技师/技师 +8，中级工/初级工/高级工 +3，最高 +20
+ * 持证技师加分（05 文档）：两体系并存；高档 +8（检测维修工程师、汽车维修工技师/高级技师），中档 +3（检测维修维修士、汽车维修工初/中/高级工），最高 +20
  */
 function calcTechnicianBonus(technicianCerts) {
   if (!technicianCerts) return 0;
@@ -154,13 +154,21 @@ function calcTechnicianBonus(technicianCerts) {
     return 0;
   }
   if (!Array.isArray(arr)) return 0;
-  const HIGH_LEVEL = ['高级技师', '技师'];
-  const MID_LEVEL = ['中级工', '初级工', '高级工'];
+  const HIGH_EXACT = new Set(['检测维修工程师', '高级技师', '技师']);
+  const MID_EXACT = new Set(['检测维修维修士', '高级工', '中级工', '初级工']);
   let pts = 0;
   for (const t of arr) {
     const level = (t.level || '').toString().trim();
-    if (HIGH_LEVEL.some((l) => level.includes(l))) pts += 8;
-    else if (MID_LEVEL.some((l) => level.includes(l))) pts += 3;
+    if (!level || level === '普通技工') continue;
+    let bucket = null;
+    if (HIGH_EXACT.has(level)) bucket = 'high';
+    else if (MID_EXACT.has(level)) bucket = 'mid';
+    else if (level.includes('高级技师') || level.includes('检测维修工程师')) bucket = 'high';
+    else if (level.includes('技师') && !level.includes('高级')) bucket = 'high';
+    else if (level.includes('检测维修维修士') || level.includes('维修士')) bucket = 'mid';
+    else if (level.includes('高级工') || level.includes('中级工') || level.includes('初级工')) bucket = 'mid';
+    if (bucket === 'high') pts += 8;
+    else if (bucket === 'mid') pts += 3;
   }
   return Math.min(20, pts);
 }
@@ -330,7 +338,7 @@ async function computeHardBonusBreakdown(pool, shopId) {
       key: 'technician',
       label: '持证技师',
       value: tech,
-      hint: '高级技师/技师+8分，中级工等+3分，最高+20',
+      hint: '职业技能等级与检测维修水平评价并列计分：工程师或技师/高级技师+8；维修士或初/中/高级工+3；最高+20',
     });
 
     const cert = calcCertificationBonus(s.certifications);

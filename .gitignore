@@ -6,9 +6,6 @@ web/dist/
 web/dist-ssr/
 *.local
 
-# 小程序本地 API 地址（勿提交）
-config.local.js
-
 # 环境变量（含密钥，勿提交）
 .env
 .env.local

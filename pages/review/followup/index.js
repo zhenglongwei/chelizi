@@ -28,6 +28,7 @@ Page({
     submitting: false,
     submitted: false,
     rewardAmount: '0.00',
+    submittedRewardReceived: false,
     minContentLen: 10
   },
 
@@ -47,7 +48,7 @@ Page({
 
     if (reviewId) {
       this.setData({ reviewId, stage, isReturnVisit, minContentLen });
-      this.loadReview(reviewId);
+      this.loadReview(reviewId, stage);
     } else if (orderId) {
       this.setData({ stage, isReturnVisit, minContentLen });
       this.loadByOrderId(orderId);
@@ -71,13 +72,14 @@ Page({
     }
   },
 
-  async loadReview(reviewId) {
+  async loadReview(reviewId, stageOpt) {
     try {
       const info = await getReviewDetail(reviewId);
       const createdText = info.created_at ? formatRelativeTime(info.created_at) : '';
       const orderTier = info.order_tier || 1;
       const rewardHint = this.getRewardHint(orderTier);
-      const rewardAmount = stage === '3m' ? (info.followup_reward_3m || '0') : (info.followup_reward_1m || info.followup_reward || '0');
+      const st = stageOpt || this.data.stage || '1m';
+      const rewardAmount = st === '3m' ? (info.followup_reward_3m || '0') : (info.followup_reward_1m || info.followup_reward || '0');
       this.setData({
         info: { ...info, created_at: createdText },
         orderTier,
@@ -92,10 +94,10 @@ Page({
   },
 
   getRewardHint(orderTier) {
-    const { stage } = this.data;
-    if (orderTier <= 2) return '选填完成可领额外权益，不影响基础奖励';
-    if (stage === '1m') return orderTier === 3 ? '通过审核后发放剩余 50% 奖励金' : '通过审核后发放 30% 奖励金';
-    return '通过审核后发放剩余 20% 奖励金';
+    if (orderTier <= 2) {
+      return '客观题为选填。追评不单独按次发放奖励金，用于补充用车反馈；是否与主评综合评估相关以平台规则为准。';
+    }
+    return '主评奖励已按规则发放；追评不单独按「审核后按比例」到账。提交后系统对主评与追评整体评估，内容质量升级时差额奖励按规则处理（以实际到账为准）。';
   },
 
   onQ1(e) { this.setData({ q1_fault_recur: e.detail.value === 'true' }); },
@@ -166,13 +168,16 @@ Page({
         objective_answers: objAnswers
       });
 
-      const amt = (res.reward && res.reward.amount) ? String(res.reward.amount) : this.data.rewardAmount;
+      const raw = res.reward && res.reward.amount != null ? res.reward.amount : this.data.rewardAmount;
+      const amtNum = parseFloat(String(raw));
+      const amt = !Number.isNaN(amtNum) ? amtNum.toFixed(2) : '0.00';
       this.setData({
         submitted: true,
         rewardAmount: amt,
+        submittedRewardReceived: amtNum > 0,
         submitting: false
       });
-      ui.showSuccess('追评成功，奖励金已到账');
+      ui.showSuccess(amtNum > 0 ? '追评成功，奖励金已到账' : '追评提交成功');
     } catch (err) {
       logger.error('提交追评失败', err);
       ui.showError(err.message || '提交失败');

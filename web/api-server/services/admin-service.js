@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const antifraud = require('../antifraud');
+const reviewStarAiAnomalyConfig = require('../utils/review-star-ai-anomaly-config');
 
 // ===================== 登录 =====================
 async function login(db, req, options = {}) {
@@ -453,25 +454,121 @@ async function getStatistics(db, req) {
 }
 
 // ===================== 结算 settlements =====================
+function parseSettlementDateRange(req) {
+  const q = req.query || {};
+  let start = q.start || q.dateStart || null;
+  let end = q.end || q.dateEnd || null;
+  if (start) start = String(start).slice(0, 10);
+  if (end) end = String(end).slice(0, 10);
+  if (!start && !end) {
+    const e = new Date();
+    const s = new Date(e);
+    s.setDate(s.getDate() - 90);
+    start = s.toISOString().slice(0, 10);
+    end = e.toISOString().slice(0, 10);
+  }
+  return { start, end };
+}
+
 async function getSettlements(db, req) {
-  const [orders] = await db.execute(
-    `SELECT o.order_id as orderNo, s.name as merchantName, o.quoted_amount as orderAmount,
-            o.commission as commission, o.completed_at as settlementTime, o.commission_status as commissionStatus
+  const { start, end } = parseSettlementDateRange(req);
+  const startTs = `${start} 00:00:00`;
+  const endTs = `${end} 23:59:59`;
+
+  const [repairRows] = await db.execute(
+    `SELECT 'repair' as orderKind, o.order_id as orderNo, s.name as merchantName,
+            COALESCE(o.actual_amount, o.quoted_amount, 0) as orderAmount,
+            COALESCE(o.commission_final, o.commission, 0) as commission,
+            o.completed_at as settlementTime, o.commission_status as commissionStatus
      FROM orders o
      LEFT JOIN shops s ON o.shop_id = s.shop_id
      WHERE o.status = 3 AND o.completed_at IS NOT NULL
-     ORDER BY o.completed_at DESC LIMIT 100`
+       AND o.completed_at >= ? AND o.completed_at <= ?
+     ORDER BY o.completed_at DESC
+     LIMIT 3000`,
+    [startTs, endTs]
   );
-  const [refunds] = await db.execute(
-    `SELECT t.transaction_id, o.order_id as orderNo, u.nickname as ownerName,
-            t.amount as refundAmount, t.created_at as arrivalTime,
-            t.reward_tier as rewardTier, t.review_stage as reviewStage, t.tax_deducted as taxDeducted
-     FROM transactions t
-     LEFT JOIN orders o ON t.related_id = o.order_id
-     LEFT JOIN users u ON t.user_id = u.user_id
-     WHERE t.type = 'rebate' AND t.amount > 0
-     ORDER BY t.created_at DESC LIMIT 50`
-  );
+
+  let productRows = [];
+  try {
+    const [pr] = await db.execute(
+      `SELECT 'product' as orderKind, po.product_order_id as orderNo, s.name as merchantName,
+              po.amount_total as orderAmount,
+              COALESCE(po.platform_fee_yuan, 0) as commission,
+              COALESCE(po.settled_at, po.paid_at, po.updated_at) as settlementTime,
+              CONCAT('标品-', COALESCE(po.settlement_status, po.payment_status, '')) as commissionStatus
+       FROM product_orders po
+       JOIN shops s ON po.shop_id = s.shop_id
+       WHERE po.payment_status = 'paid'
+         AND COALESCE(po.settled_at, po.paid_at, po.created_at) >= ?
+         AND COALESCE(po.settled_at, po.paid_at, po.created_at) <= ?
+       ORDER BY COALESCE(po.settled_at, po.paid_at, po.updated_at) DESC
+       LIMIT 3000`,
+      [startTs, endTs]
+    );
+    productRows = pr;
+  } catch (e) {
+    console.warn('[getSettlements] product_orders:', e.message);
+  }
+
+  const settlements = [...repairRows, ...productRows].sort((a, b) => {
+    const ta = a.settlementTime ? new Date(a.settlementTime).getTime() : 0;
+    const tb = b.settlementTime ? new Date(b.settlementTime).getTime() : 0;
+    return tb - ta;
+  });
+
+  let refunds = [];
+  try {
+    const [revRows] = await db.execute(
+      `SELECT r.review_id as reviewId,
+              COALESCE(o.order_id, po.product_order_id, r.order_id) as orderNo,
+              CASE
+                WHEN o.order_id IS NOT NULL THEN 'repair'
+                WHEN po.product_order_id IS NOT NULL THEN 'product'
+                ELSE 'unknown'
+              END as orderKind,
+              u.nickname as ownerName,
+              COALESCE(t.amount, 0) as refundAmount,
+              COALESCE(t.created_at, r.created_at) as arrivalTime,
+              t.reward_tier as rewardTier,
+              COALESCE(t.review_stage, r.review_stage, 'main') as reviewStage,
+              COALESCE(t.tax_deducted, r.tax_deducted, 0) as taxDeducted,
+              t.transaction_id as transaction_id
+       FROM reviews r
+       LEFT JOIN transactions t ON t.related_id = r.review_id AND t.type = 'rebate'
+       LEFT JOIN users u ON r.user_id = u.user_id
+       LEFT JOIN orders o ON r.order_id = o.order_id
+       LEFT JOIN product_orders po ON r.order_id = po.product_order_id
+       WHERE r.status = 1
+         AND COALESCE(t.created_at, r.created_at) >= ?
+         AND COALESCE(t.created_at, r.created_at) <= ?
+       ORDER BY COALESCE(t.created_at, r.created_at) DESC
+       LIMIT 3000`,
+      [startTs, endTs]
+    );
+    refunds = revRows;
+  } catch (e) {
+    console.warn('[getSettlements] reviews rewards:', e.message);
+    const [legacy] = await db.execute(
+      `SELECT t.transaction_id, rev.review_id as reviewId,
+              COALESCE(o.order_id, po.product_order_id, rev.order_id, t.related_id) as orderNo,
+              CASE WHEN o.order_id IS NOT NULL THEN 'repair' WHEN po.product_order_id IS NOT NULL THEN 'product' ELSE 'unknown' END as orderKind,
+              u.nickname as ownerName,
+              COALESCE(t.amount, 0) as refundAmount, t.created_at as arrivalTime,
+              t.reward_tier as rewardTier, t.review_stage as reviewStage, t.tax_deducted as taxDeducted
+       FROM transactions t
+       LEFT JOIN reviews rev ON t.related_id = rev.review_id
+       LEFT JOIN orders o ON rev.order_id = o.order_id
+       LEFT JOIN product_orders po ON rev.order_id = po.product_order_id
+       LEFT JOIN users u ON t.user_id = u.user_id
+       WHERE t.type = 'rebate'
+         AND t.created_at >= ? AND t.created_at <= ?
+       ORDER BY t.created_at DESC
+       LIMIT 3000`,
+      [startTs, endTs]
+    );
+    refunds = legacy;
+  }
 
   let deposits = [];
   let commissionLedger = [];
@@ -483,23 +580,30 @@ async function getSettlements(db, req) {
        ORDER BY w.updated_at DESC LIMIT 200`
     );
     deposits = wallets;
+  } catch (e) {
+    console.warn('[getSettlements] commission wallets:', e.message);
+  }
+  try {
     const [led] = await db.execute(
       `SELECT l.ledger_id as ledgerId, l.shop_id as shopId, s.name as merchantName, l.type, l.amount,
               l.order_id as orderId, l.remark, l.created_at as createdAt
        FROM merchant_commission_ledger l
        JOIN shops s ON l.shop_id = s.shop_id
-       ORDER BY l.id DESC LIMIT 500`
+       WHERE l.created_at >= ? AND l.created_at <= ?
+       ORDER BY l.id DESC
+       LIMIT 2000`,
+      [startTs, endTs]
     );
     commissionLedger = led;
   } catch (e) {
-    console.warn('[getSettlements] commission tables:', e.message);
+    console.warn('[getSettlements] commission ledger:', e.message);
   }
 
   return {
     success: true,
     data: {
-      settlements: orders,
-      refunds: refunds.map(r => ({
+      settlements,
+      refunds: refunds.map((r) => ({
         ...r,
         refundType: 'order',
         reward_tier: r.rewardTier,
@@ -508,6 +612,7 @@ async function getSettlements(db, req) {
       })),
       deposits,
       commissionLedger,
+      dateRange: { start, end },
     },
   };
 }
@@ -600,26 +705,249 @@ async function getRewardRulesConfig(db, req) {
   return { success: true, data: config };
 }
 
-/** 保存完整奖励金规则配置到 reward_rules 表 */
+/** 保存完整奖励金规则配置到 reward_rules 表（未提交 commissionRepair 时保留库内原值，避免与佣金规则页互相覆盖） */
 async function saveRewardRulesConfig(db, req) {
-  const config = req.body;
-  if (!config || typeof config !== 'object') {
+  const incoming = req.body;
+  if (!incoming || typeof incoming !== 'object') {
     return { success: false, error: '配置不能为空', statusCode: 400 };
   }
-  const levels = config.complexityLevels;
+  const rewardRulesLoader = require('./reward-rules-loader');
+  let existing = {};
+  try {
+    existing = await rewardRulesLoader.getRewardRulesConfig(db);
+  } catch (_) {
+    existing = {};
+  }
+  const merged = { ...existing, ...incoming };
+  if (!Object.prototype.hasOwnProperty.call(incoming, 'commissionRepair')) {
+    if (existing.commissionRepair !== undefined) {
+      merged.commissionRepair = existing.commissionRepair;
+    }
+  }
+  const levels = merged.complexityLevels;
   if (!Array.isArray(levels) || levels.length === 0) {
     return { success: false, error: '模块1 复杂度等级不能为空，请至少配置一条', statusCode: 400 };
   }
-  const val = JSON.stringify(config);
+  const val = JSON.stringify(merged);
   await db.execute(
-    `INSERT INTO reward_rules (rule_key, rule_value, description) VALUES ('rewardRules', ?, '奖励金规则配置（模块1-5）')
+    `INSERT INTO reward_rules (rule_key, rule_value, description) VALUES ('rewardRules', ?, '奖励金规则配置（模块1-4）；佣金见后台佣金规则配置')
      ON DUPLICATE KEY UPDATE rule_value = VALUES(rule_value), description = VALUES(description)`,
     [val]
   );
   return { success: true, message: '保存成功' };
 }
 
+function validateCommissionRepairShape(cr) {
+  if (!cr || typeof cr !== 'object') return 'commissionRepair 格式无效';
+  const sp = cr.self_pay;
+  const ins = cr.insurance;
+  if (!sp || typeof sp !== 'object' || typeof sp.default !== 'number' || Number.isNaN(sp.default)) {
+    return 'commissionRepair.self_pay.default 须为数字';
+  }
+  if (!ins || typeof ins !== 'object' || typeof ins.default !== 'number' || Number.isNaN(ins.default)) {
+    return 'commissionRepair.insurance.default 须为数字';
+  }
+  if (sp.default < 0 || sp.default > 100 || ins.default < 0 || ins.default > 100) {
+    return '佣金比例须在 0～100 之间';
+  }
+  return null;
+}
+
+/** 佣金规则：更新 reward_rules.commissionRepair + settings.product_order_platform_fee_rate */
+async function saveCommissionRulesConfig(db, req) {
+  const body = req.body || {};
+  const { commissionRepair, product_order_platform_fee_rate: rateRaw } = body;
+  const errShape = validateCommissionRepairShape(commissionRepair);
+  if (errShape) return { success: false, error: errShape, statusCode: 400 };
+
+  const rate = parseFloat(rateRaw);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+    return { success: false, error: 'product_order_platform_fee_rate 须为 0～1 的数字', statusCode: 400 };
+  }
+
+  const rewardRulesLoader = require('./reward-rules-loader');
+  let existing;
+  try {
+    existing = await rewardRulesLoader.getRewardRulesConfig(db);
+  } catch (e) {
+    return {
+      success: false,
+      error: e.message || '请先在奖励金规则配置中完成基础配置（模块1 等）',
+      statusCode: 400,
+    };
+  }
+
+  const merged = { ...existing, commissionRepair };
+  const val = JSON.stringify(merged);
+  await db.execute(
+    `INSERT INTO reward_rules (rule_key, rule_value, description) VALUES ('rewardRules', ?, '奖励金规则配置（模块1-4）；佣金见后台佣金规则配置')
+     ON DUPLICATE KEY UPDATE rule_value = VALUES(rule_value), description = VALUES(description)`,
+    [val]
+  );
+
+  await db.execute(
+    'INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
+    ['product_order_platform_fee_rate', String(rate), String(rate)]
+  );
+
+  return { success: true, message: '保存成功' };
+}
+
 // ===================== 评价审核 review-audit =====================
+
+/** MySQL / mysql2 可能将别名转为小写，统一取出 ai_analysis */
+function coalesceReviewField(row, ...keys) {
+  for (const k of keys) {
+    if (row && Object.prototype.hasOwnProperty.call(row, k)) {
+      const v = row[k];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+  }
+  for (const k of keys) {
+    if (row && Object.prototype.hasOwnProperty.call(row, k) && row[k] != null) return row[k];
+  }
+  return null;
+}
+
+/** 运营列表「评级说明」：无效评价展示主因+指引；无结构化数据时说明原因 */
+function computeRatingReasonDetail(aiRaw, contentQuality) {
+  if (Buffer.isBuffer(aiRaw)) {
+    try {
+      return computeRatingReasonDetail(JSON.parse(aiRaw.toString('utf8')), contentQuality);
+    } catch {
+      return aiRaw.toString('utf8').trim().slice(0, 800) || '';
+    }
+  }
+  if (aiRaw !== undefined && aiRaw !== null && typeof aiRaw === 'object' && !Array.isArray(aiRaw)) {
+    const o = aiRaw;
+    if (o.pending_human_audit === true) {
+      const rr = String(o.reject_reason || o.primary_reason || '').trim();
+      const hints = Array.isArray(o.improvement_hints)
+        ? o.improvement_hints.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+      const op = o.ai_details && typeof o.ai_details === 'object' ? o.ai_details.operationsReview : null;
+      const opExtra = [];
+      if (op && typeof op === 'object') {
+        const sum = String(op.summary || '').trim();
+        const items = Array.isArray(op.notMetItems)
+          ? op.notMetItems.map((x) => String(x || '').trim()).filter(Boolean)
+          : [];
+        if (sum) opExtra.push(`运营摘要：${sum}`);
+        if (items.length) opExtra.push(`未达标要点：${items.map((t, i) => `${i + 1}.${t}`).join(' ')}`);
+      }
+      const parts = [rr, ...hints, ...opExtra].filter(Boolean);
+      return '【待人工裁定·千问】' + (parts.length ? parts.join('｜') : '（请展开 JSON 查看 ai_details.operationsReview）');
+    }
+    if (o.invalid_submission === true) {
+      const pr = String(o.primary_reason || '').trim();
+      const hints = Array.isArray(o.improvement_hints)
+        ? o.improvement_hints.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+      const src = o.source ? `〔来源：${o.source}〕` : '';
+      const parts = [pr, ...hints].filter(Boolean);
+      if (parts.length) return (src ? `${src} ` : '') + parts.join('；');
+      return '无效评价：已标记为强行提交，但 ai_analysis 缺少 primary_reason 字段，请直接查看库内 JSON。';
+    }
+    const cqReason = o.contentQuality?.reason || o.contentQuality?.explain || o.rejectReason;
+    if (cqReason) return String(cqReason);
+    const qual = o.contentQuality?.quality;
+    if (qual) return `AI 内容档位：${qual}`;
+    return '';
+  }
+  if (aiRaw === undefined || aiRaw === null || aiRaw === '') {
+    if (contentQuality === 'invalid') {
+      return (
+        '无效评价：库中无主因记录（多为历史数据，入库时未写入 ai_analysis）。' +
+        '请结合本行「内容」正文、评分与订单详情判断；新产生的无效评价会记录具体未达标原因与改进指引。'
+      );
+    }
+    return '';
+  }
+  if (typeof aiRaw === 'string') {
+    try {
+      return computeRatingReasonDetail(JSON.parse(aiRaw), contentQuality);
+    } catch {
+      return String(aiRaw).trim().slice(0, 800) || '';
+    }
+  }
+  return '';
+}
+
+/** 从 reviews.review_system_checks 解析车主对系统/AI 归纳的认可摘要（供审核池 ai_divergence 与列表展示） */
+function parseReviewUserAiAlignmentMeta(reviewSystemChecksRaw) {
+  let chk = reviewSystemChecksRaw;
+  if (chk == null || chk === '') {
+    return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
+  }
+  if (typeof chk === 'string') {
+    try {
+      chk = JSON.parse(chk);
+    } catch {
+      return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
+    }
+  }
+  const ua = chk && typeof chk === 'object' ? chk.user_ai_alignment : null;
+  if (!ua || typeof ua !== 'object') {
+    return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
+  }
+  const div = ua.has_divergence === 1 || ua.has_divergence === true;
+  const dims = ['quote_flow', 'appearance', 'parts_delivery'];
+  const parts = [];
+  for (const d of dims) {
+    const x = ua[d];
+    if (x && x.stance === 'override') {
+      const note = x.note ? `「${String(x.note).slice(0, 24)}」` : '';
+      parts.push(`${d}:${x.reason_code || '?'}${note}`);
+    }
+  }
+  return {
+    hasAiAlignmentDivergence: !!div,
+    userAiAlignmentBrief: parts.join('；') || (div ? '已标记不认可' : ''),
+  };
+}
+
+/** 星级 vs 系统/AI 归纳自动矛盾（review_system_checks.star_ai_anomaly） */
+function parseStarAiAnomalyMeta(reviewSystemChecksRaw) {
+  let chk = reviewSystemChecksRaw;
+  if (chk == null || chk === '') {
+    return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
+  }
+  if (typeof chk === 'string') {
+    try {
+      chk = JSON.parse(chk);
+    } catch {
+      return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
+    }
+  }
+  const sa = chk && typeof chk === 'object' ? chk.star_ai_anomaly : null;
+  if (!sa || typeof sa !== 'object') {
+    return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
+  }
+  const has = sa.has_anomaly === true || Number(sa.flag) === 1;
+  const items = Array.isArray(sa.items) ? sa.items : [];
+  const brief = items
+    .map((x) => String(x?.summary || '').trim().slice(0, 72))
+    .filter(Boolean)
+    .join('｜')
+    .slice(0, 240);
+  return { hasStarAiAnomaly: !!has, starAiAnomalyBrief: brief, starAiAnomalyItems: items };
+}
+
+function normalizeReviewAuditListRow(row) {
+  const r = { ...row };
+  r.aiAnalysis = coalesceReviewField(row, 'aiAnalysis', 'aianalysis', 'ai_analysis');
+  const cq = coalesceReviewField(row, 'contentQuality', 'contentquality', 'content_quality');
+  if (cq != null) r.contentQuality = cq;
+  const cl = coalesceReviewField(row, 'contentQualityLevel', 'contentqualitylevel', 'content_quality_level');
+  if (cl != null) r.contentQualityLevel = cl;
+  const rs = coalesceReviewField(row, 'reviewStatus', 'reviewstatus', 'review_status');
+  if (rs != null) r.reviewStatus = rs;
+  const ar = coalesceReviewField(row, 'auditResult', 'auditresult');
+  if (ar != null) r.auditResult = ar;
+  r.ratingReasonDetail = computeRatingReasonDetail(r.aiAnalysis, r.contentQuality);
+  return r;
+}
+
 async function getReviewAuditList(db, req) {
   const { page = 1, pageSize = 20, status, pool: auditPool } = req.query; // auditPool 避免与 db pool 冲突
   const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -637,10 +965,25 @@ async function getReviewAuditList(db, req) {
     where += ` AND o.complexity_level IN ('L1','L2') AND (CRC32(r.review_id) % 100) < ?`;
     params.push(sampleRate);
   }
+  if (auditPool === 'human_ai_pending') {
+    where += ` AND r.content_quality = 'pending_human'`;
+  }
+  if (auditPool === 'ai_divergence') {
+    where += ` AND IFNULL(JSON_EXTRACT(r.review_system_checks, '$.user_ai_alignment.has_divergence'), 0) = 1`;
+  }
+  if (auditPool === 'star_ai_anomaly') {
+    where += ` AND IFNULL(JSON_UNQUOTE(JSON_EXTRACT(r.review_system_checks, '$.star_ai_anomaly.flag')), '0') = '1'`;
+  }
 
   const [list] = await db.execute(
     `SELECT r.review_id as reviewId, r.order_id as orderId, r.type, r.review_stage as reviewStage, r.rating, r.content, r.created_at as createTime,
             r.reward_amount as rewardAmount, o.complexity_level as complexityLevel,
+            r.status as reviewStatus, r.content_quality as contentQuality, r.content_quality_level as contentQualityLevel,
+            r.ai_analysis as aiAnalysis,
+            r.ratings_price as quoteTransparencyStar, r.ratings_quality as repairEffectStar, r.ratings_parts as partsTraceabilityStar,
+            r.review_system_checks as reviewSystemChecksRaw,
+            r.settlement_list_image as settlementListImage, r.completion_images as completionImagesRaw, r.after_images as afterImagesRaw,
+            r.fault_evidence_images as faultEvidenceImagesRaw,
             rl.result as auditResult, rl.missing_items as missingItems, rl.audit_type as auditType
      FROM reviews r
      LEFT JOIN orders o ON r.order_id = o.order_id
@@ -659,15 +1002,49 @@ async function getReviewAuditList(db, req) {
     params
   );
 
-  let resultList = list;
+  let mapped = list.map((row) => {
+    const r = normalizeReviewAuditListRow(row);
+    try {
+      const comp = row.completionImagesRaw;
+      r.completionImageUrls = Array.isArray(comp) ? comp : comp ? JSON.parse(comp) : [];
+    } catch {
+      r.completionImageUrls = [];
+    }
+    try {
+      const aft = row.afterImagesRaw;
+      r.afterImageUrls = Array.isArray(aft) ? aft : aft ? JSON.parse(aft) : [];
+    } catch {
+      r.afterImageUrls = [];
+    }
+    try {
+      const fe = row.faultEvidenceImagesRaw;
+      r.faultEvidenceUrls = Array.isArray(fe) ? fe : fe ? JSON.parse(fe) : [];
+    } catch {
+      r.faultEvidenceUrls = [];
+    }
+    r.settlementListImage = row.settlementListImage || row.settlementlistimage || null;
+    const alignMeta = parseReviewUserAiAlignmentMeta(row.reviewSystemChecksRaw);
+    r.hasAiAlignmentDivergence = alignMeta.hasAiAlignmentDivergence;
+    r.userAiAlignmentBrief = alignMeta.userAiAlignmentBrief;
+    const starMeta = parseStarAiAnomalyMeta(row.reviewSystemChecksRaw);
+    r.hasStarAiAnomaly = starMeta.hasStarAiAnomaly;
+    r.starAiAnomalyBrief = starMeta.starAiAnomalyBrief;
+    r.starAiAnomalyItems = starMeta.starAiAnomalyItems;
+    delete r.completionImagesRaw;
+    delete r.afterImagesRaw;
+    delete r.faultEvidenceImagesRaw;
+    delete r.reviewSystemChecksRaw;
+    return r;
+  });
+  let resultList = mapped;
   if (status === 'rejected') {
-    resultList = list.filter(r => r.auditResult === 'reject');
+    resultList = mapped.filter((r) => r.auditResult === 'reject');
   }
   return {
     success: true,
     data: {
       list: resultList,
-      total: status === 'rejected' ? resultList.length : (countRes[0]?.total || 0),
+      total: status === 'rejected' ? resultList.length : countRes[0]?.total || 0,
     },
   };
 }
@@ -684,6 +1061,40 @@ async function postReviewAuditManual(db, req) {
     [reviewId, 'manual', result, missingItems ? JSON.stringify(missingItems) : null, operatorId]
   );
   return { success: true, message: '复核完成' };
+}
+
+/** AI 驳回待人工裁定：approve=按规则发奖并展示；reject=置无效 */
+async function postReviewPendingHumanResolve(db, req) {
+  const humanAudit = require('./review-human-audit-service');
+  const { reviewId } = req.params;
+  const { decision, note } = req.body || {};
+  const operatorId = req.adminUserId || req.adminUser || 'admin';
+  if (decision === 'approve') {
+    return humanAudit.approvePendingHumanAiReview(db, reviewId, operatorId);
+  }
+  if (decision === 'reject') {
+    return humanAudit.rejectPendingHumanAiReview(db, reviewId, operatorId, note);
+  }
+  return { success: false, error: 'decision 必填：approve（裁定有效）或 reject（裁定无效）', statusCode: 400 };
+}
+
+/** 星级 vs AI 矛盾检测阈值（settings，管理端「评价审核」配置） */
+async function getReviewStarAiAnomalyConfig(db) {
+  const data = await reviewStarAiAnomalyConfig.getStarAiAnomalyConfig(db);
+  return { success: true, data };
+}
+
+async function putReviewStarAiAnomalyConfig(db, req) {
+  const next = await reviewStarAiAnomalyConfig.saveStarAiAnomalyConfig(db, req.body || {});
+  await antifraud.writeAuditLog(db, {
+    logType: 'config',
+    action: 'update',
+    targetTable: 'settings',
+    newValue: { review_star_ai_anomaly: next },
+    operatorId: req.adminUserId || 'admin',
+    ip: req.ip || req.headers?.['x-forwarded-for'],
+  });
+  return { success: true, message: '保存成功', data: next };
 }
 
 // ===================== 破格升级 complexity-upgrade =====================
@@ -946,6 +1357,62 @@ async function getAntifraudStatistics(db, req) {
   };
 }
 
+// ===================== 维修完成材料人工审核（manual_review） =====================
+/** MySQL JSON / mysql2 可能返回 object、string 或 Buffer */
+function parseDbJsonField(val, fallback = {}) {
+  if (val == null || val === '') return { ...fallback };
+  if (Buffer.isBuffer(val)) {
+    try {
+      return JSON.parse(val.toString('utf8'));
+    } catch (_) {
+      return { ...fallback };
+    }
+  }
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val || '{}');
+    } catch (_) {
+      return { ...fallback };
+    }
+  }
+  if (typeof val === 'object') return val;
+  return { ...fallback };
+}
+
+async function listMaterialAuditManualTasks(db) {
+  const [list] = await db.execute(
+    `SELECT t.task_id, t.order_id, t.shop_id, t.status, t.reject_reason, t.ai_details, t.completion_evidence, t.created_at,
+            s.name AS shop_name, o.status AS order_status
+     FROM material_audit_tasks t
+     LEFT JOIN shops s ON t.shop_id = s.shop_id
+     LEFT JOIN orders o ON t.order_id = o.order_id
+     WHERE t.status = 'manual_review'
+     ORDER BY t.created_at ASC`
+  );
+  const normalized = (list || []).map((row) => {
+    const ai_details = parseDbJsonField(row.ai_details, {});
+    const completion_evidence = parseDbJsonField(row.completion_evidence, {});
+    return { ...row, ai_details, completion_evidence };
+  });
+  return { success: true, data: { list: normalized } };
+}
+
+async function resolveMaterialAuditTask(db, taskId, body) {
+  const { approve, reject_reason: rejectReason } = body || {};
+  const materialAudit = require('./material-audit-service');
+  if (approve === true) {
+    const r = await materialAudit.approveMaterialAuditManual(db, taskId);
+    if (!r.ok) return { success: false, error: r.error, statusCode: 400 };
+    return { success: true, message: '已通过' };
+  }
+  if (approve === false) {
+    const r = await materialAudit.rejectMaterialAuditManual(db, taskId, rejectReason);
+    if (!r.ok) return { success: false, error: r.error, statusCode: 400 };
+    return { success: true, message: '已驳回' };
+  }
+  return { success: false, error: '请提供 approve: true（通过）或 false（驳回）', statusCode: 400 };
+}
+
 // ===================== 投诉 complaints（占位） =====================
 async function getComplaints(db, req) {
   return { success: true, data: [] };
@@ -976,8 +1443,12 @@ module.exports = {
   postRewardRule,
   getRewardRulesConfig,
   saveRewardRulesConfig,
+  saveCommissionRulesConfig,
   getReviewAuditList,
   postReviewAuditManual,
+  postReviewPendingHumanResolve,
+  getReviewStarAiAnomalyConfig,
+  putReviewStarAiAnomalyConfig,
   getComplexityUpgradeList,
   postComplexityUpgradeAudit,
   getBlacklist,
@@ -991,4 +1462,6 @@ module.exports = {
   getAntifraudStatistics,
   getComplaints,
   putComplaint,
+  listMaterialAuditManualTasks,
+  resolveMaterialAuditTask,
 };

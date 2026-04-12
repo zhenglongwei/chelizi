@@ -2,6 +2,8 @@
 
 按《docs/database/数据库设计文档.md》在服务器 MySQL 中创建数据表。
 
+**重要**：`web/database/` 下除 `schema.sql` 外还有大量 `migration-*.sql`。仅执行 `schema.sql` 若与当前代码不一致，仍可能缺表缺列。**策略、已有库升级、校验命令**见 **`README.md`**；部署后建议执行 **`verify-schema.sql`** 自检。
+
 ## 方式一：命令行执行（推荐）
 
 SSH 登录阿里云服务器后执行：

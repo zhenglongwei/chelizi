@@ -1,6 +1,8 @@
 /**
  * 评价聚合页
  */
+@import '../../../styles/review-public-polish.wxss';
+@import '../../../styles/review-linear.wxss';
 .feed-page {
   min-height: 100vh;
   background: var(--bg-page);
@@ -46,6 +48,7 @@
 
 .feed-card {
   padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .feed-shop-row {
@@ -101,7 +104,18 @@
   margin-bottom: var(--space-sm);
 }
 
+.feed-user-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--avatar-placeholder-bg);
+  border: 1rpx solid var(--avatar-placeholder-border);
+}
+
 .feed-user {
+  flex: 1;
+  min-width: 120rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -153,16 +167,21 @@
 .feed-objectives {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  margin-bottom: var(--space-sm);
-  padding: var(--space-md);
-  background: var(--bg-page);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+  margin-top: var(--space-sm);
+  padding: var(--space-lg);
+  background: linear-gradient(165deg, rgba(37, 99, 235, 0.05) 0%, var(--bg-page) 50%);
   border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
 }
 
 .feed-obj-section-title {
   display: block;
-  margin-bottom: var(--space-xs);
+  margin-bottom: var(--space-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--fs-cap);
 }
 
 .feed-obj {
@@ -255,6 +274,21 @@
   height: 160rpx;
   border-radius: var(--radius-sm);
   background: var(--bg-placeholder);
+}
+
+.feed-img-sm {
+  width: 120rpx;
+  height: 120rpx;
+}
+
+.feed-qprop-block {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx dashed var(--border);
+}
+
+.feed-qprop-round {
+  margin-top: var(--space-sm);
 }
 
 .feed-badge {

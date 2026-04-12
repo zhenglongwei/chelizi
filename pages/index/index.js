@@ -43,7 +43,7 @@ function mapShopItem(s, idx) {
   return {
     shop_id: s.shop_id,
     name: s.name,
-    logo: s.logo || '/images/logo/logo_white.png',
+    logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
     rating: starDisplay.scoreText,
     starsDisplay: starDisplay.stars,
     scoreNum: starDisplay.score,
@@ -64,7 +64,7 @@ function shopToAdSlide(s, idx) {
     type: 'shop',
     shop_id: s.shop_id,
     name: s.name,
-    logo: s.logo || '/images/logo/logo_white1.png',
+    logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
     rating: s.rating,
     starsDisplay: s.starsDisplay,
     orderCount: s.orderCount,
@@ -169,6 +169,9 @@ Page({
     } catch (err) {
       logger.error('附近好店加载失败', err);
       this.setData({ nearbyGoodShops: [] });
+      if (err && err.domainBlocked && err.userHint) {
+        ui.showError(err.userHint, 4000);
+      }
     }
   },
 

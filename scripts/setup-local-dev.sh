@@ -11,12 +11,11 @@ else
   echo "[SKIP] web/.env 已存在或缺少 web/.env.example"
 fi
 
-if [[ ! -f "$ROOT/config.local.js" && -f "$ROOT/config.local.example.js" ]]; then
-  cp "$ROOT/config.local.example.js" "$ROOT/config.local.js"
-  echo "[OK] 已创建 config.local.js"
+if [[ -f "$ROOT/package.json" ]]; then
+  (cd "$ROOT" && npm run sync:config) || echo "[WARN] npm run sync:config 失败，请手动在项目根执行"
 else
-  echo "[SKIP] config.local.js 已存在或缺少模板"
+  echo "[INFO] 请执行: node scripts/sync-miniprogram-config.js"
 fi
 
 echo ""
-echo "下一步：导入 schema → 编辑 web/.env → cd web/api-server && npm install && npm run dev"
+echo "下一步：导入 schema → 编辑 web/.env（含 ZHEJIAN_MINIPROGRAM）→ npm run sync:config → cd web/api-server && npm install && npm run dev"

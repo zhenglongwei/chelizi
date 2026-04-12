@@ -1,0 +1,262 @@
+<!-- 公示评价正文：与提交页五段结构对齐 + 历史表单兜底 -->
+<view class="review-public-card-root">
+  <block wx:if="{{review.v3SubmitLayout}}">
+    <view class="pub-review-v3-wrap">
+      <view class="pub-review-v3-header">
+        <view class="pub-review-v3-title-row">
+          <view class="pub-review-v3-title-accent" aria-hidden="true"></view>
+          <text class="pub-review-v3-title fs-body fw-bold">评价内容</text>
+        </view>
+        <text class="text-weak fs-sm pub-review-v3-intro">与提交页一致的五项结构；前 3 项下图示是否出现取决于车主分项公开授权。</text>
+      </view>
+
+      <view class="review-v3-linear-block">
+        <view class="review-v3-star-head">
+          <text class="review-v3-linear-q fs-body fw-medium">1. 报价透明度</text>
+          <view class="review-stars review-stars-lg">
+            <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+              <text class="review-star {{s <= review.pubQuoteStar ? 'filled' : ''}}">{{s <= review.pubQuoteStar ? '★' : '☆'}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="review-expand-hint" bindtap="onTogglePub" data-key="quote">
+          <text class="review-expand-hint-chevron">{{review.pubExpand.quote ? '▲' : '▼'}}</text>
+          <text class="review-expand-hint-text fs-sm">{{review.pubExpand.quote ? '收起' : '查看'}}报价记录与凭证图</text>
+        </view>
+        <view wx:if="{{review.pubExpand.quote}}" class="review-expand-body">
+          <text class="text-weak fs-sm">以下为订单内报价节点与变动说明；凭证图在车主授权结算/定损展示时可见。</text>
+          <text class="rv-linear-disclaimer" wx:if="{{review.hasSystemQuoteNodes && review.systemChecks.quote_flow.disclaimer}}" style="display:block;margin-bottom:var(--space-sm);">{{review.systemChecks.quote_flow.disclaimer}}</text>
+          <view class="review-quote-node" wx:for="{{review.pubQuoteDisplayNodes}}" wx:for-item="qn" wx:for-index="qni" wx:key="qni">
+            <text class="fs-body fw-medium">{{qn.short_label}}</text>
+            <text class="text-muted fs-sm" style="display:block;">{{qn.amount != null ? '¥' + qn.amount : '金额 —'}}{{qn.status_text ? ' · ' + qn.status_text : ''}}</text>
+            <text class="text-weak fs-cap" wx:if="{{qn.change_note}}" style="display:block;margin-top:4rpx;">变动原因：{{qn.change_note}}</text>
+          </view>
+          <text class="fs-body text-muted" wx:if="{{!review.pubQuoteDisplayNodes.length}}">暂无报价节点记录</text>
+          <text class="fs-body fw-medium section-label" wx:if="{{review.pubQuoteCredentialUrls.length}}">结算单与定损材料（如有）</text>
+          <view class="review-evidence-grid" wx:if="{{review.pubQuoteCredentialUrls.length}}">
+            <image wx:for="{{review.pubQuoteCredentialUrls}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="quoteCred" data-current="{{ev}}" bindtap="onPreviewImages"/>
+          </view>
+          <view class="rv-linear-row" wx:if="{{review.amountText}}">
+            <text class="rv-linear-q">结算金额</text>
+            <text class="rv-linear-a">¥{{review.amountText}}</text>
+          </view>
+          <view class="rv-linear-fold" wx:if="{{review.quoteProposalDisplay && review.quoteProposalDisplay.length && review.quoteJourneyNeedsToggle}}" bindtap="onToggleQuoteJourney">
+            <text class="rv-linear-fold-text">{{review.quoteJourneyExpanded ? '收起' : '展开'}}各轮报价明细（公示轮次总价）</text>
+          </view>
+          <block wx:if="{{review.quoteProposalDisplay && review.quoteProposalDisplay.length && (review.quoteJourneyExpanded || !review.quoteJourneyNeedsToggle)}}">
+            <view class="rv-linear-quote-compact" wx:for="{{review.quoteProposalDisplay}}" wx:for-item="qp" wx:for-index="qpIdx" wx:key="proposal_id">
+              <text class="fs-body">{{qp.display_round_label}} · {{qp.status_text}}{{qp.amount != null ? ' · ¥' + qp.amount : ''}}</text>
+              <text class="text-weak fs-cap" wx:if="{{qp.submitted_at_display}}">{{qp.submitted_at_display}}</text>
+              <view class="rv-linear-img-grid" wx:if="{{qp.photo_urls && qp.photo_urls.length}}">
+                <image class="rv-linear-img" wx:for="{{qp.photo_urls}}" wx:for-item="pu" wx:key="*this" src="{{pu}}" mode="aspectFill" data-qpidx="{{qpIdx}}" data-url="{{pu}}" bindtap="onPreviewQuotePhoto" show-menu-by-longpress="{{true}}"/>
+              </view>
+            </view>
+          </block>
+        </view>
+      </view>
+
+      <view class="review-v3-linear-block">
+        <view class="review-v3-star-head">
+          <text class="review-v3-linear-q fs-body fw-medium">2. 故障整体修复程度</text>
+          <view class="review-stars review-stars-lg">
+            <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+              <text class="review-star {{s <= review.pubRepairStar ? 'filled' : ''}}">{{s <= review.pubRepairStar ? '★' : '☆'}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="review-expand-hint" bindtap="onTogglePub" data-key="repair">
+          <text class="review-expand-hint-chevron">{{review.pubExpand.repair ? '▲' : '▼'}}</text>
+          <text class="review-expand-hint-text fs-sm">{{review.pubExpand.repair ? '收起' : '查看'}}维修前后对照图</text>
+        </view>
+        <view wx:if="{{review.pubExpand.repair}}" class="review-expand-body">
+          <text class="text-weak fs-sm">维修前/后图示在车主授权「公开维修前/后对照图」时可见。</text>
+          <text class="fs-body fw-medium section-label" wx:if="{{review.before_images && review.before_images.length}}">维修前（竞价/定损上报）</text>
+          <view class="review-evidence-grid" wx:if="{{review.before_images && review.before_images.length}}">
+            <image wx:for="{{review.before_images}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="before" data-current="{{ev}}" bindtap="onPreviewImages"/>
+          </view>
+          <text class="fs-body fw-medium section-label" wx:if="{{review.after_images && review.after_images.length}}">维修后（服务商完工凭证）</text>
+          <view class="review-evidence-grid" wx:if="{{review.after_images && review.after_images.length}}">
+            <image wx:for="{{review.after_images}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="after" data-current="{{ev}}" bindtap="onPreviewImages"/>
+          </view>
+          <text class="text-muted fs-sm empty-hint" wx:if="{{(!review.before_images || !review.before_images.length) && (!review.after_images || !review.after_images.length)}}">本单暂无对外展示的维修前/后对照图。</text>
+        </view>
+      </view>
+
+      <view class="review-v3-linear-block">
+        <view class="review-v3-star-head">
+          <text class="review-v3-linear-q fs-body fw-medium">3. 配件与材料可溯源度</text>
+          <view class="review-stars review-stars-lg">
+            <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+              <text class="review-star {{s <= review.pubPartsStar ? 'filled' : ''}}">{{s <= review.pubPartsStar ? '★' : '☆'}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="review-expand-hint" bindtap="onTogglePub" data-key="parts">
+          <text class="review-expand-hint-chevron">{{review.pubExpand.parts ? '▲' : '▼'}}</text>
+          <text class="review-expand-hint-text fs-sm">{{review.pubExpand.parts ? '收起' : '查看'}}店端配件留档与验真说明</text>
+        </view>
+        <view wx:if="{{review.pubExpand.parts}}" class="review-expand-body">
+          <text class="text-weak fs-sm">配件留档图在车主授权「公开店端配件留档图」时可见。</text>
+          <view class="review-evidence-grid" wx:if="{{review.material_photos && review.material_photos.length}}">
+            <image wx:for="{{review.material_photos}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="material" data-current="{{ev}}" bindtap="onPreviewImages"/>
+          </view>
+          <text class="fs-body verify-line" wx:if="{{review.partsMerchantVerifyLine}}">{{review.partsMerchantVerifyLine}}</text>
+          <text class="text-muted fs-sm empty-hint" wx:if="{{(!review.material_photos || !review.material_photos.length) && !review.partsMerchantVerifyLine}}">暂无对外展示的配件留档或店方验真说明。</text>
+        </view>
+      </view>
+
+      <view class="review-v3-linear-block">
+        <view class="review-v3-star-head">
+          <text class="review-v3-linear-q fs-body fw-medium">4. 服务态度</text>
+          <view class="review-stars review-stars-lg">
+            <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+              <text class="review-star {{s <= review.pubServiceStar ? 'filled' : ''}}">{{s <= review.pubServiceStar ? '★' : '☆'}}</text>
+            </block>
+          </view>
+        </view>
+      </view>
+
+      <view class="review-v3-linear-block pub-review-v3-supplement">
+        <text class="review-v3-linear-q fs-body fw-medium">5. 补充说明</text>
+       
+        <view class="rv-linear-row" wx:if="{{review.content}}">
+          <view class="rv-linear-a">
+            <text class="text-muted fs-body {{review.expanded ? '' : collapsedContentClass}}">{{review.expanded ? review.content : review.contentPreview}}</text>
+            <text class="{{expandBtnClass}}" wx:if="{{!review.expanded && review.content.length > 60}}" bindtap="onExpandText">展开全文</text>
+          </view>
+        </view>
+        <view class="rv-linear-row" wx:else>
+          <text class="rv-linear-q">说明</text>
+          <text class="rv-linear-a text-muted fs-sm">未填写</text>
+        </view>
+        <text class="fs-body fw-medium section-label" wx:if="{{review.completion_images && review.completion_images.length}}">补充图片</text>
+        <view class="review-evidence-grid" wx:if="{{review.completion_images && review.completion_images.length}}">
+          <image wx:for="{{review.completion_images}}" wx:for-item="ev" wx:key="*this" class="review-evidence-thumb" src="{{ev}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="completion" data-current="{{ev}}" bindtap="onPreviewImages"/>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="rv-linear-block">
+      <text class="rv-linear-block-title">车主评价</text>
+      <view class="rv-linear-row" wx:if="{{review.v3DualStars}}">
+        <text class="rv-linear-q">故障修复效果</text>
+        <text class="rv-linear-a text-star">{{review.repairRatingText}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{review.v3DualStars}}">
+        <text class="rv-linear-q">综合服务体验</text>
+        <text class="rv-linear-a text-star">{{review.serviceRatingText}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{!review.v3DualStars && review.rating}}">
+        <text class="rv-linear-q">综合星级</text>
+        <text class="rv-linear-a text-star">{{review.ratingText}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{review.reviewFormVersion3 && review.objectiveSummary}}">
+        <text class="rv-linear-q">问卷结论</text>
+        <text class="rv-linear-a">{{review.objectiveSummary}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{!review.reviewFormVersion3 && review.objQ1 != null}}">
+        <text class="rv-linear-q">方案与进度透明</text>
+        <text class="rv-linear-a">{{review.objQ1 ? '是' : '否'}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{!review.reviewFormVersion3 && review.objQ2 != null}}">
+        <text class="rv-linear-q">配件当面核对</text>
+        <text class="rv-linear-a">{{review.objQ2 ? '是' : '否'}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{!review.reviewFormVersion3 && review.objQ3 != null}}">
+        <text class="rv-linear-q">送修问题是否修好</text>
+        <text class="rv-linear-a">{{review.objQ3 ? '是' : '否'}}</text>
+      </view>
+      <text class="rv-linear-tip text-primary fs-sm" bindtap="onObjectiveTip">问卷说明</text>
+      <view class="rv-linear-row" wx:if="{{review.content}}">
+        <text class="rv-linear-q">评价正文</text>
+        <view class="rv-linear-a">
+          <text class="text-muted fs-body {{review.expanded ? '' : collapsedContentClass}}">{{review.expanded ? review.content : review.contentPreview}}</text>
+          <text class="{{expandBtnClass}}" wx:if="{{!review.expanded && review.content.length > 60}}" bindtap="onExpandText">展开全文</text>
+        </view>
+      </view>
+      <view class="rv-linear-row" wx:else>
+        <text class="rv-linear-q">评价正文</text>
+        <text class="rv-linear-a text-muted fs-sm">未填写</text>
+      </view>
+      <view class="rv-linear-fold" wx:if="{{review.totalImageCount > 0}}" bindtap="onToggleReviewImages">
+        <text class="rv-linear-fold-text">实拍与留档（共 {{review.totalImageCount}} 张）· {{review.showReviewImages ? '点击收起' : '点击展开'}}</text>
+      </view>
+      <block wx:if="{{review.showReviewImages}}">
+        <text class="rv-linear-img-label" wx:if="{{review.before_images && review.before_images.length}}">维修前</text>
+        <view class="rv-linear-img-grid" wx:if="{{review.before_images && review.before_images.length}}">
+          <image class="rv-linear-img" wx:for="{{review.before_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="before" data-current="{{img}}" bindtap="onPreviewImages"/>
+        </view>
+        <text class="rv-linear-img-label" wx:if="{{review.after_images && review.after_images.length}}">维修后</text>
+        <view class="rv-linear-img-grid" wx:if="{{review.after_images && review.after_images.length}}">
+          <image class="rv-linear-img" wx:for="{{review.after_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="after" data-current="{{img}}" bindtap="onPreviewImages"/>
+        </view>
+        <text class="rv-linear-img-label" wx:if="{{review.completion_images && review.completion_images.length}}">补充/完工实拍</text>
+        <view class="rv-linear-img-grid" wx:if="{{review.completion_images && review.completion_images.length}}">
+          <image class="rv-linear-img" wx:for="{{review.completion_images}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="completion" data-current="{{img}}" bindtap="onPreviewImages"/>
+        </view>
+        <text class="rv-linear-img-label" wx:if="{{review.material_photos && review.material_photos.length}}">配件留档（店端）</text>
+        <view class="rv-linear-img-grid" wx:if="{{review.material_photos && review.material_photos.length}}">
+          <image class="rv-linear-img" wx:for="{{review.material_photos}}" wx:for-item="mimg" wx:for-index="midx" wx:key="midx" src="{{mimg}}" mode="aspectFill" show-menu-by-longpress="{{true}}" data-group="material" data-current="{{mimg}}" bindtap="onPreviewImages"/>
+        </view>
+      </block>
+    </view>
+
+    <view class="rv-linear-block">
+      <text class="rv-linear-block-title">系统记录参考</text>
+      <text class="rv-linear-disclaimer" wx:if="{{review.hasSystemQuoteNodes && review.systemChecks.quote_flow.disclaimer}}">{{review.systemChecks.quote_flow.disclaimer}}</text>
+      <block wx:if="{{review.hasSystemQuoteNodes}}">
+        <view class="rv-linear-row" wx:for="{{review.systemChecks.quote_flow.nodes}}" wx:for-item="qn" wx:for-index="qni" wx:key="qni">
+          <text class="rv-linear-q">{{qn.display_round_label}}</text>
+          <view class="rv-linear-a">
+            <text>{{qn.amount != null ? '¥' + qn.amount : '金额 —'}}{{qn.status_text ? ' · ' + qn.status_text : ''}}</text>
+            <text class="rv-linear-sub" wx:if="{{qn.change_note}}">{{qn.change_note}}</text>
+          </view>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="rv-linear-row" wx:if="{{review.repairItemsLine}}">
+          <text class="rv-linear-q">维修项目</text>
+          <text class="rv-linear-a">{{review.repairItemsLine}}</text>
+        </view>
+        <view class="rv-linear-row" wx:if="{{review.partPromiseLineText}}">
+          <text class="rv-linear-q">方案与配件</text>
+          <text class="rv-linear-a">{{review.partPromiseLineText}}</text>
+        </view>
+        <view class="rv-linear-row" wx:if="{{review.quoteJourneySummary}}">
+          <text class="rv-linear-q">报价摘要</text>
+          <text class="rv-linear-a">{{review.quoteJourneySummary}}</text>
+        </view>
+      </block>
+      <view class="rv-linear-row" wx:if="{{review.amountText}}">
+        <text class="rv-linear-q">结算金额</text>
+        <text class="rv-linear-a">¥{{review.amountText}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{review.partsMerchantVerifyLine}}">
+        <text class="rv-linear-q">店方验真</text>
+        <text class="rv-linear-a">{{review.partsMerchantVerifyLine}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{review.systemChecks && review.systemChecks.warranty}}">
+        <text class="rv-linear-q">质保结构化</text>
+        <text class="rv-linear-a">{{review.systemChecks.warranty.status === 'pending' ? '即将上线' : (review.systemChecks.warranty.status || '—')}}</text>
+      </view>
+      <view class="rv-linear-row" wx:if="{{review.systemChecks && review.systemChecks.loss_vs_settlement}}">
+        <text class="rv-linear-q">定损与结算</text>
+        <text class="rv-linear-a">{{review.systemChecks.loss_vs_settlement.status === 'pending' ? '即将上线' : (review.systemChecks.loss_vs_settlement.status || '—')}}</text>
+      </view>
+      <view class="rv-linear-fold" wx:if="{{review.quoteProposalDisplay && review.quoteProposalDisplay.length && review.quoteJourneyNeedsToggle}}" bindtap="onToggleQuoteJourney">
+        <text class="rv-linear-fold-text">{{review.quoteJourneyExpanded ? '收起' : '展开'}}各轮报价明细（公示轮次总价，不含举证原图）</text>
+      </view>
+      <block wx:if="{{review.quoteProposalDisplay && review.quoteProposalDisplay.length && (review.quoteJourneyExpanded || !review.quoteJourneyNeedsToggle)}}">
+        <view class="rv-linear-quote-compact" wx:for="{{review.quoteProposalDisplay}}" wx:for-item="qp" wx:for-index="qpIdx" wx:key="proposal_id">
+          <text class="fs-body">{{qp.display_round_label}} · {{qp.status_text}}{{qp.amount != null ? ' · ¥' + qp.amount : ''}}</text>
+          <text class="text-weak fs-cap" wx:if="{{qp.submitted_at_display}}">{{qp.submitted_at_display}}</text>
+          <view class="rv-linear-img-grid" wx:if="{{qp.photo_urls && qp.photo_urls.length}}">
+            <image class="rv-linear-img" wx:for="{{qp.photo_urls}}" wx:for-item="pu" wx:key="*this" src="{{pu}}" mode="aspectFill" data-qpidx="{{qpIdx}}" data-url="{{pu}}" bindtap="onPreviewQuotePhoto" show-menu-by-longpress="{{true}}"/>
+          </view>
+        </view>
+      </block>
+    </view>
+  </block>
+</view>

@@ -61,6 +61,10 @@ async function processOverdueEvidenceRequests(pool) {
   let processed = 0;
   const affectedShopIds = new Set();
   try {
+    if (!(await hasTable(pool, 'merchant_evidence_requests'))) {
+      console.warn(`${LOG_PREFIX} processOverdueEvidenceRequests: 表 merchant_evidence_requests 不存在，跳过（请执行 web/database 迁移）`);
+      return { processed: 0 };
+    }
     const [rows] = await pool.execute(
       `SELECT request_id, order_id, shop_id, question_key
        FROM merchant_evidence_requests
@@ -353,6 +357,10 @@ function runAppealReviewAsync(pool, requestId, baseUrl) {
  * 定时任务：处理所有 status=1 的申诉（补漏，如服务重启导致异步未执行）
  */
 async function processPendingAppealReviews(pool, baseUrl) {
+  if (!(await hasTable(pool, 'merchant_evidence_requests'))) {
+    console.warn(`${LOG_PREFIX} processPendingAppealReviews: 表 merchant_evidence_requests 不存在，跳过（请执行 web/database 迁移）`);
+    return { processed: 0 };
+  }
   const [rows] = await pool.execute(
     `SELECT request_id FROM merchant_evidence_requests WHERE status = 1 LIMIT 20`
   );

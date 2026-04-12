@@ -1,0 +1,143 @@
+/**
+ * 电子质保凭证卡面主题（车主端凭证页 + 服务商端样式选择预览）
+ * 依赖 design-system.wxss 中的 --warranty-* 变量
+ */
+
+.warranty-card-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  padding: 32rpx 28rpx;
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* —— 经典三色（保留） —— */
+.warranty-card--gold {
+  background: linear-gradient(
+    165deg,
+    var(--warranty-gold-start) 0%,
+    var(--warranty-gold-mid) 40%,
+    var(--warranty-gold-end) 100%
+  );
+  border: 2rpx solid var(--warranty-gold-border);
+}
+
+.warranty-card--light {
+  background: linear-gradient(165deg, var(--warranty-light-start) 0%, var(--warranty-light-end) 100%);
+  border: 2rpx solid var(--warranty-light-border);
+}
+
+.warranty-card--blue {
+  background: linear-gradient(
+    165deg,
+    var(--warranty-blue-start) 0%,
+    var(--warranty-blue-mid) 50%,
+    var(--warranty-blue-end) 100%
+  );
+  border: 2rpx solid var(--warranty-blue-border);
+}
+
+/* —— 建档米：暖白建档纸、斜向微纹理 —— */
+.warranty-card--archive {
+  background-color: var(--warranty-archive-mid);
+  background-image: repeating-linear-gradient(
+    -18deg,
+    transparent,
+    transparent 14rpx,
+    var(--warranty-archive-fiber) 14rpx,
+    var(--warranty-archive-fiber) 15rpx
+  ),
+    linear-gradient(
+      168deg,
+      var(--warranty-archive-start) 0%,
+      var(--warranty-archive-mid) 48%,
+      var(--warranty-archive-end) 100%
+    );
+  border: 2rpx solid var(--warranty-archive-border);
+  box-shadow: var(--shadow-lg), inset 0 1rpx 0 rgba(255, 255, 255, 0.65);
+}
+
+/* —— 辙痕蓝：角部轻晕 + 细斜纹（品牌轨迹意象） —— */
+.warranty-card--track {
+  background-color: var(--bg-card);
+  background-image: radial-gradient(
+      ellipse 120% 80% at 100% 0%,
+      var(--warranty-track-glow-tr) 0%,
+      transparent 55%
+    ),
+    radial-gradient(ellipse 100% 70% at 0% 100%, var(--warranty-track-glow-bl) 0%, transparent 50%),
+    repeating-linear-gradient(
+      -11deg,
+      transparent,
+      transparent 10rpx,
+      var(--warranty-track-stripe) 10rpx,
+      var(--warranty-track-stripe) 11rpx
+    );
+  border: 2rpx solid var(--warranty-track-border);
+}
+
+/* —— 墨线白：浓墨边框 + 内框线，偏正式文书 —— */
+.warranty-card--ink {
+  background: linear-gradient(
+    165deg,
+    var(--warranty-ink-start) 0%,
+    var(--warranty-ink-mid) 45%,
+    var(--warranty-ink-end) 100%
+  );
+  border: 2rpx solid var(--warranty-ink-border);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1rpx var(--warranty-ink-inner-line);
+}
+
+/* 服务商端：选项条上的小预览条（仅展示背景，宽度由页面布局指定） */
+.warranty-style-preview-strip {
+  height: 72rpx;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 主题微调：角花 / 水印色调与卡面协调 */
+.warranty-card--gold .warranty-card-ornament {
+  border-color: rgba(180, 83, 9, 0.32);
+}
+
+.warranty-card--gold .warranty-card-watermark {
+  color: rgba(180, 83, 9, 0.055);
+}
+
+.warranty-card--blue .warranty-card-ornament {
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.warranty-card--blue .warranty-card-watermark {
+  color: rgba(37, 99, 235, 0.05);
+}
+
+.warranty-card--archive .warranty-card-ornament {
+  border-color: rgba(120, 100, 80, 0.35);
+}
+
+.warranty-card--archive .warranty-card-watermark {
+  color: rgba(100, 80, 60, 0.045);
+}
+
+.warranty-card--track .warranty-card-ornament {
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.warranty-card--ink .warranty-card-ornament {
+  border-color: rgba(30, 41, 59, 0.45);
+}
+
+.warranty-card--ink .warranty-card-watermark {
+  color: rgba(30, 41, 59, 0.035);
+}
+
+.warranty-card--light .warranty-card-ornament {
+  border-color: rgba(100, 116, 139, 0.28);
+}
+
+.warranty-card--light .warranty-card-watermark {
+  color: rgba(100, 116, 139, 0.04);
+}

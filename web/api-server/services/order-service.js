@@ -6,9 +6,24 @@
  */
 
 const crypto = require('crypto');
+const { recalculateOrderRewardPreview } = require('../reward-calculator');
+const { hasColumn } = require('../utils/db-utils');
+const oqp = require('./order-quote-proposal-service');
+const { getShopNthQuoteLabel } = require('../utils/quote-nomenclature');
+const quoteImportService = require('./quote-import-service');
+const orderWarrantyCardService = require('./order-warranty-card-service');
+const { partsTypesEquivalent } = require('../constants/parts-types');
 const CANCEL_30_MIN_MS = 30 * 60 * 1000;
 
-function validateCompletionEvidence(evidence) {
+const PARTS_VERIFICATION_METHOD_KEYS = new Set([
+  'official',
+  'qr_scan',
+  'face_to_face',
+  'paper_proof',
+  'other',
+]);
+
+function validateCompletionEvidence(evidence, opts = {}) {
   if (!evidence || typeof evidence !== 'object') return { ok: false, msg: '请上传维修完成凭证' };
   const repair = evidence.repair_photos;
   const settlement = evidence.settlement_photos;
@@ -17,6 +32,30 @@ function validateCompletionEvidence(evidence) {
   if (arr(repair).length < 1) return { ok: false, msg: '请上传至少 1 张修复后照片' };
   if (arr(settlement).length < 1) return { ok: false, msg: '请上传至少 1 张定损单或结算单照片' };
   if (arr(material).length < 1) return { ok: false, msg: '请上传至少 1 张物料照片' };
+  if (opts.requireLeadTechnician) {
+    const lt = evidence.lead_technician;
+    if (!lt || typeof lt !== 'object' || !(String(lt.name || '').trim())) {
+      return { ok: false, msg: '请选择或填写负责维修的技师或负责人' };
+    }
+  }
+  if (opts.requirePartsVerification) {
+    const pv = evidence.parts_verification;
+    if (!pv || typeof pv !== 'object') {
+      return { ok: false, msg: '请填写配件验真方式，或勾选「暂不填写验真说明」' };
+    }
+    if (pv.not_provided === true) {
+      // 明确放弃填写
+    } else {
+      const methods = Array.isArray(pv.methods) ? pv.methods.filter((m) => PARTS_VERIFICATION_METHOD_KEYS.has(String(m))) : [];
+      if (methods.length < 1) {
+        return { ok: false, msg: '请至少选择一种配件验真方式，或勾选暂不填写' };
+      }
+      if (methods.includes('other')) {
+        const note = String(pv.note || '').trim();
+        if (note.length < 2) return { ok: false, msg: '选择「其他」时请简短说明验真方式' };
+      }
+    }
+  }
   return { ok: true };
 }
 
@@ -161,7 +200,7 @@ async function acceptOrder(pool, orderId, shopId) {
   let repairPlanJson = null;
   if (hasRepairPlan && orders[0].quote_id) {
     const [quotes] = await pool.execute(
-      'SELECT amount, items, value_added_services, duration, warranty FROM quotes WHERE quote_id = ?',
+      'SELECT amount, items, value_added_services, duration FROM quotes WHERE quote_id = ?',
       [orders[0].quote_id]
     );
     if (quotes.length > 0) {
@@ -172,8 +211,7 @@ async function acceptOrder(pool, orderId, shopId) {
         items,
         value_added_services: valueAdded,
         amount: parseFloat(q.amount) || 0,
-        duration: parseInt(q.duration, 10) || 3,
-        warranty: parseInt(q.warranty, 10) || 12
+        duration: parseInt(q.duration, 10) || 3
       });
     }
   }
@@ -198,27 +236,43 @@ async function acceptOrder(pool, orderId, shopId) {
   return { success: true, data: { order_id: orderId } };
 }
 
-async function hasColumn(pool, table, col) {
-  try {
-    const [rows] = await pool.execute(
-      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-      [table, col]
-    );
-    return rows.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 服务商更新订单状态（维修中 1->待确认 2）
  * 1->2 时 completion_evidence 必传：repair_photos、settlement_photos、material_photos 各至少 1 张
  * 材料 AI 审核：数量校验通过后创建审核任务，status 保持 1，返回 auditing；后台 AI 通过则更新为 2
  * repair_plan_status=1（待车主确认）时不可点击维修完成
  */
-async function updateOrderStatus(pool, orderId, shopId, targetStatus, completionEvidence) {
+async function resolveWarrantyCardTemplateId(pool, shopId, explicitFromBody, evidenceObj) {
+  const fromEv = evidenceObj && evidenceObj.warranty_card_template_id != null
+    ? evidenceObj.warranty_card_template_id
+    : undefined;
+  const raw = explicitFromBody != null ? explicitFromBody : fromEv;
+  if (raw != null && raw !== '') {
+    return orderWarrantyCardService.normalizeTemplateId(raw);
+  }
+  if (!(await hasColumn(pool, 'shops', 'warranty_card_template_id'))) {
+    return 1;
+  }
+  const [shops] = await pool.execute(
+    'SELECT warranty_card_template_id FROM shops WHERE shop_id = ? LIMIT 1',
+    [shopId]
+  );
+  return orderWarrantyCardService.normalizeTemplateId(shops[0]?.warranty_card_template_id);
+}
+
+/**
+ * @param {object|any} payload - completion_evidence 对象，或 { completion_evidence, warranty_card_template_id }
+ */
+async function updateOrderStatus(pool, orderId, shopId, targetStatus, payload) {
+  let completionEvidence = payload;
+  let warrantyCardTemplateIdFromBody = undefined;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'completion_evidence' in payload) {
+    completionEvidence = payload.completion_evidence;
+    warrantyCardTemplateIdFromBody = payload.warranty_card_template_id;
+  }
+  const extCols = (await hasColumn(pool, 'orders', 'pre_quote_snapshot')) ? ', pre_quote_snapshot, final_quote_status' : '';
   const [orders] = await pool.execute(
-    'SELECT order_id, status as current_status, repair_plan_status FROM orders WHERE order_id = ? AND shop_id = ?',
+    `SELECT order_id, status as current_status, repair_plan_status${extCols} FROM orders WHERE order_id = ? AND shop_id = ?`,
     [orderId, shopId]
   );
   if (orders.length === 0) {
@@ -228,20 +282,41 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, completion
   const current = parseInt(orders[0].current_status, 10);
   const target = parseInt(targetStatus, 10);
   const repairPlanStatus = parseInt(orders[0].repair_plan_status, 10) || 0;
+  const rawPre = orders[0].pre_quote_snapshot;
+  const hasPreQuoteSnapshot = Boolean(extCols && rawPre != null && rawPre !== '');
+  const finalQsRaw = orders[0].final_quote_status != null ? parseInt(orders[0].final_quote_status, 10) : 0;
+  const finalQs = Number.isNaN(finalQsRaw) ? 0 : finalQsRaw;
 
   if (current === 1 && target === 2) {
     if (repairPlanStatus === 1) {
       return { success: false, error: '请等待车主确认维修方案后再提交维修完成', statusCode: 400 };
     }
-    const valid = validateCompletionEvidence(completionEvidence);
+    // 车主选厂即认可预报价：仅当服务商已提交「到店改价」且待车主确认（=1）时拦截完工；=0 以预报价为准、=2 已锁价均可完工
+    if (hasPreQuoteSnapshot && finalQs === 1) {
+      return { success: false, error: '请等待车主在小程序确认最终报价后再提交维修完成', statusCode: 400 };
+    }
+    const requireLt = hasPreQuoteSnapshot;
+    const valid = validateCompletionEvidence(completionEvidence, {
+      requireLeadTechnician: requireLt,
+      requirePartsVerification: requireLt,
+    });
     if (!valid.ok) {
       return { success: false, error: valid.msg, statusCode: 400 };
     }
 
+    const templateIdResolved = await resolveWarrantyCardTemplateId(
+      pool,
+      shopId,
+      warrantyCardTemplateIdFromBody,
+      completionEvidence
+    );
+    const evidenceForStore = { ...(completionEvidence || {}) };
+    evidenceForStore.warranty_card_template_id = templateIdResolved;
+
     const hasMaterialAuditTable = await hasTable(pool, 'material_audit_tasks');
     if (hasMaterialAuditTable) {
       const taskId = 'mat_' + crypto.randomBytes(12).toString('hex');
-      const evidenceJson = JSON.stringify(completionEvidence || {});
+      const evidenceJson = JSON.stringify(evidenceForStore);
       try {
         await pool.execute(
           `INSERT INTO material_audit_tasks (task_id, order_id, shop_id, completion_evidence, status)
@@ -262,9 +337,25 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, completion
       }
     }
 
-    const evidenceJson = JSON.stringify(completionEvidence || {});
+    let evidenceToStore = evidenceForStore;
+    try {
+      const { enrichCompletionEvidenceWithExteriorRepairAnalysis } = require('../utils/exterior-repair-at-completion');
+      const { enrichCompletionEvidenceWithPartsTraceability } = require('../utils/parts-traceability-at-completion');
+      const bu = process.env.BASE_URL || 'http://localhost:3000';
+      evidenceToStore = await enrichCompletionEvidenceWithExteriorRepairAnalysis(pool, orderId, evidenceForStore, bu);
+      evidenceToStore = await enrichCompletionEvidenceWithPartsTraceability(pool, orderId, evidenceToStore, bu);
+    } catch (exErr) {
+      console.warn('[OrderService] 完工 AI 增强写入失败:', exErr.message);
+    }
+    const evidenceJson = JSON.stringify(evidenceToStore);
     const hasEvidence = await hasColumn(pool, 'orders', 'completion_evidence');
-    if (hasEvidence) {
+    const hasOrderWct = await hasColumn(pool, 'orders', 'warranty_card_template_id');
+    if (hasEvidence && hasOrderWct) {
+      await pool.execute(
+        'UPDATE orders SET status = 2, completion_evidence = ?, warranty_card_template_id = ?, updated_at = NOW() WHERE order_id = ?',
+        [evidenceJson, templateIdResolved, orderId]
+      );
+    } else if (hasEvidence) {
       await pool.execute(
         'UPDATE orders SET status = 2, completion_evidence = ?, updated_at = NOW() WHERE order_id = ?',
         [evidenceJson, orderId]
@@ -342,7 +433,7 @@ function validateRepairPlanPartsType(originalItems, newItems) {
     const origType = origMap[part];
     if (origType != null && origType !== undefined && String(origType).trim() !== '') {
       const newType = (it.parts_type || '').trim();
-      if (newType !== String(origType).trim()) {
+      if (!partsTypesEquivalent(origType, newType)) {
         return { ok: false, msg: `项目「${part}」的配件类型不可修改` };
       }
     }
@@ -364,6 +455,17 @@ async function updateRepairPlan(pool, orderId, shopId, body) {
   const o = orders[0];
   if (parseInt(o.status, 10) !== 1) {
     return { success: false, error: '仅维修中订单可修改方案', statusCode: 400 };
+  }
+
+  if (await hasColumn(pool, 'orders', 'pre_quote_snapshot')) {
+    const [chk] = await pool.execute('SELECT pre_quote_snapshot FROM orders WHERE order_id = ?', [orderId]);
+    if (chk.length && chk[0].pre_quote_snapshot != null) {
+      return {
+        success: false,
+        error: '已启用双阶段报价：请使用「提交最终报价」调整项目与金额',
+        statusCode: 400,
+      };
+    }
   }
 
   const items = body.items;
@@ -395,14 +497,12 @@ async function updateRepairPlan(pool, orderId, shopId, body) {
   const valueAdded = body.value_added_services;
   const amount = parseFloat(body.amount);
   const duration = parseInt(body.duration, 10);
-  const warranty = parseInt(body.warranty, 10);
 
   const repairPlan = {
     items,
     value_added_services: Array.isArray(valueAdded) ? valueAdded : [],
     amount: !Number.isNaN(amount) ? amount : null,
-    duration: !Number.isNaN(duration) && duration > 0 ? duration : null,
-    warranty: !Number.isNaN(warranty) && warranty > 0 ? warranty : null
+    duration: !Number.isNaN(duration) && duration > 0 ? duration : null
   };
 
   const hasRepairPlan = await hasColumn(pool, 'orders', 'repair_plan');
@@ -414,6 +514,12 @@ async function updateRepairPlan(pool, orderId, shopId, body) {
     'UPDATE orders SET repair_plan = ?, repair_plan_status = 1, repair_plan_adjusted_at = NOW(), updated_at = NOW() WHERE order_id = ?',
     [JSON.stringify(repairPlan), orderId]
   );
+
+  try {
+    await recalculateOrderRewardPreview(pool, orderId);
+  } catch (e) {
+    console.warn('[OrderService] updateRepairPlan reward preview:', e && e.message);
+  }
 
   const hasUserMessages = await hasColumn(pool, 'user_messages', 'message_id');
   if (hasUserMessages) {
@@ -576,6 +682,375 @@ async function listCancelRequestsForAdmin(pool, status = 3) {
 /**
  * 后台：人工处理撤单申请（同意/拒绝）
  */
+/**
+ * 服务商提交到店报价（车主确认前；有 order_quote_proposals 表时可多轮，每轮须证明材料）
+ */
+async function submitFinalQuote(pool, orderId, shopId, body) {
+  if (!(await hasColumn(pool, 'orders', 'pre_quote_snapshot'))) {
+    return { success: false, error: '当前服务端未升级双阶段报价字段', statusCode: 400 };
+  }
+  const useOqp = await oqp.proposalsTableExists(pool);
+  const [orders] = await pool.execute(
+    `SELECT order_id, status, user_id, is_insurance_accident, pre_quote_snapshot, final_quote_status FROM orders WHERE order_id = ? AND shop_id = ?`,
+    [orderId, shopId]
+  );
+  if (orders.length === 0) {
+    return { success: false, error: '订单不存在', statusCode: 404 };
+  }
+  const o = orders[0];
+  if (parseInt(o.status, 10) !== 1) {
+    return { success: false, error: '仅维修中可提交报价', statusCode: 400 };
+  }
+  if (o.pre_quote_snapshot == null) {
+    return { success: false, error: '当前订单无预报价快照，无法提交到店报价', statusCode: 400 };
+  }
+  if (!useOqp && parseInt(o.final_quote_status, 10) === 2) {
+    return { success: false, error: '已锁价，不可重复提交', statusCode: 400 };
+  }
+
+  const rawItems = body.items;
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return { success: false, error: '维修项目不能为空', statusCode: 400 };
+  }
+  const amount = parseFloat(body.amount);
+  if (Number.isNaN(amount) || amount <= 0) {
+    return { success: false, error: '金额无效', statusCode: 400 };
+  }
+  const duration = parseInt(body.duration, 10) || 3;
+  const valueAdded = Array.isArray(body.value_added_services) ? body.value_added_services : [];
+
+  const strict = quoteImportService.sanitizeQuoteItemsStrict(rawItems);
+  if (!strict.ok) {
+    return { success: false, error: strict.error, statusCode: 400 };
+  }
+  if (Math.abs(strict.sumPrice - amount) > 0.51) {
+    return {
+      success: false,
+      error: `分项金额合计 ¥${strict.sumPrice} 与总报价 ¥${amount} 不一致，请核对`,
+      statusCode: 400,
+    };
+  }
+  const items = strict.items;
+
+  const isIns = o.is_insurance_accident === 1 || o.is_insurance_accident === '1';
+
+  const snap = {
+    items,
+    value_added_services: valueAdded,
+    amount,
+    duration
+  };
+  const snapJson = JSON.stringify(snap);
+
+  if (useOqp) {
+    const pend = await oqp.getPending(pool, orderId);
+    if (pend) {
+      return { success: false, error: '上一版报价待车主确认，请等待处理后再提交新报价', statusCode: 400 };
+    }
+    const evRes = oqp.normalizeEvidence(body, isIns);
+    if (!evRes.ok) {
+      return { success: false, error: evRes.error, statusCode: 400 };
+    }
+    const rev = await oqp.getNextRevisionNo(pool, orderId);
+    const pid = 'oqp_' + crypto.randomBytes(12).toString('hex');
+    const lossJson =
+      isIns && evRes.evidence.loss_assessment_documents
+        ? JSON.stringify(evRes.evidence.loss_assessment_documents)
+        : null;
+
+    await pool.execute(
+      `INSERT INTO order_quote_proposals (proposal_id, order_id, shop_id, revision_no, quote_snapshot, evidence, status)
+       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+      [pid, orderId, shopId, rev, snapJson, JSON.stringify(evRes.evidence)]
+    );
+    await pool.execute(
+      `UPDATE orders SET final_quote_snapshot = ?, final_quote_status = 1, final_quote_submitted_at = NOW(),
+       repair_plan = ?, loss_assessment_documents = ?, updated_at = NOW() WHERE order_id = ?`,
+      [snapJson, snapJson, lossJson, orderId]
+    );
+
+    try {
+      const hasUserMessages = await hasColumn(pool, 'user_messages', 'message_id');
+      if (hasUserMessages) {
+        const msgId = 'umsg_' + crypto.randomBytes(12).toString('hex');
+        await pool.execute(
+          `INSERT INTO user_messages (message_id, user_id, type, title, content, related_id, is_read)
+           VALUES (?, ?, ?, ?, ?, ?, 0)`,
+          [
+            msgId,
+            o.user_id,
+            'order',
+            '报价待确认',
+            `服务商已提交${getShopNthQuoteLabel(rev)}（附证明材料），请前往订单详情确认。`,
+            orderId,
+          ]
+        );
+      }
+    } catch (msgErr) {
+      console.warn('[OrderService] 报价消息失败:', msgErr && msgErr.message);
+    }
+
+    try {
+      await recalculateOrderRewardPreview(pool, orderId);
+    } catch (e) {
+      console.warn('[OrderService] submitFinalQuote reward preview:', e && e.message);
+    }
+
+    return {
+      success: true,
+      data: { order_id: orderId, final_quote_status: 1, revision_no: rev, proposal_id: pid },
+    };
+  }
+
+  let lossDoc = body.loss_assessment_documents;
+  if (isIns) {
+    const urls = Array.isArray(lossDoc) ? lossDoc : lossDoc && lossDoc.urls;
+    if (!Array.isArray(urls) || urls.length < 1) {
+      return { success: false, error: '保险事故车须上传定损单等材料', statusCode: 400 };
+    }
+    lossDoc = lossDoc && typeof lossDoc === 'object' && !Array.isArray(lossDoc) ? { ...lossDoc } : { urls };
+    if (!Array.isArray(lossDoc.urls)) lossDoc.urls = urls;
+    const sup = String(body.supplement_note || '').trim();
+    if (sup) lossDoc.supplement_note = sup;
+  } else {
+    lossDoc = lossDoc || null;
+  }
+  const lossJson = lossDoc ? JSON.stringify(lossDoc) : null;
+
+  await pool.execute(
+    `UPDATE orders SET final_quote_snapshot = ?, final_quote_status = 1, final_quote_submitted_at = NOW(),
+     repair_plan = ?, loss_assessment_documents = ?, updated_at = NOW() WHERE order_id = ?`,
+    [snapJson, snapJson, lossJson, orderId]
+  );
+
+  try {
+    const hasUserMessages = await hasColumn(pool, 'user_messages', 'message_id');
+    if (hasUserMessages) {
+      const msgId = 'umsg_' + crypto.randomBytes(12).toString('hex');
+      await pool.execute(
+        `INSERT INTO user_messages (message_id, user_id, type, title, content, related_id, is_read)
+         VALUES (?, ?, 'order', '最终报价待确认', '服务商已提交到店最终报价，请前往订单详情确认。', ?, 0)`,
+        [msgId, o.user_id, orderId]
+      );
+    }
+  } catch (msgErr) {
+    console.warn('[OrderService] 最终报价消息失败:', msgErr && msgErr.message);
+  }
+
+  try {
+    await recalculateOrderRewardPreview(pool, orderId);
+  } catch (e) {
+    console.warn('[OrderService] submitFinalQuote reward preview:', e && e.message);
+  }
+
+  return { success: true, data: { order_id: orderId, final_quote_status: 1 } };
+}
+
+/**
+ * 车主确认或拒绝到店报价（多轮时每轮一条 proposal）
+ */
+async function confirmFinalQuote(pool, orderId, userId, approved) {
+  if (!(await hasColumn(pool, 'orders', 'final_quote_status'))) {
+    return { success: false, error: '当前服务端未升级双阶段报价字段', statusCode: 400 };
+  }
+  const useOqp = await oqp.proposalsTableExists(pool);
+  const [orders] = await pool.execute(
+    `SELECT order_id, user_id, pre_quote_snapshot, final_quote_snapshot, final_quote_status FROM orders WHERE order_id = ? AND user_id = ?`,
+    [orderId, userId]
+  );
+  if (orders.length === 0) {
+    return { success: false, error: '订单不存在', statusCode: 404 };
+  }
+  const o = orders[0];
+  if (parseInt(o.final_quote_status, 10) !== 1) {
+    return { success: false, error: '当前无待确认的报价', statusCode: 400 };
+  }
+
+  async function notifyMerchantConfirmed() {
+    try {
+      const [orderRows] = await pool.execute('SELECT shop_id FROM orders WHERE order_id = ?', [orderId]);
+      if (orderRows.length > 0) {
+        const [merchantRows] = await pool.execute(
+          'SELECT merchant_id FROM merchant_users WHERE shop_id = ? AND status = 1 LIMIT 1',
+          [orderRows[0].shop_id]
+        );
+        if (merchantRows.length > 0) {
+          const subMsg = require('./subscribe-message-service');
+          subMsg.sendToMerchant(
+            pool,
+            merchantRows[0].merchant_id,
+            'merchant_order_new',
+            { title: '报价已确认', content: '车主已确认当前轮次报价，可继续维修', relatedId: orderId },
+            process.env.WX_APPID,
+            process.env.WX_SECRET
+          ).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn('[OrderService] confirmFinalQuote notify:', e && e.message);
+    }
+  }
+
+  if (useOqp) {
+    const pend = await oqp.getPending(pool, orderId);
+    if (!pend) {
+      return { success: false, error: '当前无待确认的报价', statusCode: 400 };
+    }
+
+    if (!approved) {
+      await pool.execute(
+        `UPDATE order_quote_proposals SET status = 2, resolved_at = NOW(), resolver_user_id = ? WHERE proposal_id = ?`,
+        [userId, pend.proposal_id]
+      );
+      const lastConf = await oqp.getLastConfirmed(pool, orderId);
+      let nextFqs = 0;
+      let nextFss = null;
+      let restorePlan = null;
+      let restoreAmount = null;
+      if (lastConf) {
+        const snap = oqp.parseJson(lastConf.quote_snapshot);
+        restorePlan = JSON.stringify(snap);
+        restoreAmount = parseFloat(snap.amount);
+        nextFqs = 2;
+        nextFss = restorePlan;
+        const ev = oqp.parseJson(lastConf.evidence);
+        const lossJson = ev && ev.loss_assessment_documents ? JSON.stringify(ev.loss_assessment_documents) : null;
+        await pool.execute(
+          `UPDATE orders SET final_quote_status = ?, final_quote_snapshot = ?, repair_plan = ?, quoted_amount = ?,
+           loss_assessment_documents = ?, updated_at = NOW() WHERE order_id = ?`,
+          [nextFqs, nextFss, restorePlan, restoreAmount, lossJson, orderId]
+        );
+      } else {
+        let preJson = o.pre_quote_snapshot;
+        if (typeof preJson === 'string') {
+          try {
+            preJson = JSON.parse(preJson);
+          } catch (_) {
+            preJson = null;
+          }
+        }
+        if (preJson) {
+          restorePlan = JSON.stringify(preJson);
+          restoreAmount = parseFloat(preJson.amount);
+        }
+        await pool.execute(
+          `UPDATE orders SET final_quote_status = 0, final_quote_snapshot = NULL, repair_plan = ?, quoted_amount = ?,
+           loss_assessment_documents = NULL, updated_at = NOW() WHERE order_id = ?`,
+          [restorePlan, restoreAmount, orderId]
+        );
+      }
+      try {
+        await recalculateOrderRewardPreview(pool, orderId);
+      } catch (e) {
+        console.warn('[OrderService] confirmFinalQuote reward preview:', e && e.message);
+      }
+      return { success: true, data: { order_id: orderId, approved: false } };
+    }
+
+    const snap = oqp.parseJson(pend.quote_snapshot);
+    if (!snap || snap.amount == null) {
+      return { success: false, error: '报价数据异常', statusCode: 500 };
+    }
+    await pool.execute(
+      `UPDATE order_quote_proposals SET status = 1, resolved_at = NOW(), resolver_user_id = ? WHERE proposal_id = ?`,
+      [userId, pend.proposal_id]
+    );
+
+    let pre = o.pre_quote_snapshot;
+    if (typeof pre === 'string') {
+      try {
+        pre = JSON.parse(pre);
+      } catch (_) {
+        pre = {};
+      }
+    }
+    const preAmount = parseFloat(pre && pre.amount) || 0;
+    const finalAmount = parseFloat(snap.amount) || 0;
+    let deviation = null;
+    if (preAmount > 0) {
+      deviation = Math.round((Math.abs(finalAmount - preAmount) / preAmount) * 10000) / 100;
+    }
+    const planJson = JSON.stringify(snap);
+    const pendEv = oqp.parseJson(pend.evidence);
+    const lossJson =
+      pendEv && pendEv.loss_assessment_documents ? JSON.stringify(pendEv.loss_assessment_documents) : null;
+
+    await pool.execute(
+      `UPDATE orders SET final_quote_status = 2, final_quote_confirmed_at = NOW(), quoted_amount = ?, repair_plan = ?,
+       final_quote_snapshot = ?, deviation_rate = ?, loss_assessment_documents = ?, updated_at = NOW() WHERE order_id = ?`,
+      [finalAmount, planJson, planJson, deviation, lossJson, orderId]
+    );
+    try {
+      await recalculateOrderRewardPreview(pool, orderId);
+    } catch (e) {
+      console.warn('[OrderService] confirmFinalQuote reward preview:', e && e.message);
+    }
+    await notifyMerchantConfirmed();
+    return { success: true, data: { order_id: orderId, approved: true, deviation_rate: deviation } };
+  }
+
+  if (!approved) {
+    let preJson = o.pre_quote_snapshot;
+    if (typeof preJson === 'string') {
+      try {
+        preJson = JSON.parse(preJson);
+      } catch (_) {
+        preJson = null;
+      }
+    }
+    const restorePlan = preJson ? JSON.stringify(preJson) : null;
+    await pool.execute(
+      `UPDATE orders SET final_quote_status = 0, final_quote_snapshot = NULL, loss_assessment_documents = NULL, updated_at = NOW() WHERE order_id = ?`,
+      [orderId]
+    );
+    if (restorePlan) {
+      await pool.execute(`UPDATE orders SET repair_plan = ?, updated_at = NOW() WHERE order_id = ?`, [restorePlan, orderId]);
+    }
+    try {
+      await recalculateOrderRewardPreview(pool, orderId);
+    } catch (e) {
+      console.warn('[OrderService] confirmFinalQuote reward preview:', e && e.message);
+    }
+    return { success: true, data: { order_id: orderId, approved: false } };
+  }
+
+  let snap = o.final_quote_snapshot;
+  if (typeof snap === 'string') {
+    try {
+      snap = JSON.parse(snap);
+    } catch (_) {
+      return { success: false, error: '最终报价数据异常', statusCode: 500 };
+    }
+  }
+  let pre = o.pre_quote_snapshot;
+  if (typeof pre === 'string') {
+    try {
+      pre = JSON.parse(pre);
+    } catch (_) {
+      pre = {};
+    }
+  }
+  const preAmount = parseFloat(pre && pre.amount) || 0;
+  const finalAmount = parseFloat(snap && snap.amount) || 0;
+  let deviation = null;
+  if (preAmount > 0) {
+    deviation = Math.round((Math.abs(finalAmount - preAmount) / preAmount) * 10000) / 100;
+  }
+  const planJson = JSON.stringify(snap);
+
+  await pool.execute(
+    `UPDATE orders SET final_quote_status = 2, final_quote_confirmed_at = NOW(), quoted_amount = ?, repair_plan = ?, final_quote_snapshot = ?, deviation_rate = ?, updated_at = NOW() WHERE order_id = ?`,
+    [finalAmount, planJson, planJson, deviation, orderId]
+  );
+  try {
+    await recalculateOrderRewardPreview(pool, orderId);
+  } catch (e) {
+    console.warn('[OrderService] confirmFinalQuote reward preview:', e && e.message);
+  }
+  await notifyMerchantConfirmed();
+  return { success: true, data: { order_id: orderId, approved: true, deviation_rate: deviation } };
+}
+
 async function resolveCancelRequestByAdmin(pool, requestId, approve) {
   const [reqs] = await pool.execute(
     'SELECT r.request_id, r.order_id, r.status, o.bidding_id FROM order_cancel_requests r INNER JOIN orders o ON r.order_id = o.order_id WHERE r.request_id = ?',
@@ -608,6 +1083,8 @@ module.exports = {
   updateOrderStatus,
   updateRepairPlan,
   approveRepairPlan,
+  submitFinalQuote,
+  confirmFinalQuote,
   respondCancelRequest,
   escalateCancelRequest,
   getPendingCancelRequest,

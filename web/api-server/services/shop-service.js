@@ -9,6 +9,10 @@ const shopSortService = require('../shop-sort-service');
 const antifraud = require('../antifraud');
 const shopProductService = require('./shop-product-service');
 const { parseCompletionEvidence, parseRepairPlanEnrichment } = require('../utils/review-order-display');
+const orderQuoteProposalService = require('./order-quote-proposal-service');
+const quoteProposalPublic = require('../utils/quote-proposal-public-list');
+const { sanitizeQuoteProposalHistoryForPublicList } = require('../utils/quote-proposal-public-sanitize');
+const { applyGranularPublicImages, sanitizeSystemChecksForUserFacing } = require('../utils/review-public-system-sanitize');
 
 /**
  * 从 shops.services JSON 中取匹配 category 的 min_price（06 文档：有产品搜索时价格排序）
@@ -76,6 +80,13 @@ function inferScene(category, keyword) {
   const cat = (category || '').toString();
   if (['钣金喷漆', '保养服务', '发动机维修', '电路维修'].includes(cat)) return 'L1L2';
   return 'L1L2';
+}
+
+/** 搜索/附近列表：自费意图时综合排序使用 06 文档「付款方」权重 */
+function normalizePayerIntent(v) {
+  const s = String(v || '').trim().toLowerCase();
+  if (s === 'self_pay' || s === 'selfpay') return 'self_pay';
+  return null;
 }
 
 async function getSetting(pool, key, defaultValue = '') {
@@ -296,7 +307,8 @@ function mapShop(s, hasDistance = false) {
  * 附近维修厂
  */
 async function getNearby(pool, query) {
-  const { latitude, longitude, page = 1, limit = 20, category, max_km, sort = 'default' } = query;
+  const { latitude, longitude, page = 1, limit = 20, category, max_km, sort = 'default', payer_intent } = query;
+  const payerIntent = normalizePayerIntent(payer_intent);
   const scene = inferScene(category, '');
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
@@ -333,6 +345,7 @@ async function getNearby(pool, query) {
       const sorted = await shopSortService.sortShopsByScore(pool, rows, {
         maxKm: effectiveMaxKm,
         scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2',
+        payerIntent,
       });
       totalCount = sorted.length;
       shops = sorted.slice(offset, offset + limitNum);
@@ -341,6 +354,12 @@ async function getNearby(pool, query) {
       const [rows] = await pool.execute(sql, sqlParams);
       const productMin = await buildProductMinMapForPriceSort(pool, rows, category, '');
       const sorted = sortShopsByPrice(rows, category, productMin);
+      totalCount = sorted.length;
+      shops = sorted.slice(offset, offset + limitNum);
+    } else if (sort === 'value' && category) {
+      sql += ' LIMIT 200';
+      const [rows] = await pool.execute(sql, sqlParams);
+      const sorted = await shopSortService.sortShopsByValue(pool, rows);
       totalCount = sorted.length;
       shops = sorted.slice(offset, offset + limitNum);
     } else {
@@ -372,7 +391,24 @@ async function getNearby(pool, query) {
   if (sort === 'default') {
     const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
     await shopSortService.ensureShopScores(pool, rows);
-    const shops = await shopSortService.sortShopsByScore(pool, rows, { scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2' });
+    const shops = await shopSortService.sortShopsByScore(pool, rows, {
+      scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2',
+      payerIntent,
+    });
+    const paged = shops.slice(offset, offset + limitNum);
+    let list = paged.map(s => mapShop(s, false));
+    list = await enrichShopListForOwner(pool, list);
+    return {
+      success: true,
+      data: {
+        list,
+        total: shops.length,
+      },
+    };
+  }
+  if (sort === 'value' && category) {
+    const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
+    const shops = await shopSortService.sortShopsByValue(pool, rows);
     const paged = shops.slice(offset, offset + limitNum);
     let list = paged.map(s => mapShop(s, false));
     list = await enrichShopListForOwner(pool, list);
@@ -424,7 +460,8 @@ async function getNearby(pool, query) {
  * 搜索维修厂
  */
 async function search(pool, query) {
-  const { keyword, category, sort = 'default', page = 1, limit = 20, latitude, longitude, max_km = 50 } = query;
+  const { keyword, category, sort = 'default', page = 1, limit = 20, latitude, longitude, max_km = 50, payer_intent } = query;
+  const payerIntent = normalizePayerIntent(payer_intent);
   const scene = inferScene(category, keyword);
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
@@ -464,6 +501,7 @@ async function search(pool, query) {
       shops = await shopSortService.sortShopsByScore(pool, rows, {
         maxKm: effectiveMaxKm,
         scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2',
+        payerIntent,
       });
       shops = shops.slice(offset, offset + limitNum);
     } else if (sort === 'price' && (keyword || category)) {
@@ -479,6 +517,21 @@ async function search(pool, query) {
         success: true,
         data: {
           list: listPrice,
+          total: totalCount,
+        },
+      };
+    } else if (sort === 'value' && (keyword || category)) {
+      sql += ' LIMIT 200';
+      const [rows] = await pool.execute(sql, sqlParams);
+      const sorted = await shopSortService.sortShopsByValue(pool, rows);
+      const totalCount = sorted.length;
+      shops = sorted.slice(offset, offset + limitNum);
+      let listVal = shops.map(s => mapShop(s, true));
+      listVal = await enrichShopListForOwner(pool, listVal);
+      return {
+        success: true,
+        data: {
+          list: listVal,
           total: totalCount,
         },
       };
@@ -522,7 +575,10 @@ async function search(pool, query) {
   if (sort === 'default') {
     const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
     await shopSortService.ensureShopScores(pool, rows);
-    const shops = await shopSortService.sortShopsByScore(pool, rows, { scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2' });
+    const shops = await shopSortService.sortShopsByScore(pool, rows, {
+      scene: scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2',
+      payerIntent,
+    });
     const paged = shops.slice(offset, offset + limitNum);
     let listDef = paged.map(s => mapShop(s, false));
     listDef = await enrichShopListForOwner(pool, listDef);
@@ -531,6 +587,20 @@ async function search(pool, query) {
       data: {
         list: listDef,
         total: shops.length,
+      },
+    };
+  }
+  if (sort === 'value' && (keyword || category)) {
+    const [rows] = await pool.execute(`SELECT * FROM shops ${whereClause} LIMIT 200`, params);
+    const sorted = await shopSortService.sortShopsByValue(pool, rows);
+    const paged = sorted.slice(offset, offset + limitNum);
+    let listVal2 = paged.map(s => mapShop(s, false));
+    listVal2 = await enrichShopListForOwner(pool, listVal2);
+    return {
+      success: true,
+      data: {
+        list: listVal2,
+        total: sorted.length,
       },
     };
   }
@@ -683,7 +753,8 @@ async function getReviews(pool, shopId, query) {
   params.push(limitNum, offset);
 
   const [reviews] = await pool.execute(
-    `SELECT r.*, u.nickname, u.avatar_url, o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence
+    `SELECT r.*, u.nickname, u.avatar_url, o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence,
+            o.pre_quote_snapshot, o.accepted_at
      FROM reviews r 
      JOIN users u ON r.user_id = u.user_id 
      JOIN orders o ON r.order_id = o.order_id
@@ -740,14 +811,29 @@ async function getReviews(pool, shopId, query) {
     } catch (_) {}
   }
 
+  const proposalsByOrderId = new Map();
+  try {
+    if (reviews.length > 0 && (await orderQuoteProposalService.proposalsTableExists(pool))) {
+      const oids = [...new Set(reviews.map((row) => row.order_id))];
+      await Promise.all(
+        oids.map(async (oid) => {
+          const list = await orderQuoteProposalService.listFormatted(pool, oid);
+          if (list && list.length) proposalsByOrderId.set(oid, list);
+        })
+      );
+    }
+  } catch (_) {}
+
   return {
     success: true,
     data: {
       list: reviews.map(r => {
         const stats = likeStats[r.review_id] || {};
         let amount = r.actual_amount != null ? parseFloat(r.actual_amount) : (r.quoted_amount != null ? parseFloat(r.quoted_amount) : null);
-        const { material_photos } = parseCompletionEvidence(r.completion_evidence);
-        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key);
+        let { material_photos } = parseCompletionEvidence(r.completion_evidence);
+        const { repairItems, part_promise_lines } = parseRepairPlanEnrichment(r.repair_plan, r.repair_project_key, {
+          stripLinePrices: true,
+        });
         const objAnswers = (() => {
           try {
             return typeof r.objective_answers === 'string' ? JSON.parse(r.objective_answers || '{}') : (r.objective_answers || {});
@@ -763,6 +849,59 @@ async function getReviews(pool, shopId, query) {
             return typeof r.completion_images === 'string' ? JSON.parse(r.completion_images || '[]') : (r.completion_images || []);
           } catch (_) { return []; }
         })();
+
+        let preSnap = null;
+        try {
+          preSnap =
+            typeof r.pre_quote_snapshot === 'string' && r.pre_quote_snapshot
+              ? JSON.parse(r.pre_quote_snapshot)
+              : r.pre_quote_snapshot || null;
+        } catch (_) {
+          preSnap = null;
+        }
+        const headPlan = quoteProposalPublic.planHasDisplayablePreQuote(preSnap)
+          ? preSnap
+          : r.quoted_amount != null
+            ? { amount: parseFloat(r.quoted_amount) }
+            : null;
+        let rawProps = proposalsByOrderId.get(r.order_id) || [];
+        rawProps = quoteProposalPublic.prependPreQuoteProposalToList(rawProps, headPlan, r.accepted_at);
+        rawProps = sanitizeQuoteProposalHistoryForPublicList(rawProps);
+
+        let afterImgsRaw;
+        try {
+          afterImgsRaw = typeof r.after_images === 'string' ? JSON.parse(r.after_images || '[]') : (r.after_images || []);
+        } catch (_) {
+          afterImgsRaw = [];
+        }
+        let faultImgsRaw;
+        try {
+          faultImgsRaw =
+            typeof r.fault_evidence_images === 'string'
+              ? JSON.parse(r.fault_evidence_images || '[]')
+              : r.fault_evidence_images || [];
+        } catch (_) {
+          faultImgsRaw = [];
+        }
+        const granular = applyGranularPublicImages(r, {
+          before_images: beforeImgs,
+          after_images: afterImgsRaw,
+          completion_images: completionImgs,
+          material_photos: material_photos,
+          fault_evidence_images: Array.isArray(faultImgsRaw) ? faultImgsRaw : [],
+          settlement_list_image: r.settlement_list_image || null,
+        });
+        const {
+          before_images: beforeOut,
+          after_images: afterOut,
+          completion_images: completionOut,
+          material_photos: materialOut,
+          settlement_list_image: settlementPub,
+        } = granular;
+        const quote_credential_urls = [];
+        const settleUrl = settlementPub != null ? String(settlementPub).trim() : '';
+        if (settleUrl) quote_credential_urls.push(settleUrl);
+
         return {
           review_id: r.review_id,
           order_id: r.order_id,
@@ -782,11 +921,11 @@ async function getReviews(pool, shopId, query) {
           content: r.content,
           repair_items: repairItems,
           part_promise_lines: part_promise_lines,
-          material_photos,
+          material_photos: materialOut,
           amount,
-          before_images: beforeImgs,
-          after_images: JSON.parse(r.after_images || '[]'),
-          completion_images: completionImgs,
+          before_images: beforeOut,
+          after_images: afterOut,
+          completion_images: completionOut,
           objective_answers: objAnswers,
           ai_analysis: JSON.parse(r.ai_analysis || '{}'),
           like_count: r.like_count ?? stats.like_count ?? 0,
@@ -796,6 +935,9 @@ async function getReviews(pool, shopId, query) {
           post_verify_count: stats.post_verify_count ?? 0,
           has_owner_verify_badge: !!stats.has_owner_verify_badge,
           created_at: r.created_at,
+          quote_proposal_history: rawProps,
+          quote_credential_urls,
+          review_system_checks: sanitizeSystemChecksForUserFacing(r.review_system_checks),
         };
       }),
       total: countResult[0].total,

@@ -132,7 +132,7 @@ Page({
       this.setData({
         shop: {
           ...shop,
-          logo: shop.logo || '/images/logo/logo_white.png',
+          logo: shop.logo || '/images/brand/brand-app-icon-zhejian.png',
           services
         },
         loading: false

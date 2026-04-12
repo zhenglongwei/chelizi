@@ -6,13 +6,19 @@
  */
 
 const crypto = require('crypto');
+const { hasColumn } = require('../utils/db-utils');
 const antifraud = require('../antifraud');
 const rewardCalculator = require('../reward-calculator');
 const biddingDistribution = require('./bidding-distribution');
 const shopSortService = require('../shop-sort-service');
 const LOG_PREFIX = '[BiddingService]';
 
-function merchantVisibleWhereFragment(tablePrefix = 'b', shopIdParam = null) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.requireBiddingWindowOpen=true] 为 true 时仅竞价窗口内（expire_at 未过）可见，用于商户「待报价」；已报价列表传 false，窗口结束后仍可查看
+ */
+function merchantVisibleWhereFragment(tablePrefix = 'b', shopIdParam = null, opts = {}) {
+  const requireBiddingWindowOpen = opts.requireBiddingWindowOpen !== false;
   const b = tablePrefix;
   const u = 'u';
   const s = 's';
@@ -22,7 +28,8 @@ function merchantVisibleWhereFragment(tablePrefix = 'b', shopIdParam = null) {
   const distanceFilter = shopIdParam
     ? `(${distanceCond} OR EXISTS (SELECT 1 FROM bidding_distribution bd_inv WHERE bd_inv.bidding_id = ${b}.bidding_id AND bd_inv.shop_id = ?))`
     : distanceCond;
-  return `${b}.status = 0 AND ${b}.expire_at > NOW()
+  const windowClause = requireBiddingWindowOpen ? `${b}.expire_at > NOW()` : '1=1';
+  return `${b}.status = 0 AND ${windowClause}
     AND ${u}.latitude IS NOT NULL AND ${u}.longitude IS NOT NULL
     AND ${s}.latitude IS NOT NULL AND ${s}.longitude IS NOT NULL
     AND ${distanceFilter}`;
@@ -65,19 +72,17 @@ async function listBiddingsForShop(pool, shopId, status, page, limit, log = {}) 
     list = listRows || [];
     total = countRows[0]?.total || 0;
   } else {
-    const baseWhere = merchantVisibleWhereFragment('b', shopId);
+    const baseWherePending = merchantVisibleWhereFragment('b', shopId, { requireBiddingWindowOpen: true });
+    const baseWhereQuoted = merchantVisibleWhereFragment('b', shopId, { requireBiddingWindowOpen: false });
+    const baseWhere = status === 'quoted' ? baseWhereQuoted : baseWherePending;
     const quoteCondition = status === 'quoted' ? '> 0' : '= 0';
+    // 列表展示：凡写入 bidding_distribution 的店铺均可见（含二/三梯队未过一梯队窗口者）。
+    // 是否允许报价仍以 POST /merchant/quote 中 isShopVisibleForBidding（梯队时间窗）为准。
     const visibilityFragment = `AND (
       NOT EXISTS (SELECT 1 FROM bidding_distribution bd2 WHERE bd2.bidding_id = b.bidding_id)
       OR EXISTS (
         SELECT 1 FROM bidding_distribution bd
         WHERE bd.bidding_id = b.bidding_id AND bd.shop_id = ?
-        AND (
-          bd.tier = 1
-          OR (bd.tier = 2 AND (b.tier1_window_ends_at IS NULL OR NOW() >= b.tier1_window_ends_at))
-          OR (bd.tier = 3 AND (b.tier1_window_ends_at IS NULL OR NOW() >= b.tier1_window_ends_at)
-              AND (SELECT COUNT(*) FROM quotes q2 WHERE q2.bidding_id = b.bidding_id AND q2.quote_status = 0) < 3)
-        )
       )
     )`;
 
@@ -194,7 +199,7 @@ async function sortQuotesByScoreAsync(pool, biddingId, quotes, benchmarkAmount) 
   const bench = parseFloat(benchmarkAmount) || 0;
 
   const [biddingRows] = await pool.execute(
-    'SELECT dr.analysis_result FROM biddings b INNER JOIN damage_reports dr ON b.report_id = dr.report_id WHERE b.bidding_id = ?',
+    'SELECT dr.analysis_result, b.insurance_info FROM biddings b INNER JOIN damage_reports dr ON b.report_id = dr.report_id WHERE b.bidding_id = ?',
     [biddingId]
   );
   let analysisResult = {};
@@ -205,9 +210,25 @@ async function sortQuotesByScoreAsync(pool, biddingId, quotes, benchmarkAmount) 
         : (biddingRows[0].analysis_result || {});
     } catch (_) {}
   }
+  let isInsuranceBidding = false;
+  if (biddingRows.length > 0 && biddingRows[0].insurance_info) {
+    try {
+      const ins = typeof biddingRows[0].insurance_info === 'string'
+        ? JSON.parse(biddingRows[0].insurance_info || '{}')
+        : biddingRows[0].insurance_info || {};
+      isInsuranceBidding = !!(ins && ins.is_insurance);
+    } catch (_) {}
+  }
   const biddingItems = await biddingDistribution.parseBiddingItemsWithComplexity(pool, analysisResult);
   const config = await biddingDistribution.getBiddingDistributionConfig(pool);
   const newShopDays = config.newShopDays || 90;
+
+  const wMatch = isInsuranceBidding
+    ? (config.quoteSortWeightMatchInsurance ?? 0.7)
+    : (config.quoteSortWeightMatchSelfPay ?? 0.55);
+  const wReason = isInsuranceBidding
+    ? (config.quoteSortWeightReasonInsurance ?? 0.3)
+    : (config.quoteSortWeightReasonSelfPay ?? 0.45);
 
   const shopIds = quotes.map((q) => q.shop_id).filter(Boolean);
   const responseMap = await shopSortService.getAvgResponseMinutesByShopIds(pool, shopIds);
@@ -230,9 +251,10 @@ async function sortQuotesByScoreAsync(pool, biddingId, quotes, benchmarkAmount) 
       biddingItems,
       sameProjectResult,
       avgResponseMinutes: responseMap.get(q.shop_id),
+      isInsuranceBidding,
     });
     const reasonScore = calcQuoteReasonablenessScore(q.amount, bench);
-    const sortScore = matchScore * 0.7 + reasonScore * 0.3;
+    const sortScore = matchScore * wMatch + reasonScore * wReason;
     scored.push({ ...q, _quote_sort_score: sortScore });
   }
   scored.sort((a, b) => (b._quote_sort_score || 0) - (a._quote_sort_score || 0));
@@ -245,7 +267,7 @@ function normalizePlate(s) {
 
 /**
  * 创建竞价
- * 规则：同一用户+同一车牌号只能有一个进行中的竞价；未填车牌禁止提交；发现重复则返回已有竞价
+ * 规则：同一用户+同一车牌在「竞价窗口内」只能有一个 status=0 的竞价；同一定损报告在窗口已过期且未选厂时先关单再建新单；未填车牌禁止提交
  */
 async function createBidding(pool, userId, body) {
   const { report_id, range, insurance_info, vehicle_info, latitude, longitude } = body || {};
@@ -264,6 +286,21 @@ async function createBidding(pool, userId, body) {
   }
   const plateNorm = normalizePlate(plate);
 
+  // 窗口已过期（expire_at）后 status 仍可能为 0（文档：车主仍可接受已有报价）。同一定损报告「重新发起」时，
+  // 若旧单已过期且未选厂，先关单并作废报价，否则会被误判为 duplicate、跳回旧单。
+  const [staleSameReport] = await pool.execute(
+    `SELECT bidding_id FROM biddings
+     WHERE user_id = ? AND report_id = ? AND status = 0
+       AND (selected_shop_id IS NULL OR selected_shop_id = '')
+       AND expire_at <= NOW()`,
+    [userId, report_id]
+  );
+  for (const row of staleSameReport || []) {
+    const sid = row.bidding_id;
+    await pool.execute('UPDATE biddings SET status = 1, updated_at = NOW() WHERE bidding_id = ?', [sid]);
+    await pool.execute('UPDATE quotes SET quote_status = 2 WHERE bidding_id = ?', [sid]);
+  }
+
   const [existingByReport] = await pool.execute(
     'SELECT bidding_id FROM biddings WHERE report_id = ? AND user_id = ? AND status = 0 LIMIT 1',
     [report_id, userId]
@@ -277,7 +314,7 @@ async function createBidding(pool, userId, body) {
   }
 
   const [ongoingBiddings] = await pool.execute(
-    'SELECT bidding_id, vehicle_info FROM biddings WHERE user_id = ? AND status = 0',
+    'SELECT bidding_id, vehicle_info FROM biddings WHERE user_id = ? AND status = 0 AND expire_at > NOW()',
     [userId]
   );
   for (const row of ongoingBiddings || []) {
@@ -351,18 +388,18 @@ async function selectQuote(pool, req) {
     return { success: false, error: '该竞价已结束', statusCode: 400 };
   }
 
-  const [quotes] = await pool.execute('SELECT * FROM quotes WHERE bidding_id = ? AND shop_id = ?', [id, shop_id]);
+  const [quotes] = await pool.execute(
+    `SELECT *,
+            (quote_valid_until IS NOT NULL AND quote_valid_until <= NOW()) AS past_validity
+     FROM quotes WHERE bidding_id = ? AND shop_id = ?`,
+    [id, shop_id]
+  );
   if (quotes.length === 0) {
     return { success: false, error: '报价不存在', statusCode: 404 };
   }
   const quote = quotes[0];
-
-  // 报价有效期：quote_valid_until 到期后报价失效；NULL 视为有效（兼容旧数据）
-  if (quote.quote_valid_until) {
-    const validUntil = new Date(quote.quote_valid_until).getTime();
-    if (Date.now() > validUntil) {
-      return { success: false, error: '该报价已过期', statusCode: 400 };
-    }
+  if (quote.past_validity) {
+    return { success: false, error: '该报价已过期', statusCode: 400 };
   }
 
   const [shopRows] = await pool.execute('SELECT qualification_status FROM shops WHERE shop_id = ?', [shop_id]);
@@ -410,16 +447,26 @@ async function selectQuote(pool, req) {
     items,
     value_added_services: valueAdded,
     amount: parseFloat(quote.amount) || 0,
-    duration: parseInt(quote.duration, 10) || 3,
-    warranty: parseInt(quote.warranty, 10) || 12
+    duration: parseInt(quote.duration, 10) || 3
   });
 
+  const preQuoteSnapshotJson = repairPlanJson;
+
   const orderId = 'ORD' + Date.now();
-  await pool.execute(
-    `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, status, accepted_at, repair_plan, repair_plan_status, created_at) 
-     VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), ?, 0, NOW())`,
-    [orderId, id, userId, shop_id, quote.quote_id, quote.amount, repairPlanJson]
-  );
+  const hasPreSnap = await hasColumn(pool, 'orders', 'pre_quote_snapshot');
+  if (hasPreSnap) {
+    await pool.execute(
+      `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, status, accepted_at, repair_plan, repair_plan_status, pre_quote_snapshot, final_quote_status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), ?, 0, ?, 0, NOW())`,
+      [orderId, id, userId, shop_id, quote.quote_id, quote.amount, repairPlanJson, preQuoteSnapshotJson]
+    );
+  } else {
+    await pool.execute(
+      `INSERT INTO orders (order_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, status, accepted_at, repair_plan, repair_plan_status, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), ?, 0, NOW())`,
+      [orderId, id, userId, shop_id, quote.quote_id, quote.amount, repairPlanJson]
+    );
+  }
 
   let isInsuranceAccident = 0;
   try {
@@ -439,30 +486,9 @@ async function selectQuote(pool, req) {
   }
 
   try {
-    const [biddings] = await pool.execute('SELECT vehicle_info FROM biddings WHERE bidding_id = ?', [id]);
-    let vehicleInfo = {};
-    if (biddings.length > 0 && biddings[0].vehicle_info) {
-      try {
-        vehicleInfo = typeof biddings[0].vehicle_info === 'string' ? JSON.parse(biddings[0].vehicle_info) : biddings[0].vehicle_info;
-      } catch (_) {}
-    }
-    let quoteItems = [];
-    if (quote.items) {
-      try {
-        quoteItems = typeof quote.items === 'string' ? JSON.parse(quote.items) : quote.items;
-      } catch (_) {}
-    }
-    const [shops] = await pool.execute('SELECT compliance_rate, complaint_rate FROM shops WHERE shop_id = ?', [shop_id]);
-    const shop = shops.length > 0 ? shops[0] : {};
-    const orderRow = { quoted_amount: quote.amount, actual_amount: null, order_tier: null, complexity_level: null, vehicle_price_tier: null };
-    const result = await rewardCalculator.calculateReward(pool, orderRow, vehicleInfo, quoteItems, shop);
-    await pool.execute(
-      `UPDATE orders SET order_tier = ?, complexity_level = ?, vehicle_price_tier = ?,
-       reward_preview = ?, commission_rate = ? WHERE order_id = ?`,
-      [result.order_tier, result.complexity_level, result.vehicle_price_tier, result.reward_pre, result.commission_rate * 100, orderId]
-    );
+    await rewardCalculator.recalculateOrderRewardPreview(pool, orderId);
   } catch (err) {
-    console.error('[BiddingService] 奖励金/佣金计算失败:', err.message);
+    console.error('[BiddingService] 奖励金/佣金重算失败:', err.message);
   }
 
   await pool.execute(
@@ -511,6 +537,19 @@ async function selectQuote(pool, req) {
 }
 
 /**
+ * 车主竞价单 expire_at 仅约束「竞价窗口」（服务商是否还能提交新报价），
+ * 不因窗口结束而关单、作废报价。车主可选厂直至：已生成订单、主动结束竞价、或单条 quote_valid_until 到期。
+ * 以下函数保留导出名以免外部引用报错，逻辑已移除（历史误关单数据需库内个案修复，见《竞价流程与状态流转》）。
+ */
+async function closeExpiredBiddingsForUser(_pool, _userId) {
+  /* intentionally empty */
+}
+
+async function closeExpiredBiddingById(_pool, _biddingId, _userId) {
+  /* intentionally empty */
+}
+
+/**
  * 结束竞价
  */
 async function endBidding(pool, biddingId, userId) {
@@ -551,4 +590,6 @@ module.exports = {
   createBidding,
   selectQuote,
   endBidding,
+  closeExpiredBiddingsForUser,
+  closeExpiredBiddingById,
 };

@@ -64,6 +64,34 @@ Page({
     corpContactPhone: '',
     corpRemark: '',
     incomeCorpList: [],
+    showCommissionHelp: false,
+    deductModeSaving: false,
+    activeAccountTab: 'commission',
+    showRefundBlock: false,
+    showFinalizeBlock: false,
+    incomeSubTab: 'withdraw',
+  },
+
+  onAccountTabTap(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === 'commission' || tab === 'income') this.setData({ activeAccountTab: tab });
+  },
+
+  toggleRefundBlock() {
+    this.setData({ showRefundBlock: !this.data.showRefundBlock });
+  },
+
+  toggleFinalizeBlock() {
+    this.setData({ showFinalizeBlock: !this.data.showFinalizeBlock });
+  },
+
+  onIncomeSubTabTap(e) {
+    const sub = e.currentTarget.dataset.subtab;
+    if (sub === 'withdraw' || sub === 'corp' || sub === 'ledger') this.setData({ incomeSubTab: sub });
+  },
+
+  toggleCommissionHelp() {
+    this.setData({ showCommissionHelp: !this.data.showCommissionHelp });
   },
 
   onLoad() {
@@ -402,19 +430,33 @@ Page({
     this.setData({ finalizeAmount: e.detail.value });
   },
 
-  async onSetMode(e) {
-    const mode = e.currentTarget.dataset.mode;
-    if (!mode) return;
+  async onDeductModeChange(e) {
+    if (this.data.deductModeSaving) return;
+    const mode = e.detail && e.detail.value;
+    if (mode !== 'auto' && mode !== 'per_order') return;
+    if (mode === this.data.deductMode) return;
+    const prev = this.data.deductMode;
+    const labelFor = (m) => (m === 'per_order' ? '逐单微信支付' : '自动扣余额');
+    this.setData({
+      deductMode: mode,
+      modeLabel: labelFor(mode),
+      deductModeSaving: true,
+    });
     try {
       wx.showLoading({ title: '保存中' });
       await putMerchantCommissionDeductMode(mode);
       wx.hideLoading();
-      wx.showToast({ title: '已更新', icon: 'success' });
+      wx.showToast({ title: '已切换扣款方式', icon: 'success' });
       await this.loadWallet();
     } catch (err) {
       wx.hideLoading();
-      if (isMerchant401(err)) return;
-      ui.showError(err.message || '失败');
+      this.setData({
+        deductMode: prev,
+        modeLabel: labelFor(prev),
+      });
+      if (!isMerchant401(err)) ui.showError(err.message || '保存失败');
+    } finally {
+      this.setData({ deductModeSaving: false });
     }
   },
 
