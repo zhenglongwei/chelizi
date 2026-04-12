@@ -74,10 +74,6 @@
       </view>
     </view>
     <view class="merchant-ai-report-body" wx:if="{{aiReportExpanded}}">
-      <view class="merchant-ai-row" wx:if="{{bidding.analysis_result && bidding.analysis_result.total_estimate && bidding.analysis_result.total_estimate.length >= 2}}">
-        <text class="text-muted fs-cap">预估费用</text>
-        <text class="fs-body">{{bidding.analysis_result.total_estimate[0]}}-{{bidding.analysis_result.total_estimate[1]}} 元</text>
-      </view>
       <view class="merchant-ai-human" wx:if="{{reportHasHumanLines}}">
         <view class="merchant-ai-human-block">
           <text class="fs-cap fw-bold merchant-ai-human-title">明显损伤</text>
@@ -101,10 +97,10 @@
           <text class="text-muted fs-cap" wx:else>暂无专项建议</text>
         </view>
       </view>
-      <view class="detail-damages" wx:if="{{!reportHasHumanLines && bidding.analysis_result && bidding.analysis_result.damages && bidding.analysis_result.damages.length}}">
+      <view class="detail-damages" wx:if="{{!reportHasHumanLines && reportDamagesDisplay.length}}">
         <text class="text-muted fs-cap">损伤明细（结构化）</text>
         <view class="detail-damage-tags">
-          <view class="detail-damage-tag" wx:for="{{bidding.analysis_result.damages}}" wx:key="index">
+          <view class="detail-damage-tag" wx:for="{{reportDamagesDisplay}}" wx:key="index">
             <text class="fs-sm">{{item.part}} {{item.type}}</text>
           </view>
         </view>

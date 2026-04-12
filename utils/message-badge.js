@@ -1,5 +1,5 @@
 /**
- * 车主端消息未读数：同步到自定义 TabBar「我的」角标
+ * 车主端消息未读数：同步到自定义 TabBar「消息」角标
  * 需在已挂载 TabBar 的页面调用 getTabBar；冷启动时可用 schedule 延迟重试
  */
 const { getToken, getUnreadCount } = require('./api');

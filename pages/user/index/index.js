@@ -62,10 +62,10 @@ Page({
 
     if (this.data.hasToken) {
       this.loadProfile();
-      this.updateMessageBadge();
+      this.refreshUnreadTabBadge();
     }
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 3 });
+      this.getTabBar().setData({ selected: 4 });
     }
   },
 
@@ -94,14 +94,12 @@ Page({
     }
   },
 
-  async updateMessageBadge() {
+  async refreshUnreadTabBadge() {
     if (!getToken()) {
-      this.setData({ messageUnreadCount: 0 });
       applyUnreadToTabBar(0);
       return;
     }
-    const n = await fetchAndApplyUnreadBadge();
-    this.setData({ messageUnreadCount: n });
+    await fetchAndApplyUnreadBadge();
   },
 
   checkToken() {
@@ -110,7 +108,6 @@ Page({
     const patch = { hasToken, hasMerchantToken };
     if (!hasToken) {
       patch.merchantOpenidBound = false;
-      patch.messageUnreadCount = 0;
       applyUnreadToTabBar(0);
     }
     this.setData(patch);

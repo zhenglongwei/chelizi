@@ -80,23 +80,6 @@
   padding: var(--space-xs) var(--space-md);
   font-weight: 500;
 }
-.user-message-entry .user-message-header { margin-bottom: 0; align-items: flex-start; }
-.user-message-title-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-xs); min-width: 0; }
-.user-message-unread-row { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }
-.user-message-badge-num {
-  min-width: 36rpx;
-  height: 36rpx;
-  line-height: 36rpx;
-  padding: 0 10rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #fff;
-  background: var(--danger, #EF4444);
-  border-radius: 18rpx;
-  text-align: center;
-}
-.user-message-unread-tip { color: var(--danger, #EF4444); }
-.user-message-more .user-message-cta { color: var(--danger, #EF4444); font-weight: 600; }
 .user-section-more { color: var(--primary); font-size: var(--fs-cap); }
 .user-section-tabs { display: flex; gap: var(--space-lg); }
 .user-tab { color: var(--text-secondary); font-size: var(--fs-body); padding: var(--space-sm) 0; }

@@ -6,6 +6,7 @@ const { getToken, getBiddingDetail, getBiddingQuotes, selectBiddingShop, seedDev
 const { requestUserSubscribe } = require('../../../utils/subscribe');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const { QUOTE_LABELS: quoteNm } = require('../../../utils/quote-nomenclature');
+const { mergeHumanDisplayFromAnalysis, filterDamagesByFocus } = require('../../../utils/analysis-human-display');
 
 const logger = getLogger('BiddingDetail');
 
@@ -45,43 +46,9 @@ function formatCountdown(expireAt) {
   return `${s}秒`;
 }
 
-/** 与定损报告页一致：合并多车 human_display 供竞价页展示 */
-function mergeHumanDisplayFromAnalysis(ar) {
-  const empty = { obvious_damage: [], possible_damage: [], repair_advice: [] };
-  if (!ar || typeof ar !== 'object') return empty;
-  const vi = Array.isArray(ar.vehicle_info) ? ar.vehicle_info : [];
-  if (vi.length === 0) {
-    const h = ar.human_display;
-    if (h && typeof h === 'object') {
-      return {
-        obvious_damage: Array.isArray(h.obvious_damage) ? h.obvious_damage : [],
-        possible_damage: Array.isArray(h.possible_damage) ? h.possible_damage : [],
-        repair_advice: Array.isArray(h.repair_advice) ? h.repair_advice : []
-      };
-    }
-    return empty;
-  }
-  const o = [];
-  const p = [];
-  const r = [];
-  const multi = vi.length > 1;
-  for (const v of vi) {
-    const h = v.human_display;
-    if (!h || typeof h !== 'object') continue;
-    const vid = (v.vehicleId || '').trim();
-    const prefix = multi && vid ? `（${vid}）` : '';
-    (h.obvious_damage || []).forEach((t) => o.push(prefix + t));
-    (h.possible_damage || []).forEach((t) => p.push(prefix + t));
-    (h.repair_advice || []).forEach((t) => r.push(prefix + t));
-  }
-  return { obvious_damage: o, possible_damage: p, repair_advice: r };
-}
-
-function analysisHasReportSection(ar, humanDisplay) {
+function analysisHasReportSection(ar, humanDisplay, damagesFiltered) {
   if (!ar || typeof ar !== 'object') return false;
-  const te = ar.total_estimate;
-  if (Array.isArray(te) && te.length >= 2 && (Number(te[0]) > 0 || Number(te[1]) > 0)) return true;
-  const d = ar.damages;
+  const d = damagesFiltered != null ? damagesFiltered : ar.damages || [];
   if (Array.isArray(d) && d.length > 0) return true;
   const hd = humanDisplay || {};
   const n =
@@ -124,7 +91,8 @@ Page({
     canRecreateFromDetail: false,
     reportHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
     reportHasAnalysisSection: false,
-    reportHasHumanLines: false
+    reportHasHumanLines: false,
+    reportDamagesDisplay: []
   },
 
   _timer: null,
@@ -212,8 +180,11 @@ Page({
         (bidding.status === 1 || (bidding.status === 0 && timeExpired));
       const showOwnerActionsFooter = showEndRoundDetail || canRecreateFromDetail;
       const ar = bidding.analysis_result || {};
-      const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar);
-      const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay);
+      const viBid = bidding.vehicle_info && typeof bidding.vehicle_info === 'object' ? bidding.vehicle_info : {};
+      const focusId = viBid.analysis_focus_vehicle_id || '';
+      const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar, focusId);
+      const reportDamagesDisplay = filterDamagesByFocus(ar.damages || [], focusId);
+      const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay, reportDamagesDisplay);
       const reportHasHumanLines =
         (Array.isArray(reportHumanDisplay.obvious_damage) ? reportHumanDisplay.obvious_damage.length : 0) +
           (Array.isArray(reportHumanDisplay.possible_damage) ? reportHumanDisplay.possible_damage.length : 0) +
@@ -229,6 +200,7 @@ Page({
         canRecreateFromDetail,
         showOwnerActionsFooter,
         reportHumanDisplay,
+        reportDamagesDisplay,
         reportHasAnalysisSection,
         reportHasHumanLines
       });

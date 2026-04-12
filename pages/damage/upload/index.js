@@ -721,6 +721,10 @@ Page({
         : { is_insurance: false };
 
       const rangeToSend = rangeKm === 0 ? 999 : (rangeKm || 5);
+      const focusAiVehicleId =
+        (this.data.vehiclesList || []).length > 1
+          ? (v && v.vehicleId) || '车辆' + (selectedVehicleIndex + 1)
+          : '';
       const res = await createBidding({
         report_id: reportId,
         range: rangeToSend,
@@ -733,7 +737,8 @@ Page({
           vehicle_price_max: bidVehicleInfo.vehicle_price_max
         },
         latitude,
-        longitude
+        longitude,
+        ...(focusAiVehicleId ? { analysis_focus_vehicle_id: focusAiVehicleId } : {})
       });
 
       ui.showSuccess(res.duplicate ? '该定损单已发起竞价，正在跳转' : '竞价发起成功');

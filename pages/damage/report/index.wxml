@@ -16,10 +16,6 @@
     <scroll-view class="report-scroll" scroll-y style="{{scrollStyle}}">
       <view class="report-card card">
         <view class="report-title fs-h3 fw-bold">定损报告</view>
-        <view class="report-row" wx:if="{{report.total_estimate && report.total_estimate.length >= 2}}">
-          <text class="report-label">预估费用</text>
-          <text class="report-value">{{report.total_estimate[0]}}-{{report.total_estimate[1]}} 元</text>
-        </view>
         <view class="report-damages">
           <view class="report-human-section">
             <view class="fs-body fw-bold report-human-title">明显损伤</view>

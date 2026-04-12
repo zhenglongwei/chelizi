@@ -270,7 +270,8 @@ function normalizePlate(s) {
  * 规则：同一用户+同一车牌在「竞价窗口内」只能有一个 status=0 的竞价；同一定损报告在窗口已过期且未选厂时先关单再建新单；未填车牌禁止提交
  */
 async function createBidding(pool, userId, body) {
-  const { report_id, range, insurance_info, vehicle_info, latitude, longitude } = body || {};
+  const { report_id, range, insurance_info, vehicle_info, latitude, longitude, analysis_focus_vehicle_id } =
+    body || {};
   if (!report_id) {
     return { success: false, error: '定损报告ID不能为空', statusCode: 400 };
   }
@@ -279,7 +280,14 @@ async function createBidding(pool, userId, body) {
   if (trust.level === 0) {
     return { success: false, error: '您的账号等级不足，完成实名认证和车辆绑定后可发起竞价', statusCode: 403 };
   }
-  const vi = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
+  const vi = vehicle_info && typeof vehicle_info === 'object' ? { ...vehicle_info } : {};
+  const focusVid =
+    analysis_focus_vehicle_id != null && String(analysis_focus_vehicle_id).trim()
+      ? String(analysis_focus_vehicle_id).trim()
+      : '';
+  if (focusVid) {
+    vi.analysis_focus_vehicle_id = focusVid;
+  }
   const plate = (vi.plate_number || vi.plateNumber || '').trim();
   if (!plate) {
     return { success: false, error: '请填写车牌号', statusCode: 400 };
@@ -348,8 +356,30 @@ async function createBidding(pool, userId, body) {
     `INSERT INTO biddings (bidding_id, user_id, report_id, vehicle_info, 
      insurance_info, range_km, status, expire_at, tier1_window_ends_at, created_at) 
      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
-    [biddingId, userId, report_id, JSON.stringify(vehicle_info || {}), JSON.stringify(insurance_info || {}), range || 5, expireAt, tier1WindowEndsAt]
+    [biddingId, userId, report_id, JSON.stringify(vi), JSON.stringify(insurance_info || {}), range || 5, expireAt, tier1WindowEndsAt]
   );
+  if (focusVid) {
+    try {
+      const [drRows] = await pool.execute(
+        'SELECT vehicle_info FROM damage_reports WHERE report_id = ? AND user_id = ?',
+        [report_id, userId]
+      );
+      if (drRows.length) {
+        let drVi = {};
+        try {
+          drVi = typeof drRows[0].vehicle_info === 'string' ? JSON.parse(drRows[0].vehicle_info || '{}') : drRows[0].vehicle_info || {};
+        } catch (_) {}
+        drVi.analysis_focus_vehicle_id = focusVid;
+        await pool.execute('UPDATE damage_reports SET vehicle_info = ? WHERE report_id = ? AND user_id = ?', [
+          JSON.stringify(drVi),
+          report_id,
+          userId,
+        ]);
+      }
+    } catch (e) {
+      console.warn(`${LOG_PREFIX} merge analysis_focus_vehicle_id to damage_reports:`, e.message);
+    }
+  }
   try {
     await biddingDistribution.runBiddingDistribution(pool, biddingId);
   } catch (distErr) {

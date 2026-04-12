@@ -13,6 +13,7 @@ const {
 const { getNavBarHeight } = require('../../../../utils/util');
 const { PARTS_TYPES } = require('../../../../utils/parts-types');
 const { parseApiErrorFromArrayBuffer, mapImportedRowsToPlanItems } = require('../../../../utils/merchant-quote-import-helpers');
+const { mergeHumanDisplayFromAnalysis, filterDamagesByFocus } = require('../../../../utils/analysis-human-display');
 
 const logger = getLogger('MerchantBiddingDetail');
 
@@ -31,42 +32,9 @@ const ACCIDENT_TYPE_LABELS = {
   self_main: '己方主责'
 };
 
-function mergeHumanDisplayFromAnalysis(ar) {
-  const empty = { obvious_damage: [], possible_damage: [], repair_advice: [] };
-  if (!ar || typeof ar !== 'object') return empty;
-  const vi = Array.isArray(ar.vehicle_info) ? ar.vehicle_info : [];
-  if (vi.length === 0) {
-    const h = ar.human_display;
-    if (h && typeof h === 'object') {
-      return {
-        obvious_damage: Array.isArray(h.obvious_damage) ? h.obvious_damage : [],
-        possible_damage: Array.isArray(h.possible_damage) ? h.possible_damage : [],
-        repair_advice: Array.isArray(h.repair_advice) ? h.repair_advice : []
-      };
-    }
-    return empty;
-  }
-  const o = [];
-  const p = [];
-  const r = [];
-  const multi = vi.length > 1;
-  for (const v of vi) {
-    const h = v.human_display;
-    if (!h || typeof h !== 'object') continue;
-    const vid = (v.vehicleId || '').trim();
-    const prefix = multi && vid ? `（${vid}）` : '';
-    (h.obvious_damage || []).forEach((t) => o.push(prefix + t));
-    (h.possible_damage || []).forEach((t) => p.push(prefix + t));
-    (h.repair_advice || []).forEach((t) => r.push(prefix + t));
-  }
-  return { obvious_damage: o, possible_damage: p, repair_advice: r };
-}
-
-function analysisHasReportSection(ar, humanDisplay) {
+function analysisHasReportSection(ar, humanDisplay, damagesFiltered) {
   if (!ar || typeof ar !== 'object') return false;
-  const te = ar.total_estimate;
-  if (Array.isArray(te) && te.length >= 2 && (Number(te[0]) > 0 || Number(te[1]) > 0)) return true;
-  const d = ar.damages;
+  const d = damagesFiltered != null ? damagesFiltered : ar.damages || [];
   if (Array.isArray(d) && d.length > 0) return true;
   const hd = humanDisplay || {};
   const n =
@@ -106,6 +74,7 @@ Page({
     importBusy: false,
     aiReportExpanded: false,
     reportHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
+    reportDamagesDisplay: [],
     reportHasHumanLines: false,
     reportHasAnalysisSection: false
   },
@@ -134,8 +103,11 @@ Page({
       }
       const hasAi = !!(res.analysis_result && res.analysis_result.repair_suggestions && res.analysis_result.repair_suggestions.length > 0);
       const ar = res.analysis_result || {};
-      const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar);
-      const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay);
+      const viBid = res.vehicle_info && typeof res.vehicle_info === 'object' ? res.vehicle_info : {};
+      const focusId = viBid.analysis_focus_vehicle_id || '';
+      const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar, focusId);
+      const reportDamagesDisplay = filterDamagesByFocus(ar.damages || [], focusId);
+      const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay, reportDamagesDisplay);
       const reportHasHumanLines =
         (Array.isArray(reportHumanDisplay.obvious_damage) ? reportHumanDisplay.obvious_damage.length : 0) +
           (Array.isArray(reportHumanDisplay.possible_damage) ? reportHumanDisplay.possible_damage.length : 0) +
@@ -147,6 +119,7 @@ Page({
         duration: res.my_quote ? res.my_quote.duration : '',
         remark: res.my_quote ? (res.my_quote.remark || '') : '',
         reportHumanDisplay,
+        reportDamagesDisplay,
         reportHasAnalysisSection,
         reportHasHumanLines,
         aiReportExpanded: false

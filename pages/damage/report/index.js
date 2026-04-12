@@ -1,37 +1,7 @@
 // 定损报告详情（从历史进入）
 const { getDamageReport } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
-
-function mergeHumanDisplay(ar) {
-  const empty = { obvious_damage: [], possible_damage: [], repair_advice: [] };
-  if (!ar || typeof ar !== 'object') return empty;
-  const vi = Array.isArray(ar.vehicle_info) ? ar.vehicle_info : [];
-  if (vi.length === 0) {
-    const h = ar.human_display;
-    if (h && typeof h === 'object') {
-      return {
-        obvious_damage: Array.isArray(h.obvious_damage) ? h.obvious_damage : [],
-        possible_damage: Array.isArray(h.possible_damage) ? h.possible_damage : [],
-        repair_advice: Array.isArray(h.repair_advice) ? h.repair_advice : []
-      };
-    }
-    return empty;
-  }
-  const o = [];
-  const p = [];
-  const r = [];
-  const multi = vi.length > 1;
-  for (const v of vi) {
-    const h = v.human_display;
-    if (!h || typeof h !== 'object') continue;
-    const vid = (v.vehicleId || '').trim();
-    const prefix = multi && vid ? `（${vid}）` : '';
-    (h.obvious_damage || []).forEach((t) => o.push(prefix + t));
-    (h.possible_damage || []).forEach((t) => p.push(prefix + t));
-    (h.repair_advice || []).forEach((t) => r.push(prefix + t));
-  }
-  return { obvious_damage: o, possible_damage: p, repair_advice: r };
-}
+const { mergeHumanDisplayFromAnalysis } = require('../../../utils/analysis-human-display');
 
 Page({
   data: {
@@ -60,6 +30,8 @@ Page({
     try {
       const res = await getDamageReport(id);
       const ar = res.analysis_result || res;
+      const viMeta = res.vehicle_info && typeof res.vehicle_info === 'object' ? res.vehicle_info : {};
+      const focusId = viMeta.analysis_focus_vehicle_id || '';
       const report = {
         report_id: res.report_id,
         damage_level: ar.damage_level,
@@ -67,7 +39,7 @@ Page({
         warranty: ar.warranty,
         damages: ar.damages || [],
         repair_suggestions: ar.repair_suggestions || [],
-        human_display: mergeHumanDisplay(ar)
+        human_display: mergeHumanDisplayFromAnalysis(ar, focusId)
       };
       this.setData({ report, reportId: id, loading: false });
     } catch (err) {
