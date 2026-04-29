@@ -89,7 +89,7 @@ function enrichReviewV3PublicCard(row) {
   const base = {
     ...row,
     v3SubmitLayout,
-    pubExpand: { quote: false, repair: false, parts: false },
+    pubExpand: { process: false, quote: false, repair: false, parts: false },
   };
   if (!v3SubmitLayout) return base;
   const sc = row.systemChecks || null;
@@ -97,8 +97,22 @@ function enrichReviewV3PublicCard(row) {
   const cred = Array.isArray(row.quote_credential_urls)
     ? row.quote_credential_urls.map((u) => String(u || '').trim()).filter(Boolean)
     : [];
+  const procStar = parseStar15(oa.process_transparency_star);
+  const hasProcessTransparencyStar = procStar > 0;
+  const hp = hasProcessTransparencyStar;
+  const v3num = {
+    process: 1,
+    quote: hp ? 2 : 1,
+    repair: hp ? 3 : 2,
+    parts: hp ? 4 : 3,
+    service: hp ? 5 : 4,
+    supplement: hp ? 6 : 5,
+  };
   return {
     ...base,
+    hasProcessTransparencyStar,
+    pubProcessStar: procStar,
+    v3num,
     pubQuoteStar: parseStar15(oa.quote_transparency_star),
     pubRepairStar: parseStar15(oa.repair_effect_star),
     pubPartsStar: parseStar15(oa.parts_traceability_star),

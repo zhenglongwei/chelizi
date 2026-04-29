@@ -1,6 +1,6 @@
 /**
  * 管理端服务
- * 按领域拆分：登录、merchants、orders、config、reward-rules、review-audit、complexity-upgrade、antifraud
+ * 按领域拆分：登录、merchants、orders、config、reward-rules、antifraud
  */
 
 const crypto = require('crypto');
@@ -23,10 +23,39 @@ async function login(db, req, options = {}) {
   return { success: false, error: '用户名或密码错误', statusCode: 401 };
 }
 
+/**
+ * Express 的 req.query 里 page/pageSize 常为字符串；若为 '' 则 parseInt 为 NaN，
+ * 传入 LIMIT ? OFFSET ? 会触发 MySQL：Incorrect arguments to mysqld_stmt_execute
+ */
+function normalizePagination(query, defaultPage = 1, defaultPageSize = 20, maxPageSize = 100) {
+  const q = query || {};
+  let page = parseInt(q.page, 10);
+  let pageSize = parseInt(q.pageSize, 10);
+  if (!Number.isFinite(page) || page < 1) page = defaultPage;
+  if (!Number.isFinite(pageSize) || pageSize < 1) pageSize = defaultPageSize;
+  pageSize = Math.min(maxPageSize, pageSize);
+  const offset = (page - 1) * pageSize;
+  return { page, pageSize, offset };
+}
+
+/**
+ * mysql2 的 execute（二进制协议）在部分 MySQL/MariaDB 上对 LIMIT/OFFSET 占位符支持差，
+ * 会报 Incorrect arguments to mysqld_stmt_execute。分页数字已由 normalizePagination 约束为安全整数，
+ * 此处写入 SQL 字面量（非用户原始字符串拼接）。
+ */
+function sqlLimitOffsetFragment(pageSize, offset, maxLimit = 500) {
+  const lim = Math.trunc(Number(pageSize));
+  const off = Math.trunc(Number(offset));
+  if (!Number.isFinite(lim) || !Number.isFinite(off) || lim < 1 || lim > maxLimit || off < 0) {
+    throw new Error('分页参数非法');
+  }
+  return ` LIMIT ${lim} OFFSET ${off}`;
+}
+
 // ===================== 服务商 merchants =====================
 async function getMerchants(db, req) {
-  const { page = 1, pageSize = 10, auditStatus, qualificationAuditStatus, keyword } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(pageSize);
+  const { auditStatus, qualificationAuditStatus, keyword } = req.query;
+  const { pageSize, offset } = normalizePagination(req.query, 1, 10, 100);
 
   let where = 'WHERE 1=1';
   const params = [];
@@ -57,8 +86,8 @@ async function getMerchants(db, req) {
      LEFT JOIN shops s ON mu.shop_id = s.shop_id
      ${where}
      ORDER BY mu.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, parseInt(pageSize), offset]
+     ${sqlLimitOffsetFragment(pageSize, offset)}`,
+    [...params]
   );
 
   const [countRes] = await db.execute(
@@ -78,7 +107,7 @@ async function getMerchants(db, req) {
     return { ...row, technicianCerts };
   });
 
-  return { success: true, data: { list: listWithCerts, total: countRes[0].total } };
+  return { success: true, data: { list: listWithCerts, total: Number(countRes[0].total) } };
 }
 
 async function qualificationAudit(db, req) {
@@ -166,8 +195,8 @@ async function merchantAudit(db, req) {
 
 // ===================== 订单 orders =====================
 async function getOrders(db, req) {
-  const { page = 1, pageSize = 20, orderNo, status, ownerId, merchantId, startDate, endDate } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(pageSize);
+  const { orderNo, status, ownerId, merchantId, startDate, endDate } = req.query;
+  const { pageSize, offset } = normalizePagination(req.query, 1, 20, 100);
 
   let where = 'WHERE 1=1';
   const params = [];
@@ -189,8 +218,8 @@ async function getOrders(db, req) {
      LEFT JOIN shops s ON o.shop_id = s.shop_id
      ${where}
      ORDER BY o.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, parseInt(pageSize), offset]
+     ${sqlLimitOffsetFragment(pageSize, offset)}`,
+    [...params]
   );
 
   const [countRes] = await db.execute(
@@ -198,7 +227,7 @@ async function getOrders(db, req) {
     params
   );
 
-  return { success: true, data: { list, total: countRes[0].total } };
+  return { success: true, data: { list, total: Number(countRes[0].total) } };
 }
 
 async function getOrderDetail(db, req) {
@@ -217,6 +246,57 @@ async function getOrderDetail(db, req) {
   }
 
   const order = orders[0];
+
+  // 拆检费/拆检收据等线下留痕（用于“取消交易处置”判断）
+  let offlineFeeProofs = [];
+  try {
+    const [proofRows] = await db.execute(
+      `SELECT proof_id, uploader_type, uploader_id, proof_kind, amount, note, image_urls, created_at
+       FROM order_offline_fee_proofs
+       WHERE order_id = ?
+       ORDER BY created_at DESC`,
+      [orderNo]
+    );
+    offlineFeeProofs = (proofRows || []).map((r) => {
+      let urls = r.image_urls;
+      if (typeof urls === 'string') {
+        try { urls = JSON.parse(urls || '[]'); } catch (_) { urls = []; }
+      }
+      return { ...r, image_urls: Array.isArray(urls) ? urls : [] };
+    });
+  } catch (_) {
+    offlineFeeProofs = [];
+  }
+
+  // 最近一次“取消交易处置结案”事件摘要（可选展示）
+  let cancelDisposal = null;
+  try {
+    const [evtRows] = await db.execute(
+      `SELECT event_id, event_type, actor_type, actor_id, payload, created_at
+       FROM order_lifecycle_events
+       WHERE order_id = ? AND event_type IN ('cancel_disposal_closed')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [orderNo]
+    );
+    if (evtRows && evtRows.length > 0) {
+      const e = evtRows[0];
+      let payload = e.payload;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload || '{}'); } catch (_) { payload = {}; }
+      }
+      cancelDisposal = {
+        event_id: e.event_id,
+        event_type: e.event_type,
+        actor_type: e.actor_type,
+        actor_id: e.actor_id,
+        payload: payload && typeof payload === 'object' ? payload : {},
+        created_at: e.created_at,
+      };
+    }
+  } catch (_) {
+    cancelDisposal = null;
+  }
 
   // 奖励金记录：transactions.related_id 存的是 review_id，需通过 reviews 关联
   const [rebateRows] = await db.execute(
@@ -318,6 +398,8 @@ async function getOrderDetail(db, req) {
     order: {
       orderNo: order.order_id,
       status: order.status,
+      lifecycle_main: order.lifecycle_main || null,
+      lifecycle_sub: order.lifecycle_sub || null,
       quotedAmount: order.quoted_amount,
       actualAmount: order.actual_amount,
       orderTier: order.order_tier,
@@ -363,6 +445,8 @@ async function getOrderDetail(db, req) {
     review,
     reviewList: reviewList || [],
     settlementProofs,
+    offline_fee_proofs: offlineFeeProofs,
+    cancel_disposal: cancelDisposal,
   };
 
   return { success: true, data: orderDetail };
@@ -374,26 +458,36 @@ async function auditQuote(db, req) {
 
 // ===================== 统计 statistics =====================
 async function getStatistics(db, req) {
-  const { startDate, endDate } = req.query;
+  const startRaw = req.query.startDate;
+  const endRaw = req.query.endDate;
+  const startDate = Array.isArray(startRaw) ? startRaw[0] : startRaw;
+  const endDate = Array.isArray(endRaw) ? endRaw[0] : endRaw;
 
-  const [userCount] = await db.execute('SELECT COUNT(*) as c FROM users WHERE status = 1');
-  const [shopCount] = await db.execute('SELECT COUNT(*) as c FROM shops WHERE status = 1');
-  const [orderCount] = await db.execute('SELECT COUNT(*) as c FROM orders');
-  const [orderAmount] = await db.execute('SELECT COALESCE(SUM(quoted_amount), 0) as total FROM orders WHERE status = 3');
-  const [completedCount] = await db.execute('SELECT COUNT(*) as c FROM orders WHERE status = 3');
-  const [todayOrders] = await db.execute(
+  // 统计类聚合走 query（文本协议），避免部分环境下 execute 预处理与 GROUP BY 等组合触发 stmt_execute 异常
+  const [userCount] = await db.query('SELECT COUNT(*) as c FROM users WHERE status = 1');
+  const [shopCount] = await db.query('SELECT COUNT(*) as c FROM shops WHERE status = 1');
+  const [orderCount] = await db.query('SELECT COUNT(*) as c FROM orders');
+  const [orderAmount] = await db.query('SELECT COALESCE(SUM(quoted_amount), 0) as total FROM orders WHERE status = 3');
+  const [completedCount] = await db.query('SELECT COUNT(*) as c FROM orders WHERE status = 3');
+  const [todayOrders] = await db.query(
     "SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) = CURDATE()"
   );
-  const [todayAmount] = await db.execute(
+  const [todayAmount] = await db.query(
     "SELECT COALESCE(SUM(quoted_amount), 0) as total FROM orders WHERE status = 3 AND DATE(COALESCE(completed_at, updated_at)) = CURDATE()"
   );
 
   let monthlyWhere = '';
   const monthlyParams = [];
-  if (startDate) { monthlyWhere += ' AND DATE(created_at) >= ?'; monthlyParams.push(startDate); }
-  if (endDate) { monthlyWhere += ' AND DATE(created_at) <= ?'; monthlyParams.push(endDate); }
+  if (startDate) {
+    monthlyWhere += ' AND DATE(created_at) >= ?';
+    monthlyParams.push(String(startDate).slice(0, 10));
+  }
+  if (endDate) {
+    monthlyWhere += ' AND DATE(created_at) <= ?';
+    monthlyParams.push(String(endDate).slice(0, 10));
+  }
 
-  const [monthlyRows] = await db.execute(
+  const [monthlyRows] = await db.query(
     `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count
      FROM orders WHERE 1=1 ${monthlyWhere}
      GROUP BY DATE_FORMAT(created_at, '%Y-%m')
@@ -404,16 +498,16 @@ async function getStatistics(db, req) {
   const monthlyOrders = {};
   monthlyRows.forEach(r => { monthlyOrders[r.month] = r.count; });
 
-  const total = orderCount[0].c;
-  const completed = completedCount[0].c;
+  const total = Number(orderCount[0].c);
+  const completed = Number(completedCount[0].c);
   const completionRate = total > 0 ? ((completed / total) * 100).toFixed(2) : 0;
 
-  const [rewardTotalRow] = await db.execute(
+  const [rewardTotalRow] = await db.query(
     "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'rebate' AND amount > 0"
   );
   const rewardTotal = parseFloat(rewardTotalRow[0]?.total || 0);
 
-  const [rewardByTier] = await db.execute(
+  const [rewardByTier] = await db.query(
     `SELECT COALESCE(reward_tier, 0) as tier, SUM(amount) as total
      FROM transactions WHERE type = 'rebate' AND amount > 0
      GROUP BY reward_tier`
@@ -424,7 +518,7 @@ async function getStatistics(db, req) {
     rewardDistributionByTier[tierNames[r.tier] || `第${r.tier}级`] = parseFloat(r.total || 0);
   });
 
-  const [rewardByStage] = await db.execute(
+  const [rewardByStage] = await db.query(
     `SELECT COALESCE(review_stage, 'main') as stage, SUM(amount) as total
      FROM transactions WHERE type = 'rebate' AND amount > 0
      GROUP BY review_stage`
@@ -438,11 +532,11 @@ async function getStatistics(db, req) {
   return {
     success: true,
     data: {
-      totalUsers: userCount[0].c,
-      totalMerchants: shopCount[0].c,
+      totalUsers: Number(userCount[0].c),
+      totalMerchants: Number(shopCount[0].c),
       totalOrders: total,
       totalOrderAmount: parseFloat(orderAmount[0].total),
-      todayOrders: todayOrders[0].c,
+      todayOrders: Number(todayOrders[0].c),
       todayAmount: parseFloat(todayAmount[0]?.total || 0),
       completionRate: parseFloat(completionRate),
       monthlyOrders,
@@ -724,6 +818,16 @@ async function saveRewardRulesConfig(db, req) {
       merged.commissionRepair = existing.commissionRepair;
     }
   }
+  if (
+    typeof incoming.platformIncentiveV1 === 'object' &&
+    incoming.platformIncentiveV1 !== null &&
+    typeof existing.platformIncentiveV1 === 'object' &&
+    existing.platformIncentiveV1 !== null
+  ) {
+    merged.platformIncentiveV1 = { ...existing.platformIncentiveV1, ...incoming.platformIncentiveV1 };
+  } else if (!Object.prototype.hasOwnProperty.call(incoming, 'platformIncentiveV1') && existing.platformIncentiveV1) {
+    merged.platformIncentiveV1 = existing.platformIncentiveV1;
+  }
   const levels = merged.complexityLevels;
   if (!Array.isArray(levels) || levels.length === 0) {
     return { success: false, error: '模块1 复杂度等级不能为空，请至少配置一条', statusCode: 400 };
@@ -793,348 +897,8 @@ async function saveCommissionRulesConfig(db, req) {
   return { success: true, message: '保存成功' };
 }
 
-// ===================== 评价审核 review-audit =====================
-
-/** MySQL / mysql2 可能将别名转为小写，统一取出 ai_analysis */
-function coalesceReviewField(row, ...keys) {
-  for (const k of keys) {
-    if (row && Object.prototype.hasOwnProperty.call(row, k)) {
-      const v = row[k];
-      if (v !== undefined && v !== null && v !== '') return v;
-    }
-  }
-  for (const k of keys) {
-    if (row && Object.prototype.hasOwnProperty.call(row, k) && row[k] != null) return row[k];
-  }
-  return null;
-}
-
-/** 运营列表「评级说明」：无效评价展示主因+指引；无结构化数据时说明原因 */
-function computeRatingReasonDetail(aiRaw, contentQuality) {
-  if (Buffer.isBuffer(aiRaw)) {
-    try {
-      return computeRatingReasonDetail(JSON.parse(aiRaw.toString('utf8')), contentQuality);
-    } catch {
-      return aiRaw.toString('utf8').trim().slice(0, 800) || '';
-    }
-  }
-  if (aiRaw !== undefined && aiRaw !== null && typeof aiRaw === 'object' && !Array.isArray(aiRaw)) {
-    const o = aiRaw;
-    if (o.pending_human_audit === true) {
-      const rr = String(o.reject_reason || o.primary_reason || '').trim();
-      const hints = Array.isArray(o.improvement_hints)
-        ? o.improvement_hints.map((x) => String(x || '').trim()).filter(Boolean)
-        : [];
-      const op = o.ai_details && typeof o.ai_details === 'object' ? o.ai_details.operationsReview : null;
-      const opExtra = [];
-      if (op && typeof op === 'object') {
-        const sum = String(op.summary || '').trim();
-        const items = Array.isArray(op.notMetItems)
-          ? op.notMetItems.map((x) => String(x || '').trim()).filter(Boolean)
-          : [];
-        if (sum) opExtra.push(`运营摘要：${sum}`);
-        if (items.length) opExtra.push(`未达标要点：${items.map((t, i) => `${i + 1}.${t}`).join(' ')}`);
-      }
-      const parts = [rr, ...hints, ...opExtra].filter(Boolean);
-      return '【待人工裁定·千问】' + (parts.length ? parts.join('｜') : '（请展开 JSON 查看 ai_details.operationsReview）');
-    }
-    if (o.invalid_submission === true) {
-      const pr = String(o.primary_reason || '').trim();
-      const hints = Array.isArray(o.improvement_hints)
-        ? o.improvement_hints.map((x) => String(x || '').trim()).filter(Boolean)
-        : [];
-      const src = o.source ? `〔来源：${o.source}〕` : '';
-      const parts = [pr, ...hints].filter(Boolean);
-      if (parts.length) return (src ? `${src} ` : '') + parts.join('；');
-      return '无效评价：已标记为强行提交，但 ai_analysis 缺少 primary_reason 字段，请直接查看库内 JSON。';
-    }
-    const cqReason = o.contentQuality?.reason || o.contentQuality?.explain || o.rejectReason;
-    if (cqReason) return String(cqReason);
-    const qual = o.contentQuality?.quality;
-    if (qual) return `AI 内容档位：${qual}`;
-    return '';
-  }
-  if (aiRaw === undefined || aiRaw === null || aiRaw === '') {
-    if (contentQuality === 'invalid') {
-      return (
-        '无效评价：库中无主因记录（多为历史数据，入库时未写入 ai_analysis）。' +
-        '请结合本行「内容」正文、评分与订单详情判断；新产生的无效评价会记录具体未达标原因与改进指引。'
-      );
-    }
-    return '';
-  }
-  if (typeof aiRaw === 'string') {
-    try {
-      return computeRatingReasonDetail(JSON.parse(aiRaw), contentQuality);
-    } catch {
-      return String(aiRaw).trim().slice(0, 800) || '';
-    }
-  }
-  return '';
-}
-
-/** 从 reviews.review_system_checks 解析车主对系统/AI 归纳的认可摘要（供审核池 ai_divergence 与列表展示） */
-function parseReviewUserAiAlignmentMeta(reviewSystemChecksRaw) {
-  let chk = reviewSystemChecksRaw;
-  if (chk == null || chk === '') {
-    return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
-  }
-  if (typeof chk === 'string') {
-    try {
-      chk = JSON.parse(chk);
-    } catch {
-      return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
-    }
-  }
-  const ua = chk && typeof chk === 'object' ? chk.user_ai_alignment : null;
-  if (!ua || typeof ua !== 'object') {
-    return { hasAiAlignmentDivergence: false, userAiAlignmentBrief: '' };
-  }
-  const div = ua.has_divergence === 1 || ua.has_divergence === true;
-  const dims = ['quote_flow', 'appearance', 'parts_delivery'];
-  const parts = [];
-  for (const d of dims) {
-    const x = ua[d];
-    if (x && x.stance === 'override') {
-      const note = x.note ? `「${String(x.note).slice(0, 24)}」` : '';
-      parts.push(`${d}:${x.reason_code || '?'}${note}`);
-    }
-  }
-  return {
-    hasAiAlignmentDivergence: !!div,
-    userAiAlignmentBrief: parts.join('；') || (div ? '已标记不认可' : ''),
-  };
-}
-
-/** 星级 vs 系统/AI 归纳自动矛盾（review_system_checks.star_ai_anomaly） */
-function parseStarAiAnomalyMeta(reviewSystemChecksRaw) {
-  let chk = reviewSystemChecksRaw;
-  if (chk == null || chk === '') {
-    return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
-  }
-  if (typeof chk === 'string') {
-    try {
-      chk = JSON.parse(chk);
-    } catch {
-      return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
-    }
-  }
-  const sa = chk && typeof chk === 'object' ? chk.star_ai_anomaly : null;
-  if (!sa || typeof sa !== 'object') {
-    return { hasStarAiAnomaly: false, starAiAnomalyBrief: '', starAiAnomalyItems: [] };
-  }
-  const has = sa.has_anomaly === true || Number(sa.flag) === 1;
-  const items = Array.isArray(sa.items) ? sa.items : [];
-  const brief = items
-    .map((x) => String(x?.summary || '').trim().slice(0, 72))
-    .filter(Boolean)
-    .join('｜')
-    .slice(0, 240);
-  return { hasStarAiAnomaly: !!has, starAiAnomalyBrief: brief, starAiAnomalyItems: items };
-}
-
-function normalizeReviewAuditListRow(row) {
-  const r = { ...row };
-  r.aiAnalysis = coalesceReviewField(row, 'aiAnalysis', 'aianalysis', 'ai_analysis');
-  const cq = coalesceReviewField(row, 'contentQuality', 'contentquality', 'content_quality');
-  if (cq != null) r.contentQuality = cq;
-  const cl = coalesceReviewField(row, 'contentQualityLevel', 'contentqualitylevel', 'content_quality_level');
-  if (cl != null) r.contentQualityLevel = cl;
-  const rs = coalesceReviewField(row, 'reviewStatus', 'reviewstatus', 'review_status');
-  if (rs != null) r.reviewStatus = rs;
-  const ar = coalesceReviewField(row, 'auditResult', 'auditresult');
-  if (ar != null) r.auditResult = ar;
-  r.ratingReasonDetail = computeRatingReasonDetail(r.aiAnalysis, r.contentQuality);
-  return r;
-}
-
-async function getReviewAuditList(db, req) {
-  const { page = 1, pageSize = 20, status, pool: auditPool } = req.query; // auditPool 避免与 db pool 冲突
-  const offset = (parseInt(page) - 1) * parseInt(pageSize);
-  let where = 'WHERE 1=1';
-  const params = [];
-
-  if (auditPool === 'mandatory') {
-    where += ` AND (
-      o.complexity_level IN ('L3','L4')
-      OR COALESCE(r.reward_amount, r.rebate_amount, 0) > 800
-    )`;
-  }
-  if (auditPool === 'sample') {
-    const sampleRate = 5;
-    where += ` AND o.complexity_level IN ('L1','L2') AND (CRC32(r.review_id) % 100) < ?`;
-    params.push(sampleRate);
-  }
-  if (auditPool === 'human_ai_pending') {
-    where += ` AND r.content_quality = 'pending_human'`;
-  }
-  if (auditPool === 'ai_divergence') {
-    where += ` AND IFNULL(JSON_EXTRACT(r.review_system_checks, '$.user_ai_alignment.has_divergence'), 0) = 1`;
-  }
-  if (auditPool === 'star_ai_anomaly') {
-    where += ` AND IFNULL(JSON_UNQUOTE(JSON_EXTRACT(r.review_system_checks, '$.star_ai_anomaly.flag')), '0') = '1'`;
-  }
-
-  const [list] = await db.execute(
-    `SELECT r.review_id as reviewId, r.order_id as orderId, r.type, r.review_stage as reviewStage, r.rating, r.content, r.created_at as createTime,
-            r.reward_amount as rewardAmount, o.complexity_level as complexityLevel,
-            r.status as reviewStatus, r.content_quality as contentQuality, r.content_quality_level as contentQualityLevel,
-            r.ai_analysis as aiAnalysis,
-            r.ratings_price as quoteTransparencyStar, r.ratings_quality as repairEffectStar, r.ratings_parts as partsTraceabilityStar,
-            r.review_system_checks as reviewSystemChecksRaw,
-            r.settlement_list_image as settlementListImage, r.completion_images as completionImagesRaw, r.after_images as afterImagesRaw,
-            r.fault_evidence_images as faultEvidenceImagesRaw,
-            rl.result as auditResult, rl.missing_items as missingItems, rl.audit_type as auditType
-     FROM reviews r
-     LEFT JOIN orders o ON r.order_id = o.order_id
-     LEFT JOIN (
-       SELECT r1.review_id, r1.result, r1.missing_items, r1.audit_type
-       FROM review_audit_logs r1
-       INNER JOIN (SELECT review_id, MAX(id) as max_id FROM review_audit_logs GROUP BY review_id) r2 ON r1.review_id = r2.review_id AND r1.id = r2.max_id
-     ) rl ON r.review_id = rl.review_id
-     ${where}
-     ORDER BY r.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, parseInt(pageSize), offset]
-  );
-  const [countRes] = await db.execute(
-    `SELECT COUNT(*) as total FROM reviews r LEFT JOIN orders o ON r.order_id = o.order_id ${where}`,
-    params
-  );
-
-  let mapped = list.map((row) => {
-    const r = normalizeReviewAuditListRow(row);
-    try {
-      const comp = row.completionImagesRaw;
-      r.completionImageUrls = Array.isArray(comp) ? comp : comp ? JSON.parse(comp) : [];
-    } catch {
-      r.completionImageUrls = [];
-    }
-    try {
-      const aft = row.afterImagesRaw;
-      r.afterImageUrls = Array.isArray(aft) ? aft : aft ? JSON.parse(aft) : [];
-    } catch {
-      r.afterImageUrls = [];
-    }
-    try {
-      const fe = row.faultEvidenceImagesRaw;
-      r.faultEvidenceUrls = Array.isArray(fe) ? fe : fe ? JSON.parse(fe) : [];
-    } catch {
-      r.faultEvidenceUrls = [];
-    }
-    r.settlementListImage = row.settlementListImage || row.settlementlistimage || null;
-    const alignMeta = parseReviewUserAiAlignmentMeta(row.reviewSystemChecksRaw);
-    r.hasAiAlignmentDivergence = alignMeta.hasAiAlignmentDivergence;
-    r.userAiAlignmentBrief = alignMeta.userAiAlignmentBrief;
-    const starMeta = parseStarAiAnomalyMeta(row.reviewSystemChecksRaw);
-    r.hasStarAiAnomaly = starMeta.hasStarAiAnomaly;
-    r.starAiAnomalyBrief = starMeta.starAiAnomalyBrief;
-    r.starAiAnomalyItems = starMeta.starAiAnomalyItems;
-    delete r.completionImagesRaw;
-    delete r.afterImagesRaw;
-    delete r.faultEvidenceImagesRaw;
-    delete r.reviewSystemChecksRaw;
-    return r;
-  });
-  let resultList = mapped;
-  if (status === 'rejected') {
-    resultList = mapped.filter((r) => r.auditResult === 'reject');
-  }
-  return {
-    success: true,
-    data: {
-      list: resultList,
-      total: status === 'rejected' ? resultList.length : countRes[0]?.total || 0,
-    },
-  };
-}
-
-async function postReviewAuditManual(db, req) {
-  const { reviewId } = req.params;
-  const { result, missingItems } = req.body || {};
-  if (!result || !['pass', 'reject'].includes(result)) {
-    return { success: false, error: 'result 必填且为 pass 或 reject', statusCode: 400 };
-  }
-  const operatorId = req.adminUserId || req.adminUser || 'admin';
-  await db.execute(
-    'INSERT INTO review_audit_logs (review_id, audit_type, result, missing_items, operator_id) VALUES (?, ?, ?, ?, ?)',
-    [reviewId, 'manual', result, missingItems ? JSON.stringify(missingItems) : null, operatorId]
-  );
-  return { success: true, message: '复核完成' };
-}
-
-/** AI 驳回待人工裁定：approve=按规则发奖并展示；reject=置无效 */
-async function postReviewPendingHumanResolve(db, req) {
-  const humanAudit = require('./review-human-audit-service');
-  const { reviewId } = req.params;
-  const { decision, note } = req.body || {};
-  const operatorId = req.adminUserId || req.adminUser || 'admin';
-  if (decision === 'approve') {
-    return humanAudit.approvePendingHumanAiReview(db, reviewId, operatorId);
-  }
-  if (decision === 'reject') {
-    return humanAudit.rejectPendingHumanAiReview(db, reviewId, operatorId, note);
-  }
-  return { success: false, error: 'decision 必填：approve（裁定有效）或 reject（裁定无效）', statusCode: 400 };
-}
-
-/** 星级 vs AI 矛盾检测阈值（settings，管理端「评价审核」配置） */
-async function getReviewStarAiAnomalyConfig(db) {
-  const data = await reviewStarAiAnomalyConfig.getStarAiAnomalyConfig(db);
-  return { success: true, data };
-}
-
-async function putReviewStarAiAnomalyConfig(db, req) {
-  const next = await reviewStarAiAnomalyConfig.saveStarAiAnomalyConfig(db, req.body || {});
-  await antifraud.writeAuditLog(db, {
-    logType: 'config',
-    action: 'update',
-    targetTable: 'settings',
-    newValue: { review_star_ai_anomaly: next },
-    operatorId: req.adminUserId || 'admin',
-    ip: req.ip || req.headers?.['x-forwarded-for'],
-  });
-  return { success: true, message: '保存成功', data: next };
-}
-
-// ===================== 破格升级 complexity-upgrade =====================
-async function getComplexityUpgradeList(db, req) {
-  const { page = 1, pageSize = 20, status } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(pageSize);
-  let where = 'WHERE 1=1';
-  const params = [];
-  if (status !== undefined && status !== '') {
-    where += ' AND cur.status = ?';
-    params.push(parseInt(status));
-  }
-  const [list] = await db.execute(
-    `SELECT cur.id, cur.request_id as requestId, cur.order_id as orderId, cur.user_id as userId, cur.current_level as currentLevel,
-            cur.requested_level as requestedLevel, cur.reason, cur.status, cur.created_at as createTime,
-            u.nickname as userName
-     FROM complexity_upgrade_requests cur
-     LEFT JOIN users u ON cur.user_id = u.user_id
-     ${where}
-     ORDER BY cur.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, parseInt(pageSize), offset]
-  );
-  const [countRes] = await db.execute(`SELECT COUNT(*) as total FROM complexity_upgrade_requests cur ${where}`, params);
-  return { success: true, data: { list, total: countRes[0]?.total || 0 } };
-}
-
-async function postComplexityUpgradeAudit(db, req) {
-  const { requestId } = req.params;
-  const { status } = req.body || {};
-  if (![1, 2].includes(parseInt(status))) {
-    return { success: false, error: 'status 需为 1(通过) 或 2(拒绝)', statusCode: 400 };
-  }
-  const operatorId = req.adminUserId || req.adminUser || 'admin';
-  await db.execute(
-    'UPDATE complexity_upgrade_requests SET status = ?, auditor_id = ?, audited_at = NOW() WHERE request_id = ?',
-    [parseInt(status), operatorId, requestId]
-  );
-  return { success: true, message: '审核完成' };
-}
+// ===================== 评价审核 review-audit（已取消） =====================
+// 保留 review_audit_logs 等历史表结构，但已移除后台入口与接口。
 
 // ===================== 防刷 antifraud =====================
 async function getBlacklist(db, req) {
@@ -1232,8 +996,8 @@ async function putAntifraudConfig(db, req) {
 
 async function getViolations(db, req) {
   try {
-    const { page = 1, pageSize = 20, targetType, level, status } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const { targetType, level, status } = req.query;
+    const { pageSize, offset } = normalizePagination(req.query, 1, 20, 100);
     let where = 'WHERE 1=1';
     const params = [];
     if (targetType) { where += ' AND target_type = ?'; params.push(targetType); }
@@ -1243,8 +1007,8 @@ async function getViolations(db, req) {
       `SELECT record_id as recordId, target_type as targetType, target_id as targetId, violation_level as level,
               violation_type as violationType, related_order_id as orderId, related_review_id as reviewId,
               description, penalty_applied as penaltyApplied, status, created_at as createTime
-       FROM violation_records ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
+       FROM violation_records ${where} ORDER BY created_at DESC ${sqlLimitOffsetFragment(pageSize, offset)}`,
+      [...params]
     );
     const [countRes] = await db.execute(`SELECT COUNT(*) as total FROM violation_records ${where}`, params);
     return { success: true, data: { list, total: countRes[0]?.total || 0 } };
@@ -1300,8 +1064,8 @@ async function postViolation(db, req) {
 
 async function getAuditLogs(db, req) {
   try {
-    const { page = 1, pageSize = 50, logType, startDate, endDate } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const { logType, startDate, endDate } = req.query;
+    const { pageSize, offset } = normalizePagination(req.query, 1, 50, 200);
     let where = 'WHERE 1=1';
     const params = [];
     if (logType) { where += ' AND log_type = ?'; params.push(logType); }
@@ -1310,8 +1074,8 @@ async function getAuditLogs(db, req) {
     const [list] = await db.execute(
       `SELECT id, log_type as logType, action, target_table as targetTable, target_id as targetId,
               operator_id as operatorId, ip, created_at as createTime
-       FROM audit_logs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(pageSize), offset]
+       FROM audit_logs ${where} ORDER BY created_at DESC ${sqlLimitOffsetFragment(pageSize, offset, 200)}`,
+      [...params]
     );
     const [countRes] = await db.execute(`SELECT COUNT(*) as total FROM audit_logs ${where}`, params);
     return { success: true, data: { list, total: countRes[0]?.total || 0 } };
@@ -1382,7 +1146,7 @@ function parseDbJsonField(val, fallback = {}) {
 async function listMaterialAuditManualTasks(db) {
   const [list] = await db.execute(
     `SELECT t.task_id, t.order_id, t.shop_id, t.status, t.reject_reason, t.ai_details, t.completion_evidence, t.created_at,
-            s.name AS shop_name, o.status AS order_status
+            s.name AS shop_name, o.status AS order_status, o.quoted_amount, o.actual_amount
      FROM material_audit_tasks t
      LEFT JOIN shops s ON t.shop_id = s.shop_id
      LEFT JOIN orders o ON t.order_id = o.order_id
@@ -1392,7 +1156,32 @@ async function listMaterialAuditManualTasks(db) {
   const normalized = (list || []).map((row) => {
     const ai_details = parseDbJsonField(row.ai_details, {});
     const completion_evidence = parseDbJsonField(row.completion_evidence, {});
-    return { ...row, ai_details, completion_evidence };
+    const expected_amount =
+      row.actual_amount != null && row.actual_amount !== ''
+        ? parseFloat(row.actual_amount)
+        : row.quoted_amount != null && row.quoted_amount !== ''
+          ? parseFloat(row.quoted_amount)
+          : null;
+    const extracted_amount_raw = ai_details?.settlementCheck?.extracted_amount ?? ai_details?.extracted_amount;
+    const extracted_amount =
+      extracted_amount_raw != null && extracted_amount_raw !== '' && Number.isFinite(Number(extracted_amount_raw))
+        ? Number(extracted_amount_raw)
+        : null;
+    let diff_amount = null;
+    let diff_ratio = null;
+    if (expected_amount != null && expected_amount > 0 && extracted_amount != null) {
+      diff_amount = Math.round((extracted_amount - expected_amount) * 100) / 100;
+      diff_ratio = Math.round((Math.abs(diff_amount) / expected_amount) * 10000) / 100; // %
+    }
+    return {
+      ...row,
+      ai_details,
+      completion_evidence,
+      expected_amount,
+      extracted_amount,
+      diff_amount,
+      diff_ratio,
+    };
   });
   return { success: true, data: { list: normalized } };
 }
@@ -1413,6 +1202,95 @@ async function resolveMaterialAuditTask(db, taskId, body) {
   return { success: false, error: '请提供 approve: true（通过）或 false（驳回）', statusCode: 400 };
 }
 
+const { hasColumn: hasColumnAdmin } = require('../utils/db-utils');
+
+async function listReviewEvidenceAnomalyTasks(db) {
+  let list = [];
+  try {
+    const [r] = await db.execute(
+      `SELECT t.task_id, t.order_id, t.review_id, t.user_id, t.shop_id, t.trigger_reason, t.ai_snapshot, t.review_snapshot,
+              t.alignment_coeff, t.status, t.resolution, t.resolved_by, t.resolved_at, t.created_at,
+              s.name AS shop_name
+       FROM review_evidence_anomaly_tasks t
+       LEFT JOIN shops s ON t.shop_id = s.shop_id
+       WHERE t.status = 'pending'
+       ORDER BY t.created_at ASC`
+    );
+    list = r || [];
+  } catch (_) {
+    list = [];
+  }
+  const normalized = (list || []).map((row) => ({
+    ...row,
+    ai_snapshot: parseDbJsonField(row.ai_snapshot, {}),
+    review_snapshot: parseDbJsonField(row.review_snapshot, {}),
+  }));
+  return { success: true, data: { list: normalized } };
+}
+
+/**
+ * 评价-过程证据极端冲突人工结案：回写 reviews.evidence_alignment_coeff / anomaly_status，并重算店铺分
+ * @param {string} adminUserId JWT 中的运营账号标识
+ */
+async function resolveReviewEvidenceAnomalyTask(db, taskId, body = {}, adminUserId = 'admin') {
+  const raw = body?.evidence_alignment_coeff;
+  const c = raw === 0 || raw === '0' ? 0 : raw === 1 || raw === '1' ? 1 : null;
+  if (c === null) {
+    return { success: false, error: '请提供 evidence_alignment_coeff: 0 或 1', statusCode: 400 };
+  }
+  const resolution =
+    (body.resolution && String(body.resolution).trim().slice(0, 64)) || (c === 1 ? 'admin_restore_1' : 'admin_exclude_0');
+  const markInvalid = body.mark_review_invalid === true;
+
+  let tasks = [];
+  try {
+    const [rows] = await db.execute(
+      `SELECT * FROM review_evidence_anomaly_tasks WHERE task_id = ? AND status = 'pending' LIMIT 1`,
+      [taskId]
+    );
+    tasks = rows || [];
+  } catch (e) {
+    return { success: false, error: '异常单表未就绪', statusCode: 503 };
+  }
+  if (!tasks.length) {
+    return { success: false, error: '任务不存在或已结案', statusCode: 404 };
+  }
+  const t = tasks[0];
+
+  await db.execute(
+    `UPDATE review_evidence_anomaly_tasks SET status = 'resolved', resolution = ?, resolved_by = ?, resolved_at = NOW(), alignment_coeff = ? WHERE task_id = ?`,
+    [resolution, adminUserId || 'admin', c, taskId]
+  );
+
+  const hasCoeff = await hasColumnAdmin(db, 'reviews', 'evidence_alignment_coeff');
+  const hasAnomaly = await hasColumnAdmin(db, 'reviews', 'anomaly_status');
+  const hasCQ = await hasColumnAdmin(db, 'reviews', 'content_quality');
+
+  const parts = [];
+  const vals = [];
+  if (hasCoeff) {
+    parts.push('evidence_alignment_coeff = ?');
+    vals.push(c);
+  }
+  if (hasAnomaly) {
+    parts.push('anomaly_status = ?');
+    vals.push(c === 1 ? 'dismissed' : 'resolved');
+  }
+  if (markInvalid && hasCQ) {
+    parts.push("content_quality = 'invalid'");
+    parts.push('content_quality_level = 1');
+    parts.push('status = 0');
+  }
+  if (parts.length) {
+    vals.push(t.review_id);
+    await db.execute(`UPDATE reviews SET ${parts.join(', ')} WHERE review_id = ?`, vals);
+  }
+
+  const shopScore = require('../shop-score');
+  await shopScore.recomputeAndUpdateShopScore(db, t.shop_id);
+  return { success: true, message: '已结案' };
+}
+
 // ===================== 投诉 complaints（占位） =====================
 async function getComplaints(db, req) {
   return { success: true, data: [] };
@@ -1420,6 +1298,49 @@ async function getComplaints(db, req) {
 
 async function putComplaint(db, req) {
   return { success: true, message: '处理成功' };
+}
+
+// ===================== 取消交易处置（结案） =====================
+async function closeCancelDisposal(db, req) {
+  const { orderNo } = req.params;
+  const { note, result } = req.body || {};
+  const noteTrim = String(note || '').trim();
+  const resultTrim = String(result || '').trim();
+
+  const [orders] = await db.execute('SELECT order_id FROM orders WHERE order_id = ?', [orderNo]);
+  if (orders.length === 0) {
+    return { success: false, error: '订单不存在', statusCode: 404 };
+  }
+
+  // 没有事件表就无法留痕；这里明确报错，避免“看似结案但没记录”
+  try {
+    const [chk] = await db.execute(
+      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_lifecycle_events'`
+    );
+    if (!chk || chk.length === 0) {
+      return { success: false, error: '当前数据库未启用订单生命周期事件表，无法结案留痕', statusCode: 400 };
+    }
+  } catch (_) {}
+
+  const eventId = 'ole_' + crypto.randomBytes(12).toString('hex');
+  const payload = {
+    action: 'close_cancel_disposal',
+    result: resultTrim || null,
+    note: noteTrim || null,
+  };
+
+  await db.execute(
+    `INSERT INTO order_lifecycle_events
+      (event_id, order_id, event_type, actor_type, actor_id, payload)
+     VALUES (?, ?, 'cancel_disposal_closed', 'admin', 'admin', ?)`,
+    [eventId, orderNo, JSON.stringify(payload)]
+  );
+
+  return {
+    success: true,
+    data: { event_id: eventId, order_id: orderNo },
+    message: '已结案',
+  };
 }
 
 module.exports = {
@@ -1444,16 +1365,10 @@ module.exports = {
   getRewardRulesConfig,
   saveRewardRulesConfig,
   saveCommissionRulesConfig,
-  getReviewAuditList,
-  postReviewAuditManual,
-  postReviewPendingHumanResolve,
-  getReviewStarAiAnomalyConfig,
-  putReviewStarAiAnomalyConfig,
-  getComplexityUpgradeList,
-  postComplexityUpgradeAudit,
   getBlacklist,
   postBlacklist,
   deleteBlacklist,
+  closeCancelDisposal,
   getAntifraudConfig,
   putAntifraudConfig,
   getViolations,
@@ -1464,4 +1379,6 @@ module.exports = {
   putComplaint,
   listMaterialAuditManualTasks,
   resolveMaterialAuditTask,
+  listReviewEvidenceAnomalyTasks,
+  resolveReviewEvidenceAnomalyTask,
 };

@@ -73,8 +73,8 @@
             <view class="search-card-info">
               <text class="search-card-name text-primary fs-body fw-bold">{{item.name}}</text>
               <view class="search-card-rating">
-                <text class="star-full text-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
-                <text class="rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+                <text wx:if="{{item.showPublicScore}}" class="star-full text-star {{item.scoreNum >= 90 ? 'star-gold' : (item.scoreNum < 60 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                <text class="rating-txt text-muted fs-cap">{{item.ratingLine}}</text>
               </view>
               <text class="search-card-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
               <text class="search-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>

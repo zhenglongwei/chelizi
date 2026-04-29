@@ -104,8 +104,7 @@ Page({
   onItemTap(e) {
     const id = e.currentTarget.dataset.id;
     if (id) {
-      wx.setStorageSync('pendingReportId', id);
-      navigation.switchTab('/pages/damage/upload/index');
+      wx.navigateTo({ url: '/pages/damage/report/index?id=' + encodeURIComponent(id) });
     }
   },
 

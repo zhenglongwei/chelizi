@@ -1,8 +1,7 @@
 /**
  * 评价聚合页
  */
-@import '../../../styles/review-public-polish.wxss';
-@import '../../../styles/review-linear.wxss';
+@import '../../../styles/reviews-feed.wxss';
 .feed-page {
   min-height: 100vh;
   background: var(--bg-page);
@@ -323,6 +322,21 @@
 .feed-like-icon {
   width: 32rpx;
   height: 32rpx;
+}
+
+.feed-referral-share-btn {
+  margin: 0;
+  padding: 0 var(--space-sm);
+  height: auto;
+  line-height: 1.4;
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  font-size: var(--fs-cap);
+}
+
+.feed-referral-share-btn::after {
+  border: none;
 }
 
 .feed-dislike {

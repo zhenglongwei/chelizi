@@ -1,0 +1,15 @@
+.reward-rules-page {
+  padding: 24rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+.section {
+  margin-bottom: 24rpx;
+}
+.section-title {
+  margin-bottom: 16rpx;
+}
+.block {
+  display: block;
+  line-height: 1.6;
+  margin-bottom: 12rpx;
+}

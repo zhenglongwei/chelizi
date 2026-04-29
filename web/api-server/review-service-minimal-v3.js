@@ -9,11 +9,14 @@ const reviewValidator = require('./review-validator');
 const objectiveSchema = require('./utils/review-objective-schema');
 const shopScore = require('./shop-score');
 const reviewSystemCheckService = require('./services/review-system-check-service');
-const { analyzeExteriorRepairDegreeWithQwen, analyzeReviewWithQwen } = require('./qwen-analyzer');
+const { analyzeExteriorRepairDegreeWithQwen, analyzeReviewEvidenceContradictionWithQwen } = require('./qwen-analyzer');
 const { computeStarAiAnomaly } = require('./utils/review-star-ai-anomaly');
 const { getStarAiAnomalyConfig } = require('./utils/review-star-ai-anomaly-config');
 const { normalizeReviewPublicMedia, anyPublicMediaSelected } = require('./utils/review-public-media');
 const { jsonStringifyForDb } = require('./utils/json-stringify-safe');
+const orderRewardCap = require('./services/order-reward-cap-service');
+const { preWithholdLaborRemunerationEachPayment } = require('./utils/labor-remuneration-withhold');
+const reviewEvidenceAlignment = require('./services/review-evidence-alignment-service');
 
 async function hasColumn(pool, table, col) {
   try {
@@ -78,9 +81,11 @@ function resolveOwnerAlwaysPublicUrls(m3, completionArr, settlementImage, faultE
 }
 
 function hasLowStarDivergence(m3) {
+  const proc = parseInt(m3.process_transparency_star, 10);
   const q = parseInt(m3.quote_transparency_star, 10);
   const p = parseInt(m3.parts_traceability_star, 10);
   const r = parseInt(m3.repair_effect_star, 10);
+  if (!Number.isNaN(proc) && proc <= 2) return true;
   if (!Number.isNaN(q) && q <= 2) return true;
   if (!Number.isNaN(p) && p <= 2) return true;
   if (!Number.isNaN(r) && r <= 2) return true;
@@ -249,6 +254,8 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
     !Number.isNaN(partsStar) && partsStar >= 1 && partsStar <= 5 ? partsStar : ratingNum;
   const eligibility = await antifraud.getRewardEligibility(pool, userId);
   const level = eligibility.level;
+  const rewardRulesSnapshot = await rewardCalculator.getRewardRules(pool);
+  const pv1Global = rewardRulesSnapshot.platformIncentiveV1 || {};
   const commissionCapRatio = 1.0;
   const maxByCommission = (rewardResult.commission_amount || 0) * commissionCapRatio;
   if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
@@ -258,7 +265,7 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
   let usedAiAudit = false;
   let aiResult = null;
 
-  if (apiKey && contentForCheck) {
+  if (apiKey) {
     try {
       const baseUrl = opts.baseUrl || (process.env.BASE_URL || ((req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${opts.port || 3000}`)));
       const toAbsolute = (u) => {
@@ -268,7 +275,10 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
       };
       const repairProjects = (quoteItems || []).map((i) => i.name || '').filter(Boolean);
       const quotedAmount = parseFloat(order.quoted_amount || order.actual_amount) || 0;
-      const isNegative = ratingNum <= 2 || repairStar <= 2 || priceStar <= 2 || partsRatingStar <= 2;
+      const processStar = parseInt(m3.process_transparency_star, 10);
+      const processLow = !Number.isNaN(processStar) && processStar >= 1 && processStar <= 2;
+      const isNegative =
+        ratingNum <= 2 || repairStar <= 2 || priceStar <= 2 || partsRatingStar <= 2 || processLow;
       const aiInput = {
         order: {
           orderId: order_id,
@@ -292,21 +302,31 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
       completionArr.slice(0, 5).forEach((url) => {
         if (url && String(url).trim()) aiInput.images.push({ type: 'completion', url: toAbsolute(url) });
       });
-      aiResult = await analyzeReviewWithQwen({ ...aiInput, apiKey });
-      usedAiAudit = true;
-      if (!aiResult.pass && !force_submit) {
-        return { success: false, error: aiResult.rejectReason || '评价未通过 AI 审核', statusCode: 400 };
-      }
-      if (!aiResult.pass && force_submit) {
-        return { success: false, error: aiResult.rejectReason || '评价未通过 AI 审核', statusCode: 400 };
+      if (aiInput.images.length > 0) {
+        aiResult = await analyzeReviewEvidenceContradictionWithQwen({ ...aiInput, apiKey });
+        if (!aiResult?.details?.skipped) usedAiAudit = true;
+        if (!aiResult.pass && !force_submit) {
+          return {
+            success: false,
+            error: aiResult.rejectReason || '评价与服务商留档材料存在明显不一致，请核对后重试',
+            statusCode: 400,
+          };
+        }
+        if (!aiResult.pass && force_submit) {
+          return {
+            success: false,
+            error: aiResult.rejectReason || '评价与服务商留档材料存在明显不一致，请核对后重试',
+            statusCode: 400,
+          };
+        }
       }
     } catch (err) {
-      console.error('[review-service-minimal-v3] AI 审核异常:', err.message);
+      console.error('[review-service-minimal-v3] 材料-表述一致性（千问）异常:', err.message);
     }
   }
 
   if (!usedAiAudit && contentForCheck) {
-    const contentCheck = await antifraud.checkContentAntiCheat(pool, contentForCheck);
+    const contentCheck = await antifraud.checkContentSimilarityOnly(pool, contentForCheck);
     if (!contentCheck.pass && !force_submit) {
       return { success: false, error: contentCheck.reason || '评价内容不符合要求', statusCode: 400 };
     }
@@ -315,7 +335,6 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
   const aiQuality = usedAiAudit && aiResult?.details?.contentQuality?.quality;
   let contentQuality;
   let contentQualityLevel;
-  let isPremium;
   if (usedAiAudit && aiQuality) {
     if (aiQuality === 'benchmark') {
       contentQuality = '标杆';
@@ -336,27 +355,20 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
       contentQuality = 'valid';
       contentQualityLevel = 1;
     }
-    isPremium = contentQuality !== 'invalid' && contentQualityLevel >= 2;
   } else {
-    contentQuality = validation.premium ? 'premium' : 'valid';
-    contentQualityLevel = validation.premium ? 2 : 1;
-    isPremium = validation.premium;
+    contentQuality = 'valid';
+    contentQualityLevel = 1;
   }
 
   if (contentQualityLevel > 2) {
     contentQualityLevel = 2;
     if (contentQuality === '标杆') contentQuality = 'premium';
-    isPremium = true;
   }
 
-  let premiumFloat = 0;
+  const isPremium = false;
+  const premiumFloat = 0;
   if (contentQuality === 'invalid') {
-    isPremium = false;
     totalReward = 0;
-  } else {
-    premiumFloat = isPremium ? rewardCalculator.calcPremiumFloatReward(rewardResult.reward_pre, true) : 0;
-    totalReward += premiumFloat;
-    if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
   }
 
   let rewardAmount = totalReward;
@@ -386,10 +398,28 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
     }
   }
 
-  const taxDeducted = rewardAmount > 800 ? Math.round((rewardAmount - 800) * 0.2 * 100) / 100 : 0;
-  let userReceives = rewardAmount - taxDeducted;
-
   const reviewId = 'REV' + Date.now();
+
+  const wRebate = preWithholdLaborRemunerationEachPayment(rewardAmount);
+  let taxDeducted = wRebate.taxDeducted;
+  let userReceives = wRebate.afterTax;
+  const userReceivesPreHardCap = userReceives;
+  const taxDeductedPreHardCap = taxDeducted;
+  if (userReceives > 0) {
+    const capped = await orderRewardCap.clampPayoutToOrderHardCap(
+      pool,
+      order_id,
+      order,
+      {
+        afterTax: userReceives,
+        taxDeducted,
+      },
+      null,
+      { review_id: reviewId, payout_kind: 'rebate_first_review' }
+    );
+    userReceives = capped.afterTax;
+    taxDeducted = capped.taxDeducted;
+  }
 
   let systemChecks = await reviewSystemCheckService.buildInitialSystemChecksForOrder(pool, order_id);
   const alignTry = tryNormalizeAiUserAlignmentOptional(m3);
@@ -519,6 +549,12 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
   }
 
   try {
+    await reviewEvidenceAlignment.onMainReviewInserted(pool, order_id);
+  } catch (err) {
+    console.error('[review-service-minimal-v3] evidence alignment', err.message);
+  }
+
+  try {
     await shopScore.updateShopScoreAfterReview(pool, order.shop_id, reviewId);
   } catch (err) {
     console.error('[review-service-minimal-v3] shop score', err.message);
@@ -568,12 +604,75 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
       'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
       [userReceives, userReceives, userId]
     );
-    await pool.execute(
-      `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
-       VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
-      ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
-    );
+    const hasSrc = await orderRewardCap.hasRewardSourceOrderColumn(pool);
+    if (hasSrc) {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, order_id, orderTier ?? null, taxDeducted ?? null]
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
+      );
+    }
   }
+
+  try {
+    const auditLogger = require('./reward-audit-logger');
+    auditLogger.logReviewSubmit({
+      review_id: reviewId,
+      order_id,
+      user_id: userId,
+      reward_pre: rewardResult.reward_pre,
+      reward_base: rewardResult.reward_pre,
+      order_tier: orderTier,
+      complexity_level: complexityLevel,
+      commission_rate: rewardResult.commission_rate,
+      commission_amount: rewardResult.commission_amount,
+      vehicle_price_tier: rewardResult.vehicle_price_tier,
+      vehicle_coeff: rewardResult.vehicle_coeff,
+      content_quality: contentQuality,
+      content_quality_level: contentQualityLevel,
+      is_premium: isPremium,
+      premium_float: premiumFloat,
+      total_reward: totalReward,
+      max_by_commission: maxByCommission,
+      immediate_percent: 1,
+      user_level: level,
+      eligibility_can_receive: eligibility.canReceive,
+      eligibility_multiplier: eligibility.multiplier,
+      l1_monthly_cap: complexityLevel === 'L1' ? afConfig.l1MonthlyCap : null,
+      current_month_l1: null,
+      reward_amount_before_tax: rewardAmount,
+      tax_deducted: taxDeducted,
+      user_receives: userReceives,
+      user_receives_pre_hard_cap: userReceivesPreHardCap,
+      tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+      compliance_red_line_pct: rewardRulesSnapshot.complianceRedLine,
+      platform_incentive_v1: auditLogger.pickPv1ForAudit(pv1Global),
+      tracks: {
+        base: {
+          reward_pre: rewardResult.reward_pre,
+          premium_float: premiumFloat,
+          total_reward_pre_tax: totalReward,
+          reward_amount_pre_tax: rewardAmount,
+          user_receives: userReceives,
+          tax_deducted: taxDeducted,
+          user_receives_pre_hard_cap: userReceivesPreHardCap,
+          tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+        },
+        interaction: { settled: false, pipeline: 'monthly_like_bonus', note: '首评提交不落账；见 like_bonus 审计' },
+        conversion: {
+          settled: false,
+          pipeline: 'monthly_conversion_or_post_verify',
+          note: '首评提交不落账；见 conversion_bonus / post_verify_bonus 审计',
+        },
+      },
+    });
+  } catch (_) {}
 
   /** 完工阶段已写入 completion_evidence.exterior_repair_analysis 的，不再在评价提交后重复调用千问 */
   if (hasSystemChecksCol && apiKey && systemChecks.appearance?.status === 'pending') {
@@ -623,6 +722,7 @@ async function submitReviewMinimalV3(pool, req, opts = {}) {
           source: 'async_post_review_fallback',
         };
         const m3Stars = {
+          process_transparency_star: oa.process_transparency_star,
           quote_transparency_star: oa.quote_transparency_star,
           parts_traceability_star: oa.parts_traceability_star,
           repair_effect_star: oa.repair_effect_star,

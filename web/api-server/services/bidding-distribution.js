@@ -42,8 +42,6 @@ const DEFAULT_CONFIG = {
   newShopBaseScore: 60,
   sameProjectScorePriority: 15,
   sameProjectScoreFallback: 5,
-  sceneWeightL1L2: 0.35,
-  sceneWeightL3L4: 0.6,
   /** 综合排序：匹配分与报价合理性权重（保险更偏品质，自费更偏价格合理） */
   quoteSortWeightMatchInsurance: 0.7,
   quoteSortWeightReasonInsurance: 0.3,
@@ -121,7 +119,7 @@ async function parseBiddingItemsWithComplexity(pool, analysisResult) {
 }
 
 /**
- * 资质校验：按《修理厂资质等级和维修复杂度之间的关系》
+ * 资质校验：法定对应关系见 docs/已归档/修理厂资质等级和维修复杂度之间的关系.md
  * L1: 三类对应专项/二类/一类；L2: 二类/一类全量、三类对应专项；L3: 二类及以上；L4: 仅一类
  */
 async function checkShopQualificationForBidding(pool, shopId, biddingId) {
@@ -305,7 +303,10 @@ async function calcMerchantMatchScore(pool, shop, bidding, opts = {}) {
   const maxLevel = biddingItems.length > 0
     ? biddingItems.map((i) => i.level).reduce((a, b) => (LEVEL_ORDER[b] > LEVEL_ORDER[a] ? b : a), 'L1')
     : 'L2';
-  const sceneWeight = (maxLevel === 'L3' || maxLevel === 'L4') ? (config.sceneWeightL3L4 || 0.6) : (config.sceneWeightL1L2 || 0.35);
+  const sceneKey = (maxLevel === 'L3' || maxLevel === 'L4') ? 'L3L4' : 'L1L2';
+  const payerIntent = opts.isInsuranceBidding ? 'insurance' : 'self_pay';
+  const sortWeights = await shopSortService.getSceneWeightsFromSettings(pool, sceneKey, payerIntent);
+  const sceneWeight = sortWeights?.shop != null ? Number(sortWeights.shop) : (sceneKey === 'L3L4' ? 0.6 : 0.35);
 
   const baseScore = Math.min(100, Math.max(0, shopScoreVal)) * sceneWeight;
 

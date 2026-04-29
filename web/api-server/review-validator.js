@@ -100,23 +100,14 @@ function validateReview(params) {
     return { valid: false, premium: false, reason: contentResult.reason };
   }
 
-  const premium = checkIsPremium(
-    {
-      completion_images: params.completion_images,
-      after_images: params.after_images,
-      settlement_list_image: params.settlement_list_image,
-      content: params.content,
-    },
-    params.complexityLevel
-  );
-
-  return { valid: true, premium };
+  // 已取消：内容「优质」不再参与奖励金；保留 checkIsPremium 供历史/测试引用，返回值恒为 false
+  return { valid: true, premium: false };
 }
 
 const MAX_V3_CONTENT = 200;
 
 /**
- * 极简 v3：补充说明选填；有内容时仍防纯水评
+ * 极简 v3：补充说明选填；仅作长度上界，不以字数/水词作门槛（与 02-体系：提交时不评文字「优质」一致）
  * @returns {{ valid: boolean, premium: boolean, reason?: string }}
  */
 function validateReviewMinimalV3(params) {
@@ -127,12 +118,8 @@ function validateReviewMinimalV3(params) {
   if (text.length === 0) {
     return { valid: true, premium: false };
   }
-  const contentResult = validateContent(params.content, params.complexityLevel, false);
-  if (!contentResult.valid) {
-    return { valid: false, premium: false, reason: contentResult.reason };
-  }
-  const premium = checkIsPremium({ content: params.content }, params.complexityLevel);
-  return { valid: true, premium };
+  // 极简 v3：补充说不再做「五字/水词/优质向」规则拦截；长度假象仍防绕过
+  return { valid: true, premium: false };
 }
 
 module.exports = {

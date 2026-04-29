@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>辙见工具中心</title>
+  <style>
+    body { margin: 0; background: #f6f7fb; color: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 18px; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04); }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    h3 { margin: 0 0 6px; font-size: 16px; }
+    p { margin: 0 0 8px; color: #555; font-size: 14px; line-height: 1.5; }
+    .btn { display: inline-block; border-radius: 10px; padding: 10px 14px; text-decoration: none; font-size: 14px; }
+    .btn-primary { background: #1677ff; color: #fff; }
+    .btn-ghost { background: #f2f4f8; color: #333; margin-left: 8px; }
+    .muted { color: #888; font-size: 12px; }
+    .share-line { display:flex; gap:8px; margin-top:10px; }
+    .share-line input { flex:1; border:1px solid #ddd; border-radius:8px; padding:8px; background:#f8f9fc; color:#333; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>辙见工具中心</h1>
+      <p>先在网页里完成诊断或验真，再按页面引导进入小程序获取维修商报价。</p>
+      <p class="muted">可在官网、公众号菜单、搜索落地页直接挂这个入口。</p>
+      <p class="muted">下方是当前页面分享链接，仅用于复制分享，不需要手动输入。</p>
+      <div class="share-line">
+        <input id="hubShareLink" readonly />
+        <button class="btn btn-ghost" id="copyHubLink">复制入口链接</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>AI诊断助手</h3>
+      <p>支持图片、故障码、症状文本三种输入，统一输出风险等级、维修建议和费用区间。</p>
+      <a class="btn btn-primary" id="toDiagnosis" href="/h5/diagnosis?src=hub">进入诊断助手</a>
+      <a class="btn btn-ghost" id="toDiagnosisDtc" href="/h5/diagnosis/dtc?src=hub">故障码入口</a>
+      <a class="btn btn-ghost" id="toDiagnosisSymptom" href="/h5/diagnosis/symptom?src=hub">症状入口</a>
+    </div>
+
+  </div>
+  <script>
+    const source = (new URLSearchParams(location.search).get('src') || 'hub').trim() || 'hub';
+    const hubShareLink = document.getElementById('hubShareLink');
+    hubShareLink.value = location.href;
+
+    function withSource(url, src) {
+      const target = new URL(url, location.origin);
+      target.searchParams.set('src', src);
+      return target.toString();
+    }
+
+    async function track(action, extra) {
+      try {
+        await fetch('/api/v1/public/h5/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'tools-hub',
+            source,
+            action: String(action || ''),
+            extra: extra && typeof extra === 'object' ? extra : {},
+          }),
+        });
+      } catch (_) {}
+    }
+
+    document.getElementById('toDiagnosis').href = withSource('/h5/diagnosis', source + '_diag');
+    document.getElementById('toDiagnosisDtc').href = withSource('/h5/diagnosis/dtc', source + '_dtc');
+    document.getElementById('toDiagnosisSymptom').href = withSource('/h5/diagnosis/symptom', source + '_symptom');
+
+    document.getElementById('copyHubLink').addEventListener('click', async () => {
+      const value = String(hubShareLink.value || '').trim();
+      if (!value) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          hubShareLink.focus();
+          hubShareLink.select();
+          document.execCommand('copy');
+        }
+        alert('入口链接已复制');
+        track('copy_hub_link', { link_length: value.length });
+      } catch (_) {
+        alert('复制失败，请手动复制');
+      }
+    });
+
+    track('page_view', { path: location.pathname });
+  </script>
+</body>
+</html>

@@ -31,6 +31,12 @@
 .section-title { font-size: var(--fs-body); margin-bottom: var(--space-xs); font-weight: 500; }
 .section-head--after-status { margin-top: var(--space-md); }
 
+.waiting-parts-item {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+
 .status-text {
   display: inline-block;
   padding: var(--space-xs) var(--space-md);
@@ -63,6 +69,63 @@
 .countdown-value { font-size: var(--fs-body); font-weight: 600; color: var(--primary); }
 
 .vehicle-info { margin-top: var(--space-xs); }
+
+.order-owner-photo-hint {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: var(--space-sm);
+}
+.order-owner-photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+.order-owner-photo-thumb {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: var(--radius-sm);
+  background: var(--bg-placeholder);
+}
+.order-owner-photo-empty {
+  display: block;
+  margin-top: var(--space-xs);
+}
+
+.order-owner-subcard {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border);
+}
+.order-owner-subcard--shop {
+  background: var(--primary-bg);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+.order-owner-subcard-kicker {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-md);
+}
+.order-owner-quote-summary {
+  margin-bottom: var(--space-xs);
+}
+.order-owner-repair-items--inset {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+.order-owner-subcard-empty {
+  display: block;
+  margin-top: var(--space-xs);
+}
+.order-va-owner-wrap--inset {
+  margin-top: 0;
+}
+
 .damage-list, .repair-items, .value-added-list { margin-top: var(--space-xs); }
 .damage-item { display: flex; flex-direction: column; padding: var(--space-sm) 0; border-bottom: 1rpx solid var(--border); }
 .repair-item { display: flex; justify-content: space-between; align-items: center; padding: var(--space-sm) 0; border-bottom: 1rpx solid var(--border); }
@@ -70,6 +133,35 @@
 .damage-item-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); }
 .damage-sub { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xs) 0 var(--space-xs) var(--space-md); }
 .value-added-item { padding: var(--space-xs) 0; color: var(--text-secondary); }
+
+.order-va-owner-wrap { margin-top: var(--space-xs); }
+.order-va-owner-intro {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+.order-va-owner-block { margin-bottom: var(--space-lg); }
+.order-va-owner-headline {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--primary);
+}
+.order-va-owner-line {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: 6rpx;
+  padding-left: 4rpx;
+}
+.order-va-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+.order-va-disclaimer-line {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 6rpx;
+}
 
 .quote-info { line-height: 1.5; margin-top: var(--space-xs); }
 .quote-info--prominent { margin-top: var(--space-sm); }
@@ -222,6 +314,46 @@
 .pay-repair-desc {
   display: block;
   margin-bottom: var(--space-sm);
+}
+
+.repair-milestones-progress-hint {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: var(--space-md);
+}
+
+.repair-milestones-hint {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: var(--space-sm);
+}
+.repair-milestones-subscribe {
+  width: 100%;
+  margin-bottom: var(--space-md);
+  font-size: var(--fs-body);
+}
+.milestone-tl-item {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border);
+}
+.milestone-tl-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.milestone-tl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+.milestone-tl-time {
+  flex-shrink: 0;
+}
+.milestone-tl-note {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.5;
 }
 
 /* 完工凭证区块 */

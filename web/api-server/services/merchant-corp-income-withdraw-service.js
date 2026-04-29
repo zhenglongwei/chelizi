@@ -275,14 +275,16 @@ async function listCorpWithdrawalsForAdmin(pool, query) {
     where += ' AND c.status = ?';
     params.push(parseInt(status, 10));
   }
+  const lim = Math.trunc(Number(limit));
+  const o = Math.trunc(Number(off));
   const [rows] = await pool.execute(
     `SELECT c.*, s.name AS shop_name
      FROM merchant_income_corp_withdrawals c
      JOIN shops s ON s.shop_id = c.shop_id
      WHERE ${where}
      ORDER BY c.id DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, off]
+     LIMIT ${lim} OFFSET ${o}`,
+    [...params]
   );
   const [cntRows] = await pool.execute(
     `SELECT COUNT(*) AS c FROM merchant_income_corp_withdrawals c WHERE ${where}`,

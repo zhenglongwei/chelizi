@@ -6,9 +6,12 @@
  *
  * 策略：
  * - 按 vehicleId 合并 vehicles 条目，合并 damages 后仅在「同一辆车内」按 part+type 去重；
- * - repair_suggestions 仅去掉完全相同的 item 文案（与是否多车无关）。
+ * - repair_suggestions：规范化 vehicle_id、damage_part、repair_method，同一车同一部位修/换并存时保留「换」；
+ *   无法识别为部位分项的长句（fallback 等）原样保留；最后仍按 item 去重。
  * - 读库/出 API 时再跑一遍 sanitize，修复历史脏数据。
  */
+
+const { extractDamagePartFromAiSuggestionItem } = require('./extract-ai-damage-part');
 
 function damagePartTypeKey(d) {
   const part = String(d.part || '')
@@ -49,6 +52,106 @@ function dedupeRepairSuggestionsByItem(list) {
     out.push({ ...r, item });
   }
   return out;
+}
+
+/** 非「部位+修/换」类泛化建议（fallback 注入等），不做部位合并以免破坏文案 */
+function isAmbientRepairSuggestionRow(rawItem, tailNoVid) {
+  const t = String(tailNoVid || rawItem || '').trim();
+  if (t.length > 48) return true;
+  return /补充说明|待查|逐项实车|系统诊断|照片不可见|功能验证|线束与电控/.test(t);
+}
+
+/**
+ * 将 repair_suggestions 规范为：vehicle_id、damage_part（仅部位名）、repair_method（换|修）、item=车辆N-部位名；
+ * 同一 vehicle_id + damage_part 同时出现修与换时保留换；与 damages / 知识库一致。
+ * @param {object[]} list
+ * @returns {object[]}
+ */
+function normalizeRepairSuggestionsStructured(list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const prelim = [];
+  const passthrough = [];
+
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;
+    const rawItem = String(r.item || '').trim();
+    let vid = String(r.vehicle_id || r.vehicleId || '').trim();
+    if (!vid && rawItem) {
+      const m = rawItem.match(/^(车辆\d+)[-：]\s*/);
+      if (m) vid = m[1];
+    }
+    if (!vid) vid = '车辆1';
+
+    let tail = rawItem;
+    if (tail) {
+      const p1 = `${vid}-`;
+      const p2 = `${vid}：`;
+      if (tail.startsWith(p1)) tail = tail.slice(p1.length).trim();
+      else if (tail.startsWith(p2)) tail = tail.slice(p2.length).trim();
+    }
+
+    const hasStructuredPart = !!(r.damage_part || r.part);
+    const hasStructuredMethod =
+      String(r.repair_method || r.repair_type || '').trim() === '换' ||
+      String(r.repair_method || r.repair_type || '').trim() === '修';
+
+    if (!hasStructuredPart && !hasStructuredMethod && isAmbientRepairSuggestionRow(rawItem, tail)) {
+      passthrough.push(r);
+      continue;
+    }
+
+    let part = String(r.damage_part || r.part || '').trim();
+    if (!part) {
+      part =
+        extractDamagePartFromAiSuggestionItem(tail) ||
+        extractDamagePartFromAiSuggestionItem(rawItem) ||
+        tail.trim();
+    }
+    if (!part) continue;
+
+    let method = String(r.repair_method || r.repair_type || '').trim();
+    if (method !== '换' && method !== '修') {
+      const src = rawItem || tail;
+      method = /更换|换|替换/.test(src) ? '换' : '修';
+    }
+
+    prelim.push({ raw: r, vid, part, method });
+  }
+
+  const order = [];
+  const groups = new Map();
+  for (const row of prelim) {
+    const key = `${row.vid}\u0000${row.part.replace(/\s+/g, ' ')}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key).push(row);
+  }
+
+  const normalized = [];
+  for (const key of order) {
+    const group = groups.get(key);
+    const hasReplace = group.some((g) => g.method === '换');
+    const pool = hasReplace ? group.filter((g) => g.method === '换') : group;
+    const seenMethod = new Set();
+    for (const g of pool) {
+      if (seenMethod.has(g.method)) continue;
+      seenMethod.add(g.method);
+      const r = g.raw;
+      const item = `${g.vid}-${g.part}`;
+      normalized.push({
+        ...r,
+        vehicle_id: g.vid,
+        damage_part: g.part,
+        repair_method: g.method,
+        repair_type: r.repair_type || g.method,
+        item
+      });
+    }
+  }
+
+  return [...normalized, ...passthrough];
 }
 
 /**
@@ -122,7 +225,9 @@ function sanitizeAnalysisResultForRead(ar) {
     if (list.length) flat.push(...dedupeDamagesWithinList(list));
   }
 
-  const repair_suggestions = dedupeRepairSuggestionsByItem(ar.repair_suggestions || []);
+  const repair_suggestions = dedupeRepairSuggestionsByItem(
+    normalizeRepairSuggestionsStructured(ar.repair_suggestions || [])
+  );
   return { ...ar, damages: flat, repair_suggestions };
 }
 
@@ -130,5 +235,6 @@ module.exports = {
   dedupeDamagesWithinList,
   dedupeRepairSuggestionsByItem,
   mergeDuplicateVehiclesInArray,
+  normalizeRepairSuggestionsStructured,
   sanitizeAnalysisResultForRead
 };

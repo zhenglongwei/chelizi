@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "分发中",
+  "enablePullDownRefresh": false,
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}
+

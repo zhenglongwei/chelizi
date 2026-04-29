@@ -1,10 +1,11 @@
 /**
  * 服务商列表排序服务
- * 按《全指标底层逻辑梳理》第五章实现
+ * 按 docs/体系/06 与实现代码（历史见 docs/已归档/全指标底层逻辑梳理.md）
  * 综合排序分 = 店铺综合得分 × 场景权重 + 距离反向分 + 报价合理性分 + 响应速度分
  */
 
 const shopScore = require('./shop-score');
+const DEFAULT_SETTINGS_KEY = 'shopSortWeightsV1';
 
 // 全指标 5.2 场景化权重 { 店铺得分, 距离, 报价合理性, 响应速度 }
 const SCENE_WEIGHTS = {
@@ -26,6 +27,61 @@ function getSceneWeights(scene, payerIntent) {
     return SCENE_WEIGHTS_SELF_PAY[s] || SCENE_WEIGHTS_SELF_PAY.L1L2;
   }
   return SCENE_WEIGHTS[s] || SCENE_WEIGHTS.L1L2;
+}
+
+function sanitizeWeights(w, fallback) {
+  const out = { ...fallback };
+  if (!w || typeof w !== 'object') return out;
+  const keys = ['shop', 'distance', 'price', 'response'];
+  for (const k of keys) {
+    const v = w[k];
+    if (typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1) out[k] = v;
+  }
+  return out;
+}
+
+async function getAllSceneWeightsFromSettings(pool) {
+  const base = {
+    default: { ...SCENE_WEIGHTS },
+    self_pay: { ...SCENE_WEIGHTS_SELF_PAY },
+  };
+  try {
+    const [rows] = await pool.execute(
+      'SELECT `value` FROM settings WHERE `key` = ? LIMIT 1',
+      [DEFAULT_SETTINGS_KEY]
+    );
+    if (!rows?.length || !rows[0]?.value) return base;
+    const parsed = JSON.parse(rows[0].value || '{}');
+    const scenes = parsed?.scenes || parsed;
+
+    const mergeScene = (sceneKey, payerKey, fallback) => {
+      const from = scenes?.[sceneKey]?.[payerKey] || scenes?.[sceneKey]?.[payerKey === 'default' ? 'insurance' : payerKey];
+      return sanitizeWeights(from, fallback);
+    };
+
+    return {
+      default: {
+        L1L2: mergeScene('L1L2', 'default', SCENE_WEIGHTS.L1L2),
+        L3L4: mergeScene('L3L4', 'default', SCENE_WEIGHTS.L3L4),
+        brand: mergeScene('brand', 'default', SCENE_WEIGHTS.brand),
+      },
+      self_pay: {
+        L1L2: mergeScene('L1L2', 'self_pay', SCENE_WEIGHTS_SELF_PAY.L1L2),
+        L3L4: mergeScene('L3L4', 'self_pay', SCENE_WEIGHTS_SELF_PAY.L3L4),
+        brand: mergeScene('brand', 'self_pay', SCENE_WEIGHTS_SELF_PAY.brand),
+      },
+    };
+  } catch (err) {
+    console.warn('[shop-sort] getAllSceneWeightsFromSettings error:', err?.message);
+    return base;
+  }
+}
+
+async function getSceneWeightsFromSettings(pool, scene, payerIntent) {
+  const all = await getAllSceneWeightsFromSettings(pool);
+  const s = scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2';
+  if (payerIntent === 'self_pay') return all.self_pay[s] || all.self_pay.L1L2;
+  return all.default[s] || all.default.L1L2;
 }
 
 /**
@@ -85,7 +141,7 @@ function normalizeShopScore(shopScoreVal, rating) {
  */
 function calcSortScore(shop, opts = {}) {
   const scene = opts.scene || 'L1L2';
-  const weights = getSceneWeights(scene, opts.payerIntent);
+  const weights = opts.weights || getSceneWeights(scene, opts.payerIntent);
 
   const shopScoreVal = normalizeShopScore(shop.shop_score, shop.rating);
   const distanceScore = opts.distanceKm != null && opts.maxKm != null
@@ -186,6 +242,10 @@ async function sortShopsByScore(pool, shops, opts = {}) {
 
   const maxKm = opts.maxKm ?? 50;
   const scene = opts.scene || 'L1L2';
+  const allWeights = await getAllSceneWeightsFromSettings(pool);
+  const payerKey = opts.payerIntent === 'self_pay' ? 'self_pay' : 'default';
+  const weightsForScene =
+    allWeights?.[payerKey]?.[scene === 'L3L4' ? 'L3L4' : scene === 'brand' ? 'brand' : 'L1L2'];
 
   const shopIds = [...new Set(shops.map((s) => s.shop_id).filter(Boolean))];
   const responseMap = await getAvgResponseMinutesByShopIds(pool, shopIds);
@@ -198,6 +258,7 @@ async function sortShopsByScore(pool, shops, opts = {}) {
       maxKm,
       scene,
       payerIntent: opts.payerIntent,
+      weights: weightsForScene,
       avgResponseMinutes: s.avg_response_minutes ?? responseMap.get(s.shop_id),
     });
     scored.push({ ...s, _sort_score: score });
@@ -248,6 +309,8 @@ module.exports = {
   SCENE_WEIGHTS,
   SCENE_WEIGHTS_SELF_PAY,
   getSceneWeights,
+  getAllSceneWeightsFromSettings,
+  getSceneWeightsFromSettings,
   calcDistanceScore,
   calcPriceReasonablenessScore,
   calcResponseScore,

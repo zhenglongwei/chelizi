@@ -17,7 +17,8 @@
         <text class="text-muted fs-sm">累计奖励金</text>
         <text class="fs-body">¥{{totalRebateText}}</text>
       </view>
-      <text class="text-weak fs-sm" style="display:block; margin-top: var(--space-sm);">单次奖励 ≤800 元无需扣税</text>
+      <text class="text-weak fs-sm" style="display:block; margin-top: var(--space-sm);">展示金额为税前应付；个税与实付以支付侧为准</text>
+      <navigator class="balance-rules-link fs-sm" url="/pages/user/reward-rules/index">奖励规则说明</navigator>
       <button class="btn-primary balance-withdraw-btn {{canWithdraw ? '' : 'disabled'}}" bindtap="onWithdraw">提现</button>
     </view>
     <view class="balance-filter-bar">

@@ -45,12 +45,9 @@ function testRewardCalculator() {
   assert.strictEqual(rewardCalculator.BASE_REWARD_INSURANCE.L4, 900, 'L4保险事故900');
   console.log('  BASE_REWARD/BASE_REWARD_INSURANCE: OK');
 
-  // 订单分级封顶
-  assert.strictEqual(rewardCalculator.ORDER_TIER_CAP[1], 30, '1级封顶30');
-  assert.strictEqual(rewardCalculator.ORDER_TIER_CAP[2], 150, '2级封顶150');
-  assert.strictEqual(rewardCalculator.ORDER_TIER_CAP[3], 800, '3级封顶800');
-  assert.strictEqual(rewardCalculator.ORDER_TIER_CAP[4], 2000, '4级封顶2000');
-  console.log('  ORDER_TIER_CAP: OK');
+  assert.strictEqual(rewardCalculator.applyComplexityUpgrade('L1'), 'L1', '配件破格升级已关闭');
+  assert.strictEqual(rewardCalculator.applyComplexityUpgrade('L2'), 'L2', '配件破格升级已关闭');
+  console.log('  applyComplexityUpgrade: OK');
 }
 
 // ========== conversion-bonus 决策权重测试 ==========
@@ -105,34 +102,22 @@ function testConversionBonus() {
 }
 
 // ========== review-like 点赞权重测试 ==========
-// 直接测试内部逻辑（review-like-service 未导出纯函数，需复制或通过 like 间接测）
 function testLikeWeights() {
   console.log('\n--- review-like (点赞权重) ---');
-  // 可信度权重：0级0 1级0.3 2级1.0 3级1.5 4级2.0
-  const LIKE_CREDIBILITY_WEIGHT = { 0: 0, 1: 0.3, 2: 1.0, 3: 1.5, 4: 2.0 };
-  function getCredibilityWeight(level) {
-    const L = parseInt(level, 10);
-    if (isNaN(L) || L < 0 || L > 4) return 0;
-    return LIKE_CREDIBILITY_WEIGHT[L] ?? 0;
-  }
-  function getVehicleMatchByPlate(a, b) {
-    const x = (a || '').trim().toUpperCase();
-    const y = (b || '').trim().toUpperCase();
-    if (!x || !y) return 0;
-    return x === y ? 1 : 0;
-  }
-  function calcWeightCoefficient(credibilityWeight, vehicleMatchByPlate) {
-    const vehicleWeight = vehicleMatchByPlate ? 2.0 : 0.5;
-    return Math.round(credibilityWeight * vehicleWeight * 10000) / 10000;
-  }
+  const likeSvc = require('../api-server/services/review-like-service');
+  const { getCredibilityWeight, calcWeightCoefficient, buildModelMatchKey, getVehicleMatchByModel } = likeSvc;
 
   assert.strictEqual(getCredibilityWeight(0), 0, '0级权重0');
   assert.strictEqual(getCredibilityWeight(1), 0.3, '1级权重0.3');
   assert.strictEqual(getCredibilityWeight(4), 2.0, '4级权重2.0');
-  assert.strictEqual(getVehicleMatchByPlate('京A', '京A'), 1, '车牌一致1');
-  assert.strictEqual(getVehicleMatchByPlate('京A', '京B'), 0, '车牌不同0');
-  assert.strictEqual(calcWeightCoefficient(1.0, 1), 2.0, '2级+车牌一致=2.0');
-  assert.strictEqual(calcWeightCoefficient(1.0, 0), 0.5, '2级+无匹配=0.5');
+  const kToyCam = buildModelMatchKey('丰田', '凯美瑞');
+  const kToyRav = buildModelMatchKey('丰田', 'rav4');
+  assert.ok(kToyCam, '品牌车型键非空');
+  assert.strictEqual(getVehicleMatchByModel(kToyCam, kToyCam), 1, '同品牌同车型1');
+  assert.strictEqual(getVehicleMatchByModel(kToyCam, kToyRav), 0, '同品牌不同车型0');
+  assert.strictEqual(buildModelMatchKey('丰田', ''), null, '缺车型不高权');
+  assert.strictEqual(calcWeightCoefficient(1.0, 1), 2.0, '2级+同车型=2.0');
+  assert.strictEqual(calcWeightCoefficient(1.0, 0), 0.5, '2级+无车型匹配=0.5');
   console.log('  credibility/vehicle/weight: OK');
 }
 

@@ -9,6 +9,8 @@
       class="detail-scroll"
       scroll-y
       style="{{scrollStyle}}"
+      scroll-into-view="{{scrollIntoReview}}"
+      scroll-with-animation="{{true}}"
       bindscrolltolower="loadReviews"
     >
       <!-- 维修厂信息区 -->
@@ -18,8 +20,9 @@
           <view class="detail-main">
             <text class="detail-name text-primary fs-h3 fw-bold">{{shop.name}}</text>
             <view class="detail-rating">
-              <text class="detail-stars text-star fs-cap">{{shop.starsDisplay}}</text>
-              <text class="detail-rating-txt text-muted fs-cap">{{shop.avgRating}} · {{shop.totalReviews}}条 · {{shop.total_orders}}单</text>
+              <text class="detail-stars text-star fs-cap" wx:if="{{shop.showPublicScore}}">{{shop.starsDisplay}}</text>
+              <text class="detail-rating-txt text-muted fs-cap" wx:if="{{shop.showPublicScore}}">{{shop.avgRating}} · {{shop.totalReviews}}条 · {{shop.total_orders}}单</text>
+              <text class="detail-rating-txt text-muted fs-cap" wx:else>{{shop.insufficientRatingLine}}</text>
             </view>
             <view class="detail-tags" wx:if="{{shop.categories.length}}">
               <text class="detail-tag fs-cap" wx:for="{{shop.categories}}" wx:key="*this">{{item}}</text>
@@ -75,8 +78,12 @@
       <view class="detail-section card">
         <view class="detail-section-title fs-body fw-bold">用户评价</view>
         <view class="detail-review-summary" wx:if="{{shop.totalReviews > 0}}">
-          <view class="detail-review-score">
+          <view class="detail-review-score" wx:if="{{shop.showPublicScore}}">
             <text class="detail-score-num text-primary">{{shop.avgRating}}</text>
+            <text class="text-muted fs-cap"> · {{shop.totalReviews}}条真实评价</text>
+          </view>
+          <view class="detail-review-score" wx:else>
+            <text class="text-muted fs-body">订单较少，尚无综合评分</text>
             <text class="text-muted fs-cap"> · {{shop.totalReviews}}条真实评价</text>
           </view>
           <text class="detail-review-summary-hint text-weak fs-sm" wx:if="{{shop.totalReviews >= 5}}">按内容质量、发布时间排序</text>
@@ -147,14 +154,12 @@
               <view class="detail-review-like text-weak fs-cap" wx:else>
                 <text>{{item.like_count || 0}} 点赞</text>
               </view>
-              <view class="detail-review-dislike {{item.disliked ? 'disliked' : ''}}" wx:if="{{!item.is_my_review && !item.liked}}" bindtap="onDislikeReview" data-index="{{reviewIdx}}" data-review-id="{{item.review_id}}">
-                <text class="detail-review-dislike-icon">👎</text>
-                <text class="text-muted fs-cap">{{item.dislike_count || 0}} 踩</text>
-              </view>
-              <view class="detail-review-dislike disliked" wx:elif="{{!item.is_my_review && item.disliked}}">
-                <text class="detail-review-dislike-icon">👎</text>
-                <text class="text-weak fs-cap">{{item.dislike_count || 0}} 踩</text>
-              </view>
+              <button
+                class="detail-review-share-btn fs-cap"
+                open-type="share"
+                hover-class="none"
+                data-review-id="{{item.review_id}}"
+              >分享评价</button>
             </view>
           </view>
         </view>

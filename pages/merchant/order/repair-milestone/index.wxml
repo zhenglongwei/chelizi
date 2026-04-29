@@ -1,0 +1,158 @@
+<custom-nav-bar title="维修过程与完工" showBack="{{true}}" />
+<wxs module="ms">
+function photoList(a) {
+  if (a == null) return [];
+  return a;
+}
+function photoLen(a) {
+  if (!a) return 0;
+  return a.length;
+}
+function photoCap(code) {
+  if (code === 'parts_verify_process') return 8;
+  return 12;
+}
+function photoSrc(p) {
+  if (!p) return '';
+  if (p.local) return p.local;
+  return p.remote || '';
+}
+module.exports.photoList = photoList;
+module.exports.photoLen = photoLen;
+module.exports.photoCap = photoCap;
+module.exports.photoSrc = photoSrc;
+</wxs>
+<view class="page-root repair-milestone-page" style="{{pageRootStyle}}">
+  <view class="detail-section card page-milestone-intro" wx:if="{{orderId}}">
+    <text class="text-weak fs-sm milestone-intro-text">按维修前、维修过程、零配件验真、完工分条留痕并提交，车主可在订单内查看时间线。选择「完工」并添加本条后，下方会出现「完工材料」区，可单独上传保司定损单/结算单、修复后外观、物料等凭证（选填）；与「完工」过程照同属完工阶段，点「提交并完工」时一并写入订单。全程为文字引导，不做强制校验。</text>
+  </view>
+
+  <view class="detail-section card" wx:if="{{orderId}}">
+    <repair-phase-bar
+      before-done="{{repairPhaseBeforeDone}}"
+      during-done="{{repairPhaseDuringDone}}"
+      after-done="{{repairPhaseAfterDone}}"
+    />
+  </view>
+
+  <block wx:for="{{entries}}" wx:key="entryId" wx:for-item="row">
+    <view class="detail-section card milestone-section" wx:if="{{orderId}}">
+      <view class="section-head milestone-section-head">
+        <view class="section-title fs-body fw-medium">{{row.label}}</view>
+        <view class="section-more text-error" data-entry-id="{{row.entryId}}" bindtap="onRemoveEntry">删除本条</view>
+      </view>
+      <text class="text-weak fs-sm milestone-phase-hint" wx:if="{{row.hint}}">{{row.hint}}</text>
+
+      <view class="section-head section-head--sub" wx:if="{{row.code === 'parts_verify_process'}}">
+        <view class="section-title fs-cap text-muted">零配件照片</view>
+      </view>
+      <text class="text-weak fs-sm milestone-row-hint" wx:if="{{row.code === 'parts_verify_process'}}">包装、编号、防伪签等（与「维修过程」分列留痕）</text>
+
+      <view class="evidence-grid">
+        <view class="evidence-thumb" wx:for="{{ms.photoList(row.photos)}}" wx:for-item="p" wx:for-index="pi" wx:key="photoKey">
+          <image src="{{ms.photoSrc(p)}}" mode="aspectFill" />
+          <view class="evidence-del" data-entry-id="{{row.entryId}}" data-index="{{pi}}" bindtap="onDelPhoto">×</view>
+        </view>
+        <view
+          class="evidence-add"
+          wx:if="{{ms.photoLen(row.photos) < ms.photoCap(row.code)}}"
+          data-entry-id="{{row.entryId}}"
+          bindtap="onAddPhotos"
+        >+</view>
+      </view>
+      <text class="text-weak fs-sm milestone-row-hint">本段最多 {{row.code === 'parts_verify_process' ? 8 : 12}} 张</text>
+
+      <block wx:if="{{row.code === 'parts_verify_process'}}">
+        <view class="section-head section-head--sub">
+          <view class="section-title fs-cap text-muted">验真方式（选填）</view>
+        </view>
+        <input
+          class="milestone-note-input fs-body"
+          maxlength="120"
+          placeholder="如官网可查编号、第三方验真渠道等"
+          value="{{row.partsVerifyNote}}"
+          data-entry-id="{{row.entryId}}"
+          bindinput="onPartsVerifyInput"
+        />
+      </block>
+
+      <view class="section-head section-head--sub">
+        <view class="section-title fs-cap text-muted">说明（选填）</view>
+      </view>
+      <input
+        class="milestone-note-input fs-body"
+        maxlength="120"
+        placeholder="可写工序说明等"
+        value="{{row.note}}"
+        data-entry-id="{{row.entryId}}"
+        bindinput="onRowNoteInput"
+      />
+    </view>
+  </block>
+
+  <view class="detail-section card milestone-completion-card" wx:if="{{orderId && showAfterStageMaterials}}">
+    <view class="section-head">
+      <view class="section-title fs-body fw-medium">完工：完工材料（选填）</view>
+    </view>
+    <text class="text-weak fs-sm milestone-completion-hint" wx:if="{{materialAuditing}}">材料质检在后台进行，不影响本页记录进展与提交完工。</text>
+    <text class="text-weak fs-sm milestone-completion-hint" wx:else>保司定损单/结算单、修复后外观、物料等与上方「完工」过程照区分上传；点「提交并完工」时写入订单。无图也可完工（不触发自动材料质检）。</text>
+
+    <view class="evidence-upload">
+      <view class="evidence-item">
+        <text class="evidence-label fs-body">保司定损单/结算单</text>
+        <view class="evidence-grid evidence-grid--completion">
+          <view class="evidence-thumb evidence-thumb--sm" wx:for="{{settlementPhotoUrls}}" wx:for-index="spi" wx:key="spi">
+            <image src="{{settlementPhotos[spi] || item}}" mode="aspectFill" />
+            <view class="evidence-del" data-type="settlement" data-index="{{spi}}" bindtap="onDelEvidencePhoto">×</view>
+          </view>
+          <view class="evidence-add evidence-thumb--sm" wx:if="{{settlementPhotoUrls.length < 4}}" bindtap="onChooseSettlementPhoto">+</view>
+        </view>
+      </view>
+      <view class="evidence-item">
+        <text class="evidence-label fs-body">修复后照片</text>
+        <view class="evidence-grid evidence-grid--completion">
+          <view class="evidence-thumb evidence-thumb--sm" wx:for="{{repairPhotoUrls}}" wx:for-index="rpi" wx:key="rpi">
+            <image src="{{repairPhotos[rpi] || item}}" mode="aspectFill" />
+            <view class="evidence-del" data-type="repair" data-index="{{rpi}}" bindtap="onDelEvidencePhoto">×</view>
+          </view>
+          <view class="evidence-add evidence-thumb--sm" wx:if="{{repairPhotoUrls.length < 6}}" bindtap="onChooseRepairPhoto">+</view>
+        </view>
+      </view>
+      <view class="evidence-item">
+        <text class="evidence-label fs-body">物料/配件照片</text>
+        <view class="evidence-grid evidence-grid--completion">
+          <view class="evidence-thumb evidence-thumb--sm" wx:for="{{materialPhotoUrls}}" wx:for-index="mpi" wx:key="mpi">
+            <image src="{{materialPhotos[mpi] || item}}" mode="aspectFill" />
+            <view class="evidence-del" data-type="material" data-index="{{mpi}}" bindtap="onDelEvidencePhoto">×</view>
+          </view>
+          <view class="evidence-add evidence-thumb--sm" wx:if="{{materialPhotoUrls.length < 4}}" bindtap="onChooseMaterialPhoto">+</view>
+        </view>
+      </view>
+    </view>
+    <text class="text-weak fs-sm evidence-footnote">建议 JPG 格式；PNG 将自动转为 JPG 后上传，单张不超过 5MB</text>
+    <text class="text-weak fs-sm evidence-footnote evidence-footnote--tight">材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
+  </view>
+
+  <view class="milestone-add-cta" wx:if="{{orderId}}">
+    <view class="milestone-add-cta-inner detail-section card">
+      <view wx:if="{{entries.length === 0}}" class="milestone-zero-hint">
+        <text class="fs-body text-muted milestone-zero-title">还没有过程照片</text>
+        <text class="text-weak fs-sm milestone-zero-sub">点下面按钮选择维修前、维修过程、零配件验真或完工并传图</text>
+      </view>
+      <button class="btn-secondary milestone-add-sheet-btn" bindtap="onTapAddMilestoneSheet">+ 添加过程照片</button>
+      <text class="text-weak fs-sm milestone-add-cta-hint" wx:if="{{entries.length > 0}}">同一阶段可多次添加</text>
+    </view>
+  </view>
+
+  <view class="detail-section card milestone-after-hint-only" wx:if="{{orderId && !showAfterStageMaterials}}">
+    <text class="text-weak fs-sm">如需上传保司定损单/结算单等凭证，请先点「+ 添加过程照片」并选择「完工」；下方将出现「完工：完工材料」上传区。</text>
+  </view>
+
+  <view class="action-btns action-btns-stack safe-area-bottom" wx:if="{{orderId}}">
+    <button
+      class="btn-primary"
+      disabled="{{submitting || completing}}"
+      bindtap="onSubmitAndFinish"
+    >{{submitting ? '提交中...' : completing ? '处理中...' : primarySubmitLabel}}</button>
+  </view>
+</view>

@@ -11,12 +11,22 @@ const {
   previewMerchantQuoteImportXlsx,
   analyzeMerchantQuoteSheetImage
 } = require('../../../../utils/api');
-const { parseApiErrorFromArrayBuffer, mapImportedRowsToPlanItems } = require('../../../../utils/merchant-quote-import-helpers');
+const {
+  parseApiErrorFromArrayBuffer,
+  mapImportedRowsToPlanItems,
+  extractDamagePartFromAiSuggestionItem,
+  dedupeAiSuggestionQuoteItemsByDamagePart
+} = require('../../../../utils/merchant-quote-import-helpers');
 const { getNavBarHeight } = require('../../../../utils/util');
 const { PARTS_TYPES, normalizePartsTypeLabel, partsTypePickerIndex } = require('../../../../utils/parts-types');
 const { mergeHumanDisplayFromAnalysis, filterDamagesByFocus } = require('../../../../utils/analysis-human-display');
+const { buildAccidentReportViewModel } = require('../../../../utils/accident-report-presenter');
 
 const logger = getLogger('RepairPlanEdit');
+
+function buildVaChosenLabels(services) {
+  return (services || []).map((it) => String(it.name || '').trim()).filter(Boolean);
+}
 
 const REPAIR_TYPES = [{ label: '换', value: '换' }, { label: '修', value: '修' }];
 
@@ -24,6 +34,7 @@ const ACCIDENT_TYPE_LABELS = {
   single: '单方事故',
   self_fault: '己方全责',
   other_fault: '对方全责',
+  equal_fault: '同等责任',
   other_main: '对方主责',
   self_main: '己方主责'
 };
@@ -110,9 +121,10 @@ Page({
     hasAiSuggestions: false,
     aiReportExpanded: false,
     reportHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
-    reportHasHumanLines: false,
     reportHasAnalysisSection: false,
-    reportDamagesDisplay: []
+    reportDamagesDisplay: [],
+    reportVm: null,
+    vaChosenLabels: []
   },
 
   onLoad(options) {
@@ -168,7 +180,6 @@ Page({
         id: 'va-' + (nextId++),
         name: typeof v === 'string' ? v : (v.name || v)
       }));
-      if (valueAdded.length === 0) valueAdded.push({ id: 'va-' + (nextId++), name: '' });
       const amount = (rp.amount != null ? rp.amount : res.quoted_amount) || '';
       const duration = String(rp.duration || quote.duration || 3);
       const ins = res.is_insurance_accident === 1 || res.is_insurance_accident === '1';
@@ -178,12 +189,12 @@ Page({
       const focusId = viOrd.analysis_focus_vehicle_id || '';
       const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar, focusId);
       const reportDamagesDisplay = filterDamagesByFocus(ar.damages || [], focusId);
+      const reportVm = buildAccidentReportViewModel({
+        mode: 'miniapp',
+        human_display: reportHumanDisplay,
+        damages: reportDamagesDisplay,
+      });
       const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay, reportDamagesDisplay);
-      const reportHasHumanLines =
-        (Array.isArray(reportHumanDisplay.obvious_damage) ? reportHumanDisplay.obvious_damage.length : 0) +
-          (Array.isArray(reportHumanDisplay.possible_damage) ? reportHumanDisplay.possible_damage.length : 0) +
-          (Array.isArray(reportHumanDisplay.repair_advice) ? reportHumanDisplay.repair_advice.length : 0) >
-        0;
       let insuranceInfo = res.insurance_info && typeof res.insurance_info === 'object' ? { ...res.insurance_info } : {};
       if (insuranceInfo.is_insurance && insuranceInfo.accident_type && !insuranceInfo.accident_type_label) {
         insuranceInfo.accident_type_label = ACCIDENT_TYPE_LABELS[insuranceInfo.accident_type] || insuranceInfo.accident_type;
@@ -206,8 +217,9 @@ Page({
         reportHumanDisplay,
         reportDamagesDisplay,
         reportHasAnalysisSection,
-        reportHasHumanLines,
-        aiReportExpanded: false
+        reportVm,
+        aiReportExpanded: false,
+        vaChosenLabels: buildVaChosenLabels(valueAdded)
       });
     } catch (err) {
       logger.error('加载订单失败', err);
@@ -276,22 +288,24 @@ Page({
     this.setData({ items });
   },
 
-  onVaInput(e) {
-    const id = e.currentTarget.dataset.id;
-    const val = (e.detail.value || '').trim();
-    const valueAdded = this.data.valueAdded.map(it => it.id === id ? { ...it, name: val } : it);
-    this.setData({ valueAdded });
-  },
-
-  onDelVa(e) {
-    const id = e.currentTarget.dataset.id;
-    const valueAdded = this.data.valueAdded.filter(it => it.id !== id);
-    this.setData({ valueAdded });
-  },
-
-  onAddVa() {
-    const valueAdded = [...this.data.valueAdded, { id: 'va-' + (nextId++), name: '' }];
-    this.setData({ valueAdded });
+  onOpenQuoteValueAdded() {
+    wx.navigateTo({
+      url: '/pages/merchant/quote-value-added/index',
+      events: {
+        vaDone: (data) => {
+          const list = Array.isArray(data.valueAddedServices) ? data.valueAddedServices : [];
+          this.setData({
+            valueAdded: list,
+            vaChosenLabels: buildVaChosenLabels(list)
+          });
+        }
+      },
+      success: (res) => {
+        if (res.eventChannel && typeof res.eventChannel.emit === 'function') {
+          res.eventChannel.emit('initVa', { valueAddedServices: this.data.valueAdded || [] });
+        }
+      }
+    });
   },
 
   onAmountInput(e) { this.setData({ amount: e.detail.value || '' }); },
@@ -388,14 +402,15 @@ Page({
   onUseAiSuggestions() {
     const order = this.data.order;
     const suggestions = order?.analysis_result?.repair_suggestions || [];
-    const damages = order?.analysis_result?.damages || [];
     if (!suggestions.length) return;
     const { existingPartsTypeMap } = this.data;
-    const items = suggestions.map((s, i) => {
+    const rawItems = suggestions.map((s, i) => {
       const name = (s.item || '').trim() || ('维修项目' + (i + 1));
-      const isReplace = /更换|换|替换/.test(name);
-      const damagePart = damages[i] ? (damages[i].part || name.split(/[更换修]/)[0] || name) : name;
-      const part = (damagePart || '').trim();
+      const methodRaw = String(s.repair_method || s.repair_type || '').trim();
+      const isReplace =
+        methodRaw === '换' || (methodRaw !== '修' && !methodRaw && /更换|换|替换/.test(name));
+      const fromApi = String(s.damage_part || s.part || '').trim();
+      const part = (fromApi || extractDamagePartFromAiSuggestionItem(name) || ('维修项目' + (i + 1))).trim();
       const locked = !!existingPartsTypeMap[part];
       const rt = isReplace ? '换' : '修';
       const pt = rt === '换' ? (locked ? existingPartsTypeMap[part] : '原厂件') : '';
@@ -415,6 +430,7 @@ Page({
         line_warranty: '12'
       };
     });
+    const items = dedupeAiSuggestionQuoteItemsByDamagePart(rawItems);
     const patch = { items };
     if (this.data.isFinalMode) patch.amount = computeFinalTotalFromItems(items);
     this.setData(patch);
@@ -572,7 +588,14 @@ Page({
       ui.showWarning('请至少添加一个维修项目');
       return;
     }
-    const va = valueAdded.filter(it => (it.name || '').trim()).map(it => ({ name: (it.name || '').trim() }));
+    const seenVa = new Set();
+    const va = [];
+    for (const it of valueAdded || []) {
+      const n = String(it.name || '').trim();
+      if (!n || seenVa.has(n)) continue;
+      seenVa.add(n);
+      va.push({ name: n });
+    }
     const amt = parseFloat(amount);
     const dur = parseInt(duration, 10);
     let sumLine = 0;

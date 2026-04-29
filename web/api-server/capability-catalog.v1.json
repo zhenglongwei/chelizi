@@ -1,0 +1,378 @@
+{
+  "version": "v1",
+  "generated_at": "2026-04-26",
+  "naming": {
+    "rule": "domain.action_variant",
+    "examples": ["damage.ai_analyze", "quote.ocr_import", "repair.timeline_public"]
+  },
+  "capabilities": [
+    {
+      "key": "damage.ai_analyze",
+      "name": "事故照片AI定损/预报价",
+      "value": "输入事故照片与补充说明，输出结构化损伤与维修建议（含置信度与不确定项）。",
+      "inputs": {
+        "images": "string[]（公网可访问URL）",
+        "user_description": "string（可选）",
+        "vehicle_info": "object（可选，尽量空，由AI识别为主）"
+      },
+      "outputs": {
+        "analysis_result": "object（vehicles/damages/repair_suggestions/total_estimate/confidence_score 等）",
+        "human_display": "object（obvious_damage/possible_damage/repair_advice）",
+        "confidence_score": "number(0-1)"
+      },
+      "api": {
+        "analyze": { "method": "POST", "path": "/api/v1/damage/analyze", "auth": "user_jwt" },
+        "create_async": { "method": "POST", "path": "/api/v1/damage/reports/create", "auth": "user_jwt" }
+      },
+      "risk_boundary": [
+        "仅供参考，不构成保险定损/责任认定",
+        "仅输出照片与文字可支撑的信息，禁止臆造"
+      ]
+    },
+    {
+      "key": "damage.report_history",
+      "name": "定损报告留存与查询",
+      "value": "报告列表/详情，供用户复盘与二次调用。",
+      "api": {
+        "list": { "method": "GET", "path": "/api/v1/damage/reports", "auth": "user_jwt" },
+        "get": { "method": "GET", "path": "/api/v1/damage/report/:id", "auth": "user_jwt" }
+      }
+    },
+    {
+      "key": "damage.report_share",
+      "name": "报告摘要分享（公共访问）",
+      "value": "生成分享token并提供公共摘要查询，用于社交传播与AI搜索落地页。",
+      "api": {
+        "mint_token": { "method": "POST", "path": "/api/v1/damage/report/:id/share-token", "auth": "user_jwt" },
+        "public_get": { "method": "GET", "path": "/api/v1/public/damage/report/share/:token", "auth": "public" }
+      },
+      "risk_boundary": ["公共摘要默认脱敏；不得输出手机号/精确位置等敏感信息"]
+    },
+    {
+      "key": "quote.ocr_import",
+      "name": "报价单拍照识别与结构化",
+      "value": "识别机打/手写/截图报价单，输出与平台模板对齐的分项结构。",
+      "api": {
+        "analyze_image": { "method": "POST", "path": "/api/v1/merchant/quote-sheet/analyze-image", "auth": "merchant_jwt" },
+        "openapi_analyze_image": { "method": "POST", "path": "/api/v1/open/quote/ocr-import/by-image", "auth": "openapi_key" }
+      }
+    },
+    {
+      "key": "repair.timeline_public",
+      "name": "维修关键节点留痕（过程公示基础）",
+      "value": "商户记录维修关键节点与照片，形成可追溯时间线并通知车主。",
+      "api": {
+        "create_milestone": { "method": "POST", "path": "/api/v1/merchant/orders/:id/repair-milestones", "auth": "merchant_jwt" },
+        "openapi_public_timeline": { "method": "POST", "path": "/api/v1/open/repair/timeline/public", "auth": "openapi_key" }
+      }
+    },
+    {
+      "key": "accident.evidence_checklist",
+      "name": "证据补拍清单（低风险）",
+      "value": "基于定损结果与补充说明，给出建议补拍照片/材料清单，提升后续沟通与估算准确性。",
+      "inputs": {
+        "analysis_result": "object（damage.ai_analyze 的输出）",
+        "user_description": "string（可选）"
+      },
+      "outputs": {
+        "checklist": "array<{title:string,why:string}>",
+        "note": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/accident/evidence-checklist", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["不做责任认定；仅提供材料与拍摄建议"]
+    },
+    {
+      "key": "accident.claim_guide",
+      "name": "理赔/自费流程提示（低风险）",
+      "value": "根据用户选择（是否走保险/是否有交警材料等）输出流程步骤与材料清单提示。",
+      "inputs": {
+        "is_insurance": "boolean",
+        "has_police_report": "boolean（可选）",
+        "has_other_party": "boolean（可选）"
+      },
+      "outputs": {
+        "boundary": "string",
+        "steps": "string[]",
+        "materials": "string[]"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/accident/claim-guide", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["不输出责任结论；以交警/保险公司为准"]
+    },
+    {
+      "key": "accident.price_estimate",
+      "name": "维修价格区间估算（可解释）",
+      "value": "基于定损总估价或维修建议分项价格区间，结合城市与配件假设输出可解释的费用区间。",
+      "inputs": {
+        "analysis_result": "object（damage.ai_analyze 的输出）",
+        "city_tier": "default|tier1|tier2|tier3（可选）",
+        "parts_type": "oem|aftermarket|used|unknown（可选）"
+      },
+      "outputs": {
+        "currency": "CNY",
+        "range": "number[2]",
+        "base_range": "number[2]",
+        "factor": "number",
+        "assumptions": "string[]"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/accident/price-estimate", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["仅供参考；不构成报价承诺或保险定损结论"]
+    },
+    {
+      "key": "diagnosis.image_analyze",
+      "name": "图片诊断（损伤/故障）",
+      "value": "输入车辆损伤或故障图片，输出统一诊断报告结构，可在小程序与外部H5共用。",
+      "inputs": {
+        "images": "string[]（公网可访问URL）",
+        "user_description": "string（可选）"
+      },
+      "outputs": {
+        "report_title": "string",
+        "problem_summary": "string",
+        "severity": "low|medium|high",
+        "report_sections": "array<{key,title,items[]}>",
+        "repair_options": "string[]",
+        "price_range": "number[2]",
+        "safety_notes": "string[]",
+        "confidence": "number(0-1)",
+        "disclaimer": "string",
+        "source": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/diagnosis/image-analyze", "auth": "openapi_key" },
+        "public_h5": { "method": "POST", "path": "/api/v1/public/diagnosis/image-analyze", "auth": "public" }
+      },
+      "risk_boundary": ["仅作辅助诊断，不构成最终维修方案或责任结论"]
+    },
+    {
+      "key": "diagnosis.dtc_interpret",
+      "name": "故障码解释",
+      "value": "输入故障码（DTC）输出故障含义、风险等级与建议检查方向。",
+      "inputs": {
+        "dtc_code": "string（如 P0300）"
+      },
+      "outputs": {
+        "report_title": "string",
+        "problem_summary": "string",
+        "severity": "low|medium|high",
+        "report_sections": "array<{key,title,items[]}>",
+        "repair_options": "string[]",
+        "price_range": "number[2]",
+        "safety_notes": "string[]",
+        "confidence": "number(0-1)",
+        "disclaimer": "string",
+        "source": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/diagnosis/dtc-interpret", "auth": "openapi_key" },
+        "public_h5": { "method": "POST", "path": "/api/v1/public/diagnosis/dtc-interpret", "auth": "public" }
+      },
+      "risk_boundary": ["需结合实车检测，不能替代专业检测工位结论"]
+    },
+    {
+      "key": "diagnosis.symptom_analyze",
+      "name": "症状文本诊断",
+      "value": "输入车主描述的故障现象，输出结构化诊断建议与风险提示。",
+      "inputs": {
+        "symptom_text": "string"
+      },
+      "outputs": {
+        "report_title": "string",
+        "problem_summary": "string",
+        "severity": "low|medium|high",
+        "report_sections": "array<{key,title,items[]}>",
+        "repair_options": "string[]",
+        "price_range": "number[2]",
+        "safety_notes": "string[]",
+        "confidence": "number(0-1)",
+        "disclaimer": "string",
+        "source": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/diagnosis/symptom-analyze", "auth": "openapi_key" },
+        "public_h5": { "method": "POST", "path": "/api/v1/public/diagnosis/symptom-analyze", "auth": "public" }
+      },
+      "risk_boundary": ["仅基于文本语义分析，可能存在信息缺失导致的不确定性"]
+    },
+    {
+      "key": "parts.auth_query_by_code",
+      "name": "配件编号验真聚合",
+      "value": "输入配件编号进行多渠道聚合验真，返回可信等级与证据链。",
+      "inputs": {
+        "part_code": "string",
+        "brand": "string（可选）",
+        "official_channel_url": "string（可选）",
+        "callback_signature": "string（可选，HMAC-SHA256）"
+      },
+      "outputs": {
+        "auth_level": "official_verified|high|medium|low|unknown",
+        "confidence_score": "number(0-1)",
+        "evidence": "array<object>",
+        "aggregation_mode": "hybrid",
+        "verification_channels": "array<object>",
+        "verification_summary": "object（包含 auto_check_supported/auto_check_status/manual_check_required 等）",
+        "callback_signature_valid": "boolean|null",
+        "callback_fields": "string[]",
+        "risk_notes": "string[]",
+        "next_actions": "string[]",
+        "disclaimer": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/parts/auth/query-by-code", "auth": "openapi_key" },
+        "public_h5": { "method": "POST", "path": "/api/v1/public/parts/auth/query-by-code", "auth": "public" }
+      },
+      "risk_boundary": ["无官方回执时不得给出“100%正品”结论", "丰田/宝马优先自动核验，失败或条件不足时回退手动核验"]
+    },
+    {
+      "key": "parts.auth_query_by_image",
+      "name": "配件图片验真聚合",
+      "value": "输入包装或配件照片并结合OCR/规则识别，输出可信等级与复核建议。",
+      "inputs": {
+        "image_urls": "string[]",
+        "brand": "string（可选）",
+        "official_channel_url": "string（可选）",
+        "callback_signature": "string（可选，HMAC-SHA256）"
+      },
+      "outputs": {
+        "auth_level": "official_verified|high|medium|low|unknown",
+        "confidence_score": "number(0-1)",
+        "evidence": "array<object>",
+        "aggregation_mode": "hybrid",
+        "verification_channels": "array<object>",
+        "verification_summary": "object（包含 auto_check_supported/auto_check_status/manual_check_required 等）",
+        "callback_signature_valid": "boolean|null",
+        "callback_fields": "string[]",
+        "risk_notes": "string[]",
+        "next_actions": "string[]",
+        "disclaimer": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/parts/auth/query-by-image", "auth": "openapi_key" },
+        "public_h5": { "method": "POST", "path": "/api/v1/public/parts/auth/query-by-image", "auth": "public" }
+      },
+      "risk_boundary": ["图片质量会影响识别准确度，建议结合编号与凭证复核", "丰田/宝马优先自动核验，失败或条件不足时回退手动核验"]
+    },
+    {
+      "key": "parts.fitment_check_by_vin",
+      "name": "VIN适配与验真辅助",
+      "value": "输入VIN与配件信息进行适配校验，并参与验真风险评分。",
+      "inputs": {
+        "vin": "string",
+        "part_code": "string（可选）",
+        "brand": "string（可选）",
+        "callback_signature": "string（可选，HMAC-SHA256）"
+      },
+      "outputs": {
+        "auth_level": "official_verified|high|medium|low|unknown",
+        "confidence_score": "number(0-1)",
+        "evidence": "array<object>",
+        "aggregation_mode": "hybrid",
+        "verification_channels": "array<object>",
+        "callback_signature_valid": "boolean|null",
+        "callback_fields": "string[]",
+        "risk_notes": "string[]",
+        "next_actions": "string[]",
+        "disclaimer": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/parts/auth/fitment-check-by-vin", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["适配正确不等于正品，需与官方验真回执联合判断"]
+    },
+    {
+      "key": "parts.auth_risk_scoring",
+      "name": "配件验真风险评分（回填后复算）",
+      "value": "对半自动聚合验真进行统一复算，结合官方回执与用户回填证据输出可信等级。",
+      "inputs": {
+        "part_code": "string（可选）",
+        "brand": "string（可选）",
+        "vin": "string（可选）",
+        "image_urls": "string[]（可选）",
+        "official_channel_url": "string（可选）",
+        "official_verified": "boolean（可选）",
+        "user_receipts": "array<object>（可选）",
+        "callback_signature": "string（可选，HMAC-SHA256）",
+        "channel_reliability_delta": "number（可选，-10~10）"
+      },
+      "outputs": {
+        "auth_level": "official_verified|high|medium|low|unknown",
+        "confidence_score": "number(0-1)",
+        "evidence": "array<object>",
+        "aggregation_mode": "hybrid",
+        "verification_channels": "array<object>",
+        "callback_signature_valid": "boolean|null",
+        "callback_fields": "string[]",
+        "risk_notes": "string[]",
+        "next_actions": "string[]",
+        "disclaimer": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/parts/auth/risk-scoring", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["仅为风险评分，不替代品牌官方最终真伪结论"]
+    },
+    {
+      "key": "parts.auth_manual_check_record",
+      "name": "配件手动核验复核记录",
+      "value": "在无官方自动 API 时，允许将手动核验结果回填并生成可复核记录（record_id + canonical payload）。",
+      "inputs": {
+        "part_code": "string（必填）",
+        "brand": "string（可选）",
+        "vin": "string（可选）",
+        "channel_name": "string（可选）",
+        "channel_url": "string（可选）",
+        "result_code": "string（可选）",
+        "result_text": "string（可选）",
+        "receipt_url": "string（可选）",
+        "notes": "string（可选）"
+      },
+      "outputs": {
+        "record_id": "string",
+        "created_at": "string(ISO8601)",
+        "canonical_payload": "string",
+        "part_code": "string",
+        "brand": "string",
+        "result_code": "string"
+      },
+      "api": {
+        "public_h5": { "method": "POST", "path": "/api/v1/public/parts/auth/manual-check-record", "auth": "public" }
+      },
+      "risk_boundary": ["记录用于复核留痕，不等同于品牌官方最终结论"]
+    },
+    {
+      "key": "parts.auth_signing_payload",
+      "name": "配件验真签名载荷调试",
+      "value": "生成回填签名校验所需的 canonical payload，便于第三方调试 HMAC-SHA256 签名。",
+      "inputs": {
+        "part_code": "string（可选）",
+        "brand": "string（可选）",
+        "vin": "string（可选）",
+        "official_verified": "boolean（可选）",
+        "user_receipts": "array<object>（可选）"
+      },
+      "outputs": {
+        "algorithm": "HMAC-SHA256",
+        "signature_encoding": "hex",
+        "canonical_payload": "string",
+        "payload": "object",
+        "note": "string"
+      },
+      "api": {
+        "openapi": { "method": "POST", "path": "/api/v1/open/parts/auth/signing-payload", "auth": "openapi_key" }
+      },
+      "risk_boundary": ["仅用于签名调试，不返回任何服务端密钥或签名结果"]
+    },
+    {
+      "key": "review.public_display",
+      "name": "评价公开展示与可信摘要（占位）",
+      "value": "将评价输出为可解释、可比对的公开展示摘要（后续拆分为独立模块）。",
+      "status": "placeholder"
+    }
+  ]
+}
+

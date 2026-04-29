@@ -1,7 +1,8 @@
 // 定损报告详情（从历史进入）
-const { getDamageReport } = require('../../../utils/api');
+const { getDamageReport, createDamageReportShareToken, getCapabilities } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
-const { mergeHumanDisplayFromAnalysis } = require('../../../utils/analysis-human-display');
+const { buildAccidentReportViewModel } = require('../../../utils/accident-report-presenter');
+const navigation = require('../../../utils/navigation');
 
 Page({
   data: {
@@ -10,7 +11,9 @@ Page({
     report: null,
     loading: true,
     error: '',
-    pageRootStyle: 'padding-top: 88px'
+    pageRootStyle: 'padding-top: 88px',
+    shareToken: '',
+    caps: null
   },
 
   onLoad(options) {
@@ -20,8 +23,18 @@ Page({
     this.setData({ reportId: id, pageRootStyle: 'padding-top: ' + navH + 'px', scrollStyle: 'height: ' + (sys.windowHeight - navH - 20) + 'px' });
     if (id) {
       this.loadReport(id);
+      this.loadCapabilities();
     } else {
       this.setData({ loading: false, error: '报告ID无效' });
+    }
+  },
+
+  async loadCapabilities() {
+    try {
+      const caps = await getCapabilities();
+      this.setData({ caps });
+    } catch (_) {
+      this.setData({ caps: null });
     }
   },
 
@@ -39,12 +52,91 @@ Page({
         warranty: ar.warranty,
         damages: ar.damages || [],
         repair_suggestions: ar.repair_suggestions || [],
-        human_display: mergeHumanDisplayFromAnalysis(ar, focusId)
       };
-      this.setData({ report, reportId: id, loading: false });
+      let reportVm = null;
+      if (res.display_vm && typeof res.display_vm === 'object' && Array.isArray(res.display_vm.sections)) {
+        reportVm = {
+          mode: 'miniapp',
+          sections: res.display_vm.sections,
+          disclaimer: res.display_vm.disclaimer || '',
+        };
+      } else {
+        reportVm = buildAccidentReportViewModel({
+          mode: 'miniapp',
+          analysis_result: ar,
+          analysis_focus_vehicle_id: focusId,
+        });
+      }
+      this.setData({ report, reportVm, reportId: id, loading: false });
+      // 预生成分享 token，避免用户分享时落到 fallback 路径
+      this.ensureShareTokenSilent(id);
     } catch (err) {
       console.error('加载报告失败', err);
       this.setData({ loading: false, error: err.message || '加载失败' });
     }
+  }
+  ,
+
+  /** 历史报告：直接进入发起竞价（不重复 AI） */
+  onGoBidding() {
+    const reportId = this.data.reportId;
+    if (!reportId) return;
+    try {
+      wx.setStorageSync('pendingReportId', reportId);
+      wx.removeStorageSync('pendingRecreateMode');
+    } catch (_) {}
+    navigation.switchTab('/pages/damage/upload/index');
+  },
+
+  /** 重新预报价：带入历史材料，允许补充后重新提交（会重新入队 AI） */
+  onRecreatePrequote() {
+    const reportId = this.data.reportId;
+    if (!reportId) return;
+    try {
+      wx.setStorageSync('pendingReportId', reportId);
+      wx.setStorageSync('pendingRecreateMode', 1);
+    } catch (_) {}
+    navigation.switchTab('/pages/damage/upload/index');
+  },
+
+  async onPrepareShare() {
+    const reportId = this.data.reportId;
+    if (!reportId) return;
+    try {
+      wx.showLoading({ title: '生成分享链接…' });
+      const res = await createDamageReportShareToken(reportId);
+      const token = res && res.token ? res.token : '';
+      if (!token) throw new Error('分享生成失败');
+      this.setData({ shareToken: token });
+      wx.hideLoading();
+      wx.showToast({ title: '可点击右上角转发', icon: 'none', duration: 1800 });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: err.message || '分享暂不可用', icon: 'none' });
+    }
+  },
+
+  async ensureShareTokenSilent(reportId) {
+    const rid = String(reportId || this.data.reportId || '').trim();
+    if (!rid || this.data.shareToken) return;
+    try {
+      const res = await createDamageReportShareToken(rid);
+      const token = res && res.token ? res.token : '';
+      if (token) this.setData({ shareToken: token });
+    } catch (_) {}
+  },
+
+  onShareAppMessage() {
+    const token = this.data.shareToken;
+    if (token) {
+      return {
+        title: '损失报告（AI）摘要（仅供参考）',
+        path: '/pages/damage/share/index?token=' + encodeURIComponent(token),
+      };
+    }
+    return {
+      title: '事故车预报价（仅供参考）',
+      path: '/pages/index/index',
+    };
   }
 });

@@ -9,6 +9,7 @@ page {
   /* 色彩（明亮、有活力） */
   --primary: #2563EB;
   --primary-bg: rgba(37, 99, 235, 0.1); /* 主色浅背景，状态标签等 */
+  --primary-border-soft: rgba(37, 99, 235, 0.22); /* 状态标签等浅描边 */
   --primary-light: #60A5FA;
   --accent: #EAB308;
   --accent-bg: rgba(234, 179, 8, 0.15); /* #EAB308 15% 透明度，快捷入口图标背景 */

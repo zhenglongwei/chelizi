@@ -1,5 +1,7 @@
 # 辙见 - 部署说明
 
+> 线上目录约定（当前生产默认）：`/var/www/simplewin` 下直接包含 `api-server/`、`scripts/`、`database/`、`.env`，**不包含** `web/` 中间目录。本文中若出现 `web/...`，在该部署结构下应对应为同级目录（如 `web/scripts` -> `scripts`）。
+
 ## 一、数据库初始化（必须先执行）
 
 在服务器 MySQL 中执行 `web/database/schema.sql`，按《docs/database/数据库设计文档.md》创建 14 张表及初始数据。
@@ -15,6 +17,19 @@ mysql -u root -p < web/database/schema.sql
 cd web/database
 bash run-init.sh
 ```
+
+### 奖励金 `reward_rules` 一次性清理（基础轨简化）
+
+若线上库在旧版后台曾保存过「单项目封顶 / 车价浮动校准 / 订单分级封顶 / 破格升级」等非零配置，而代码已按《docs/体系/03-全链路激励驱动体系.md》仅保留 **基础固定额 × 车价系数** 与 **佣金红线**，建议在部署机对**当前环境 `.env` 指向的库**执行脚本（**务必先 `--dry-run`** 核对输出）：
+
+```bash
+# 仓库根目录；依赖已安装在 web/api-server/node_modules
+node web/scripts/normalize-reward-rules-db.js --info     # 查看当前连接的库与已有 rule_key
+node web/scripts/normalize-reward-rules-db.js --dry-run
+node web/scripts/normalize-reward-rules-db.js
+```
+
+逻辑见 `web/api-server/utils/normalize-reward-rules-json.js`。亦可由运营在后台「奖励金规则配置」页点击「保存全部配置」达到类似效果（脚本适合批量、可审计的线上清理）。
 
 ## 二、API 服务部署
 
@@ -125,8 +140,8 @@ BASE_URL=https://simplewin.cn
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `DASHSCOPE_MODEL` | 视觉模型名称 | `qwen-vl-plus` |
-| `DASHSCOPE_BASE_URL` | 兼容模式地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `DASHSCOPE_MODEL` | 千问模型名（OpenAI 兼容 `/chat/completions`） | `qwen-vl-plus` |
+| `DASHSCOPE_BASE_URL` | OpenAI 兼容接口根（`…/compatible-mode/v1`，无尾斜杠） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 
 ### 4. 未配置时的行为
 

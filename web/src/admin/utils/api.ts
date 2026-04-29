@@ -1,7 +1,49 @@
 import axios from 'axios';
 
-// API 基础 URL：与 .env 中 VITE_API_BASE_URL 一致
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://simplewin.cn/api';
+/**
+ * 管理端 API 根路径。
+ * - 未配置 VITE_API_BASE_URL 时：用「当前页面 origin + /api」。
+ * - 配置了但构建时误带 `http://localhost:...` 时：若当前页面是公网域名，自动改回「当前 origin + /api」，避免线上仍请求本机 3000（你截图里即此情况）→ CORS/Network Error。
+ * - 本机开发（localhost 打开页面）时：仍使用 .env 中的本地 API 地址。
+ */
+function resolveApiBaseUrl(): string {
+  const env = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  let candidate: string;
+  if (env && String(env).trim() !== '') {
+    const s = String(env).trim();
+    if (s.startsWith('/')) {
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        const path = s.replace(/\/$/, '') || '/api';
+        return `${window.location.origin}${path}`;
+      }
+      candidate = s;
+    } else {
+      candidate = s.replace(/\/$/, '');
+    }
+  } else if (typeof window !== 'undefined' && window.location?.origin) {
+    candidate = `${window.location.origin}/api`;
+  } else {
+    return 'https://simplewin.cn/api';
+  }
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const h = window.location.hostname;
+    const pageIsLocal = h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+    if (!pageIsLocal) {
+      try {
+        const u = new URL(candidate);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          return `${window.location.origin}/api`;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return candidate;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -40,6 +82,15 @@ api.interceptors.response.use(
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_user');
       window.location.href = '/admin/login';
+    }
+    // 5xx/4xx 时后端 body 多为 { code, message }，用 message 作为 Error 文案便于界面与控制台排查
+    const data = error.response?.data as { message?: string; code?: number } | undefined;
+    const serverMsg =
+      data && typeof data.message === 'string' && data.message.trim()
+        ? data.message.trim()
+        : '';
+    if (serverMsg) {
+      return Promise.reject(new Error(serverMsg));
     }
     return Promise.reject(error);
   }
@@ -116,14 +167,13 @@ export async function callCloudFunction(functionName: string, data: any) {
           });
         }
         return { success: true };
-      case 'getCancelRequests': {
-        const res = await api.get('/v1/admin/order-cancel-requests');
-        const list = res?.data?.list ?? res?.list ?? [];
-        return { success: true, data: { list } };
+      case 'closeCancelDisposal': {
+        await api.post(`/v1/admin/orders/${data.orderNo}/cancel-disposal/close`, {
+          note: data.note,
+          result: data.result,
+        });
+        return { success: true, message: '已结案' };
       }
-      case 'resolveCancelRequest':
-        await api.post(`/v1/admin/order-cancel-requests/${data.requestId}/resolve`, { approve: data.approve });
-        return { success: true, message: data.approve ? '已同意撤单' : '已拒绝' };
       case 'getRewardRulesConfig': {
         const res = await api.get('/v1/admin/reward-rules/config');
         return { success: true, data: res?.data ?? res };

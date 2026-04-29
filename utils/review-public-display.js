@@ -106,10 +106,14 @@ const V3_PARTS_SUMMARY = {
 function buildV3ObjectiveSummary(oa) {
   if (!isObjectiveAnswersV3(oa)) return '';
   const a = [];
+  const proc = parseInt(oa.process_transparency_star, 10);
   const qt = parseInt(oa.quote_transparency_star, 10);
   const pt = parseInt(oa.parts_traceability_star, 10);
   const res = parseInt(oa.repair_effect_star, 10);
   const svc = parseInt(oa.service_experience_star, 10);
+  if (!Number.isNaN(proc) && proc >= 1 && proc <= 5) {
+    a.push(`流程透明 ${proc} 星`);
+  }
   if (!Number.isNaN(qt) && qt >= 1 && qt <= 5) {
     a.push(`报价透明 ${qt} 星`);
   }
@@ -140,6 +144,10 @@ function buildMinimalReviewTags(oa, rating, _systemChecks) {
   const tags = [];
   const v3 = isObjectiveAnswersV3(oa);
   if (v3) {
+    const proc = parseInt(oa.process_transparency_star, 10);
+    if (!Number.isNaN(proc) && proc >= 1 && proc <= 5) {
+      tags.push({ text: `流程 ${proc}★`, kind: proc >= 4 ? 'ok' : proc <= 2 ? 'warn' : 'muted' });
+    }
     const qt = parseInt(oa.quote_transparency_star, 10);
     if (!Number.isNaN(qt) && qt >= 1 && qt <= 5) {
       tags.push({ text: `报价 ${qt}★`, kind: qt >= 4 ? 'ok' : qt <= 2 ? 'warn' : 'muted' });

@@ -146,32 +146,53 @@
 
 .bidding-status-badge {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
   font-weight: 500;
 }
 
-.bidding-status-badge.ongoing {
-  color: var(--primary);
-  background: rgba(37, 99, 235, 0.1);
+.bidding-badge-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
 }
 
-.bidding-status-badge.selecting {
+/* 报价进行中：品牌蓝系，与全站主色一致 */
+.bidding-status-badge.quote-ongoing {
   color: var(--primary);
-  background: rgba(37, 99, 235, 0.06);
-  border: 1rpx solid rgba(37, 99, 235, 0.2);
+  background: var(--primary-bg);
+  border: 1rpx solid var(--primary-border-soft);
 }
 
-.bidding-status-badge.ended {
+.bidding-status-badge.quote-ongoing .bidding-badge-icon {
+  opacity: 0.85;
+}
+
+/* 报价截止（含窗口结束、已选厂、已关单等） */
+.bidding-status-badge.quote-ended {
   color: var(--text-secondary);
   background: var(--bg-placeholder);
+  border: 1rpx solid var(--border-light);
+}
+
+.bidding-status-badge.quote-ended .bidding-badge-icon {
+  opacity: 0.4;
+  filter: grayscale(1);
 }
 
 .bidding-card-meta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-lg);
+}
+
+.bidding-card-meta--two .bidding-meta-item {
+  flex: 1;
+  min-width: 0;
 }
 
 .bidding-meta-item {
@@ -209,18 +230,33 @@
   font-weight: 500;
   border-radius: var(--radius-md);
   text-align: center;
+  margin: 0;
 }
 
+.bidding-btn-hover {
+  opacity: 0.92;
+}
+
+/* 品牌蓝主按钮：有报价时「查看报价」；无报价时「重新发起」为当前唯一主操作（设计规范 --primary） */
 .bidding-btn-primary {
-  background: var(--primary);
-  color: var(--bg-card);
-  border: none;
+  background: var(--primary) !important;
+  color: var(--bg-card) !important;
+  border: 2rpx solid var(--primary) !important;
 }
 
-.bidding-btn-outline {
-  background: transparent;
-  border: 2rpx solid var(--primary);
-  color: var(--primary);
+/* 无报价：主按钮置灰不可点 */
+.bidding-btn-primary--disabled,
+.bidding-btn-primary[disabled] {
+  background: var(--bg-placeholder) !important;
+  color: var(--text-hint) !important;
+  border: 2rpx solid var(--border-light) !important;
+}
+
+/* 有报价时「重新发起」、查看订单：次按钮（描边 + 透明底） */
+.bidding-btn-secondary {
+  background: var(--bg-card) !important;
+  color: var(--primary) !important;
+  border: 2rpx solid var(--primary) !important;
 }
 
 .bidding-load-more {

@@ -146,6 +146,22 @@ radio{
 .review-v3-star-head .review-v3-linear-q {
   margin-bottom: 0;
 }
+.review-v3-scale-hint {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: var(--space-sm);
+}
+.review-milestone-block {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+.review-milestone-block:last-of-type {
+  border-bottom: none;
+}
+.review-v3-parts-sec {
+  margin-top: var(--space-sm);
+  color: var(--text-primary);
+}
 .review-expand-hint {
   margin-top: var(--space-sm);
   padding: var(--space-xs) 0;

@@ -1,5 +1,5 @@
 /**
- * 事故车维修知识库（基于《事故车维修AI软件知识库.md》）
+ * 事故车维修知识库（规则同源说明见 docs/已归档/事故车维修AI软件知识库.md，运行时以本文件常量为准）
  * 来源：JT/T 795-2023、GB16735-2019、GB7258、T/IAC CAMRA 50-2024、机动车维修管理规定
  * 用于：定损分析时匹配事故类别、生成合规维修建议
  *
@@ -239,7 +239,9 @@ function getDamageLevel(damages) {
 function enhanceAnalysisWithKnowledge(analysisResult) {
   const damages = analysisResult.damages || [];
   const repairSuggestions = analysisResult.repair_suggestions || [];
-  const repairText = repairSuggestions.map((r) => r.item || '').join(' ');
+  const repairText = repairSuggestions
+    .map((r) => [r.item, r.damage_part, r.process_note].filter(Boolean).join(' '))
+    .join(' ');
 
   // 若维修建议中明确写了「无事故损伤」「未发现明显损伤」，且无真实损伤，则判定为无伤
   const noDamageInRepair = /无事故损伤|未发现明显损伤|无可见损伤|未见.*损伤/.test(repairText);

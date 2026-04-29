@@ -1,0 +1,64 @@
+.repair-phase-bar {
+  padding: 8rpx 0 16rpx;
+}
+
+.repair-phase-bar--compact {
+  padding: 4rpx 0 8rpx;
+}
+
+.repair-phase-track {
+  display: flex;
+  gap: 6rpx;
+  margin-bottom: 16rpx;
+}
+
+.repair-phase-seg {
+  flex: 1;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: var(--border, #e2e8f0);
+}
+
+.repair-phase-seg--done {
+  background: var(--success, #22c55e);
+}
+
+.repair-phase-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.repair-phase-node {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.repair-phase-dot {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: var(--border, #e2e8f0);
+  margin-bottom: 8rpx;
+  box-sizing: border-box;
+  border: 2rpx solid var(--page-bg, #f8fafc);
+}
+
+.repair-phase-dot--done {
+  background: var(--success, #22c55e);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.repair-phase-text {
+  font-size: var(--fs-cap, 22rpx);
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.35;
+}
+
+.repair-phase-text--done {
+  color: var(--text-secondary, #475569);
+  font-weight: 500;
+}

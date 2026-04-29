@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Form, Input, InputNumber, Button, message, Typography, Tabs, Switch, Space, Alert } from 'antd';
+import { Card, Form, Input, InputNumber, Button, message, Typography, Tabs, Switch, Space, Alert, Divider } from 'antd';
 import { Link } from 'react-router-dom';
 import { callCloudFunction } from '../utils/api';
 import { parseSystemConfig, flattenSystemConfig, getDefaultSystemConfig } from '../utils/systemConfig';
@@ -129,6 +129,24 @@ export default function SystemConfig() {
   const [biddingDistLoading, setBiddingDistLoading] = useState(false);
   const [recommendForm] = Form.useForm();
   const [recommendLoading, setRecommendLoading] = useState(false);
+  const SHOP_SORT_SETTINGS_KEY = 'shopSortWeightsV1';
+  const SHOP_SORT_DEFAULTS: any = {
+    version: 1,
+    scenes: {
+      L1L2: {
+        default: { shop: 0.35, distance: 0.3, price: 0.25, response: 0.1 },
+        self_pay: { shop: 0.33, distance: 0.22, price: 0.35, response: 0.1 },
+      },
+      L3L4: {
+        default: { shop: 0.6, distance: 0.05, price: 0.2, response: 0.15 },
+        self_pay: { shop: 0.55, distance: 0.05, price: 0.28, response: 0.12 },
+      },
+      brand: {
+        default: { shop: 0.5, distance: 0.1, price: 0.2, response: 0.2 },
+        self_pay: { shop: 0.45, distance: 0.08, price: 0.3, response: 0.17 },
+      },
+    },
+  };
 
   const loadBiddingDistConfig = async () => {
     try {
@@ -159,8 +177,6 @@ export default function SystemConfig() {
         newShopBaseScore: cfg.newShopBaseScore ?? 60,
         sameProjectScorePriority: cfg.sameProjectScorePriority ?? 15,
         sameProjectScoreFallback: cfg.sameProjectScoreFallback ?? 5,
-        sceneWeightL1L2: cfg.sceneWeightL1L2 ?? 0.35,
-        sceneWeightL3L4: cfg.sceneWeightL3L4 ?? 0.6,
       });
     } catch (_) {}
   };
@@ -186,8 +202,6 @@ export default function SystemConfig() {
         newShopBaseScore: Number(values.newShopBaseScore) ?? 60,
         sameProjectScorePriority: Number(values.sameProjectScorePriority) ?? 15,
         sameProjectScoreFallback: Number(values.sameProjectScoreFallback) ?? 5,
-        sceneWeightL1L2: Number(values.sceneWeightL1L2) ?? 0.35,
-        sceneWeightL3L4: Number(values.sceneWeightL3L4) ?? 0.6,
       };
       await callCloudFunction('addData', {
         collection: 'system_config',
@@ -205,64 +219,55 @@ export default function SystemConfig() {
     try {
       const result = await callCloudFunction('queryData', { collection: 'system_config' });
       const configList = result.data || [];
-      const defaultConfig = getDefaultSystemConfig();
-      const config = parseSystemConfig(configList, defaultConfig);
-      const weights = config.recommendationWeights || {};
-      recommendForm.setFieldsValue({
-        priceWeight: weights.price ?? 40,
-        violationWeight: weights.violations ?? 25,
-        accuracyWeight: weights.accuracy ?? 10,
-        satisfactionWeight: weights.satisfaction ?? 20,
-        distanceWeight: weights.distance ?? 5,
-        warningThreshold: config.quoteWarningThreshold ?? 30,
-        priceBottomLine: config.priceBottomLine ?? 90,
-        deviationThreshold: config.quoteDeviationThreshold ?? 20,
-      });
+      const item = configList.find((c: any) => c.key === SHOP_SORT_SETTINGS_KEY);
+      let cfg: any = SHOP_SORT_DEFAULTS;
+      if (item?.value) {
+        try {
+          const parsed = JSON.parse(item.value);
+          cfg = { ...SHOP_SORT_DEFAULTS, ...(parsed || {}) };
+          cfg.scenes = { ...SHOP_SORT_DEFAULTS.scenes, ...(parsed?.scenes || {}) };
+        } catch (_) {}
+      }
+
+      const fv: any = {};
+      const scenes = cfg.scenes || {};
+      const keys = ['L1L2', 'L3L4', 'brand'];
+      const dims = ['shop', 'distance', 'price', 'response'];
+      for (const s of keys) {
+        for (const p of ['default', 'self_pay']) {
+          for (const d of dims) {
+            fv[`${s}_${p}_${d}`] = scenes?.[s]?.[p]?.[d] ?? SHOP_SORT_DEFAULTS.scenes[s][p][d];
+          }
+        }
+      }
+      recommendForm.setFieldsValue(fv);
     } catch (_) {}
   };
 
   const handleRecommendSubmit = async (values: any) => {
     setRecommendLoading(true);
     try {
-      const config: any = {
-        recommendationWeights: {
-          price: Number(values.priceWeight),
-          violations: Number(values.violationWeight),
-          accuracy: Number(values.accuracyWeight),
-          satisfaction: Number(values.satisfactionWeight),
-          distance: Number(values.distanceWeight),
-        },
-        quoteWarningThreshold: Number(values.warningThreshold),
-        priceBottomLine: Number(values.priceBottomLine),
-        quoteDeviationThreshold: Number(values.deviationThreshold),
-      };
-      const flatConfig = flattenSystemConfig(config);
-      const promises = Object.keys(flatConfig).map(async (key) => {
-        const value = flatConfig[key];
-        const existResult = await callCloudFunction('queryData', {
-          collection: 'system_config',
-          where: { key },
-          limit: 1
-        });
-        if (existResult.success && existResult.data?.length > 0) {
-          return callCloudFunction('updateData', {
-            collection: 'system_config',
-            where: { key },
-            data: { value }
-          });
-        }
-        return callCloudFunction('addData', {
-          collection: 'system_config',
-          data: { key, value }
-        });
+      const build = (scene: string, payer: 'default' | 'self_pay') => ({
+        shop: Number(values[`${scene}_${payer}_shop`]),
+        distance: Number(values[`${scene}_${payer}_distance`]),
+        price: Number(values[`${scene}_${payer}_price`]),
+        response: Number(values[`${scene}_${payer}_response`]),
       });
-      const results = await Promise.all(promises);
-      const hasError = results.some(r => !r.success);
-      if (!hasError) {
-        message.success('推荐规则配置已保存');
-      } else {
-        message.error('部分配置保存失败');
-      }
+      const payload = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        scenes: {
+          L1L2: { default: build('L1L2', 'default'), self_pay: build('L1L2', 'self_pay') },
+          L3L4: { default: build('L3L4', 'default'), self_pay: build('L3L4', 'self_pay') },
+          brand: { default: build('brand', 'default'), self_pay: build('brand', 'self_pay') },
+        },
+      };
+
+      await callCloudFunction('addData', {
+        collection: 'system_config',
+        data: { key: SHOP_SORT_SETTINGS_KEY, value: JSON.stringify(payload) },
+      });
+      message.success('店铺列表排序配置已保存（立即生效）');
     } catch (e: any) {
       message.error(e.message || '保存失败');
     } finally {
@@ -366,21 +371,13 @@ export default function SystemConfig() {
           <Form.Item name="sameProjectScoreFallback" label="兜底匹配加分">
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Title level={5}>场景权重</Title>
-          <Form.Item
-            name="sceneWeightL1L2"
-            label="L1-L2 项目权重"
-            tooltip="综合匹配分公式：店铺得分×场景权重+同项目完单量分+报价准确度分+时效履约分。L1-L2（洗车、钣金喷漆等）权重"
-          >
-            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="sceneWeightL3L4"
-            label="L3-L4 项目权重"
-            tooltip="L3-L4（发动机、事故车等）高复杂度项目权重，通常高于 L1-L2"
-          >
-            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
-          </Form.Item>
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="提示：竞价分发已统一读取“店铺列表排序配置”"
+            description="竞价分发梯队匹配分中的“店铺得分权重”已统一从「店铺列表排序配置」读取；因此本页不再提供场景权重输入项，避免“可配但不生效”。"
+          />
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={biddingDistLoading}>
               保存竞价分发配置
@@ -391,47 +388,62 @@ export default function SystemConfig() {
     },
     {
       key: 'recommend',
-      label: '推荐规则',
+      label: '店铺列表排序配置',
       children: (
         <>
           <Alert
             type="info"
             showIcon
-            message="推荐规则与竞价分发统一在系统配置中管理"
-            description={<><Link to="/admin/reward-rules">前往奖励金规则配置 →</Link></>}
+            message="配置保存后立即生效（影响：车主端店铺列表默认排序、竞价分发梯队匹配分）"
+            description={
+              <>
+                四维权重：店铺得分 / 距离 / 报价合理性 / 响应速度。分场景（L1L2、L3L4、品牌）与付款意图（默认、自费）。
+                <Divider style={{ margin: '8px 0' }} />
+                <Link to="/admin/reward-rules">前往奖励金规则配置 →</Link>
+              </>
+            }
             style={{ marginBottom: 16 }}
           />
           <Form form={recommendForm} onFinish={handleRecommendSubmit} layout="vertical">
-            <Title level={5}>权重配置</Title>
-            <Form.Item name="priceWeight" label="价格权重（分）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="violationWeight" label="违规记录权重（分）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="accuracyWeight" label="报价准确性权重（分）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="satisfactionWeight" label="车主满意度权重（分）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="distanceWeight" label="距离权重（分）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Title level={5} style={{ marginTop: 24 }}>预警阈值设置</Title>
-            <Form.Item name="warningThreshold" label="报价预警阈值（%）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="priceBottomLine" label="价格底线（%）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="deviationThreshold" label="报价偏离度惩罚阈值（%）">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
+            <Title level={5}>L1L2 场景（默认/自费）</Title>
+            <Form.Item name="L1L2_default_shop" label="默认-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_default_distance" label="默认-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_default_price" label="默认-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_default_response" label="默认-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Divider />
+            <Form.Item name="L1L2_self_pay_shop" label="自费-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_self_pay_distance" label="自费-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_self_pay_price" label="自费-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L1L2_self_pay_response" label="自费-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+
+            <Divider style={{ margin: '16px 0' }} />
+            <Title level={5}>L3L4 场景（默认/自费）</Title>
+            <Form.Item name="L3L4_default_shop" label="默认-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_default_distance" label="默认-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_default_price" label="默认-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_default_response" label="默认-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Divider />
+            <Form.Item name="L3L4_self_pay_shop" label="自费-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_self_pay_distance" label="自费-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_self_pay_price" label="自费-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="L3L4_self_pay_response" label="自费-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+
+            <Divider style={{ margin: '16px 0' }} />
+            <Title level={5}>品牌场景（默认/自费）</Title>
+            <Form.Item name="brand_default_shop" label="默认-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_default_distance" label="默认-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_default_price" label="默认-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_default_response" label="默认-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Divider />
+            <Form.Item name="brand_self_pay_shop" label="自费-店铺得分权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_self_pay_distance" label="自费-距离权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_self_pay_price" label="自费-报价合理性权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="brand_self_pay_response" label="自费-响应速度权重"><InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} /></Form.Item>
+
             <Form.Item>
               <Space>
                 <Button type="primary" htmlType="submit" loading={recommendLoading}>
-                  保存推荐规则配置
+                  保存排序配置
                 </Button>
                 <Button onClick={() => recommendForm.resetFields()}>重置</Button>
               </Space>

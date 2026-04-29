@@ -2,7 +2,7 @@
  * 口碑首页 - 以《设计规范.md》为准
  * 页边距：主内容区使用 var(--page-padding-x)（32rpx）
  */
-@import '../reviews/feed/index.wxss';
+@import '../../styles/reviews-feed.wxss';
 
 .rep-merged-feed.feed-page {
   flex: 1;
@@ -18,6 +18,7 @@
 .rep-main-tabs {
   display: flex;
   flex-direction: row;
+  align-items: center;
   gap: var(--space-2xl);
   margin-bottom: var(--space-lg);
   padding-bottom: var(--space-md);

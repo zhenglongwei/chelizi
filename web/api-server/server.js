@@ -43,6 +43,7 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const { sanitizeAnalysisResultForRead } = require('./utils/analysis-result-sanitize');
 const { enrichAnalysisResultHumanDisplay } = require('./utils/human-display');
@@ -57,9 +58,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const WX_APPID = process.env.WX_APPID;
 const WX_SECRET = process.env.WX_SECRET;
 
-// 阿里云AI配置
+// 阿里云 AI Key（千问等，见 qwen-analyzer 使用 ALIYUN_AI_KEY / DASHSCOPE_API_KEY）
 const ALIYUN_AI_KEY = process.env.ALIYUN_AI_KEY;
-const ALIYUN_AI_ENDPOINT = process.env.ALIYUN_AI_ENDPOINT || 'https://dashscope.aliyuncs.com/api/v1';
 
 // ===================== 数据库连接池 =====================
 const dbConfig = {
@@ -86,7 +86,11 @@ const shopSortService = require('./shop-sort-service');
 const shopScoreService = require('./shop-score');
 const appointmentService = require('./services/appointment-service');
 const damageService = require('./services/damage-service');
+const capabilityService = require('./services/capability-service');
+const { CAPABILITIES } = require('./constants/capabilities');
+const orchestratorService = require('./services/orchestrator-service');
 const orderService = require('./services/order-service');
+const orderLifecycleService = require('./services/order-lifecycle-service');
 const authService = require('./services/auth-service');
 const shopService = require('./services/shop-service');
 const adminService = require('./services/admin-service');
@@ -105,6 +109,7 @@ const historicalFairPriceService = require('./services/historical-fair-price-ser
 const orderQuoteProposalService = require('./services/order-quote-proposal-service');
 const merchantIncomeWithdrawService = require('./services/merchant-income-withdraw-service');
 const orderWarrantyCardService = require('./services/order-warranty-card-service');
+const repairMilestoneService = require('./services/repair-milestone-service');
 const { hasColumn: dbHasColumn } = require('./utils/db-utils');
 const merchantCorpIncomeWithdrawService = require('./services/merchant-corp-income-withdraw-service');
 const quoteImportService = require('./services/quote-import-service');
@@ -118,6 +123,20 @@ const quoteProposalPublic = require('./utils/quote-proposal-public-list');
 const reviewSystemCheckService = require('./services/review-system-check-service');
 const { sanitizeSystemChecksForUserFacing } = require('./utils/review-public-system-sanitize');
 const qwenAnalyzer = require('./qwen-analyzer');
+const openapiAuth = require('./services/openapi-auth-service');
+const wechatJssdkService = require('./services/wechat-jssdk-service');
+let moduleRegistry;
+try {
+  moduleRegistry = require('./modules/module-registry');
+} catch (err) {
+  // 线上发布若漏传 modules 目录时，避免主服务直接崩溃；模块能力会被跳过并打印告警。
+  console.error('[module-registry] load failed, skip capability modules:', err && err.message ? err.message : err);
+  moduleRegistry = {
+    registerAllModules() {
+      console.warn('[module-registry] capability modules disabled (modules directory missing)');
+    },
+  };
+}
 const multer = require('multer');
 const quoteImportXlsxUpload = multer({
   storage: multer.memoryStorage(),
@@ -211,6 +230,98 @@ app.post('/api/v1/pay/wechat/merchant-income-transfer-notify', express.raw({ typ
 // 请求体大小：2mb 足够业务使用（图片上传走 OSS 直传），降低 DoS 风险
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// ===================== 网关规范：reqId / 幂等 / 基础限流 =====================
+
+function makeReqId() {
+  try {
+    return 'req_' + crypto.randomBytes(8).toString('hex');
+  } catch (_) {
+    return 'req_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+  }
+}
+
+// 为所有请求生成/透传 reqId（便于链路追踪与审计）
+app.use((req, res, next) => {
+  const fromHeader = req.headers['x-request-id'];
+  const reqId = (fromHeader && String(fromHeader).trim()) || makeReqId();
+  req.reqId = reqId;
+  res.setHeader('X-Request-Id', reqId);
+  next();
+});
+
+// 幂等：仅当客户端提供 Idempotency-Key 时启用（避免影响旧客户端）
+const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+const _idemStore = new Map(); // key -> { expiresAt, statusCode, body }
+
+function idemKeyFor(req) {
+  const k = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
+  const key = k ? String(k).trim() : '';
+  if (!key) return '';
+  // 以 path+method 做隔离，避免同 key 误命中不同接口
+  return `${req.method}:${req.path}:${key}`;
+}
+
+function cleanupIdemStore() {
+  const now = Date.now();
+  for (const [k, v] of _idemStore.entries()) {
+    if (!v || v.expiresAt <= now) _idemStore.delete(k);
+  }
+}
+
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const ik = idemKeyFor(req);
+  if (!ik) return next();
+  cleanupIdemStore();
+  const hit = _idemStore.get(ik);
+  if (hit && hit.expiresAt > Date.now()) {
+    return res.status(hit.statusCode || 200).json(hit.body);
+  }
+
+  // 记录本次响应
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    try {
+      _idemStore.set(ik, {
+        expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+        statusCode: res.statusCode,
+        body,
+      });
+    } catch (_) {}
+    return originalJson(body);
+  };
+  next();
+});
+
+// 基础限流（分发优先：先保护公共接口与高成本AI接口；默认较宽松）
+function simpleTokenBucket({ windowMs, max }) {
+  const buckets = new Map(); // key -> { resetAt, used }
+  return (key) => {
+    const now = Date.now();
+    let b = buckets.get(key);
+    if (!b || b.resetAt <= now) {
+      b = { resetAt: now + windowMs, used: 0 };
+      buckets.set(key, b);
+    }
+    b.used += 1;
+    return { allowed: b.used <= max, remaining: Math.max(0, max - b.used), resetAt: b.resetAt };
+  };
+}
+
+const _publicBucket = simpleTokenBucket({ windowMs: 60 * 1000, max: 120 });
+app.use((req, res, next) => {
+  // 仅对 public 接口做轻量保护（第三方/搜索落地页的入口）
+  if (!String(req.path || '').startsWith('/api/v1/public/')) return next();
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim() || 'unknown';
+  const r = _publicBucket(ip);
+  if (!r.allowed) {
+    res.setHeader('Retry-After', Math.ceil((r.resetAt - Date.now()) / 1000));
+    return res.status(429).json(errorResponse('请求过于频繁，请稍后再试', 429));
+  }
+  res.setHeader('X-RateLimit-Remaining', String(r.remaining));
+  next();
+});
 
 // 安全头（Helmet）
 try {
@@ -329,6 +440,140 @@ function errorResponse(message, code = 400, errors = null) {
   return response;
 }
 
+// ===================== 模块装配（Capability Modules） =====================
+// 仅负责注册路由；不改变业务语义。逐步把 server.js 中的业务路由迁到 modules/。
+moduleRegistry.registerAllModules(app, {
+  pool,
+  authenticateToken,
+  authenticateOpenApiKey,
+  requireCapability,
+  capabilityService,
+  CAPABILITIES,
+  damageService,
+  qwenAnalyzer,
+  repairMilestoneService,
+  wechatJssdkService,
+  WX_APPID,
+  WX_SECRET,
+  successResponse,
+  errorResponse,
+});
+
+/**
+ * 能力门禁（Phase1：settings 全局开关）
+ * - 不通过：403
+ * - 缺省：开（不影响现有功能）
+ */
+function requireCapability(capabilityKey, options = {}) {
+  const msg = options && options.message ? String(options.message) : '当前功能未开放';
+  return async (req, res, next) => {
+    try {
+      const ok = await capabilityService.ensureCapability(pool, capabilityKey);
+      if (!ok) {
+        return res.status(403).json(errorResponse(msg, 403));
+      }
+      return next();
+    } catch (err) {
+      console.warn('[capability] check failed:', capabilityKey, err && err.message);
+      return next();
+    }
+  };
+}
+
+// OpenAPI：第三方 API Key 鉴权（用于 AI 搜索/Agent/合作方接入）
+async function authenticateOpenApiKey(req, res, next) {
+  try {
+    const key = req.headers['x-api-key'] || req.headers['authorization'];
+    const raw = String(key || '').replace(/^Bearer\s+/i, '').trim();
+    const info = await openapiAuth.resolveApiKey(pool, raw);
+    if (!info) {
+      return res.status(401).json(errorResponse('缺少或无效的 OpenAPI Key', 401));
+    }
+    // daily_limit（最小可用）：按 api_key_id + 当天审计记录数计数
+    if (info.source === 'db' && info.daily_limit && info.daily_limit > 0) {
+      const hasAudit = await openapiAuth.tableExists(pool, 'api_call_audit');
+      if (hasAudit) {
+        const [cntRows] = await pool.execute(
+          `SELECT COUNT(*) AS c FROM api_call_audit
+           WHERE api_key_id = ? AND created_at >= CURDATE()`,
+          [info.api_key_id]
+        );
+        const used = parseInt(cntRows[0]?.c, 10) || 0;
+        if (used >= info.daily_limit) {
+          return res.status(429).json(errorResponse('今日调用次数已达上限', 429));
+        }
+      }
+    }
+    req.openApi = info;
+    next();
+  } catch (e) {
+    console.error('[openapi] auth error:', e && e.message);
+    return res.status(500).json(errorResponse('OpenAPI鉴权失败', 500));
+  }
+}
+
+// OpenAPI：审计写入（仅当 req.openApi 存在且表已迁移）
+app.use(async (req, res, next) => {
+  if (!req.openApi) return next();
+  let hasAudit = false;
+  try {
+    hasAudit = await openapiAuth.tableExists(pool, 'api_call_audit');
+  } catch (_) {
+    hasAudit = false;
+  }
+  if (!hasAudit) return next();
+
+  const start = Date.now();
+  const reqId = req.reqId || null;
+  res.on('finish', async () => {
+    try {
+      const durationMs = Date.now() - start;
+      const auditId = crypto.randomBytes(18).toString('hex');
+      const pathOnly = String(req.originalUrl || req.url || '').split('?')[0];
+      await pool.execute(
+        `INSERT INTO api_call_audit (audit_id, req_id, api_key_id, user_id, merchant_id, path, method, status_code, duration_ms, error_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          auditId,
+          reqId,
+          req.openApi.api_key_id || null,
+          req.userId || null,
+          req.merchantId || null,
+          pathOnly,
+          String(req.method || 'GET'),
+          parseInt(res.statusCode, 10) || 200,
+          parseInt(durationMs, 10) || 0,
+          null,
+        ]
+      );
+    } catch (e) {
+      console.warn('[openapi] audit insert failed:', e && e.message);
+    }
+  });
+  return next();
+});
+
+/**
+ * 能力门禁（Phase1：settings 全局开关）
+ * - 不通过：403
+ * - 缺省：开（不影响现有功能）
+ */
+function requireCapability(capabilityKey, options = {}) {
+  const msg = options && options.message ? String(options.message) : '当前功能未开放';
+  return async (req, res, next) => {
+    try {
+      const ok = await capabilityService.ensureCapability(pool, capabilityKey);
+      if (!ok) {
+        return res.status(403).json(errorResponse(msg, 403));
+      }
+      return next();
+    } catch (err) {
+      console.warn('[capability] check failed:', capabilityKey, err && err.message);
+      return next();
+    }
+  };
+}
+
 // 生产环境不向前端返回 error.message，避免泄露内部实现/SQL/路径等
 function safeErrorMessage(err, fallback) {
   if (isProd) return fallback;
@@ -336,20 +581,54 @@ function safeErrorMessage(err, fallback) {
   return (msg && msg.trim()) ? msg : fallback;
 }
 
+/** mysql2 execute 对部分环境 LIMIT/OFFSET 占位符不兼容，分页改为安全整数字面量 */
+function clampPagination(pageRaw, limitRaw, defaultLimit = 20, maxLimit = 100) {
+  let p = parseInt(pageRaw, 10);
+  let l = parseInt(limitRaw, 10);
+  if (!Number.isFinite(p) || p < 1) p = 1;
+  if (!Number.isFinite(l) || l < 1) l = defaultLimit;
+  l = Math.min(maxLimit, Math.max(1, l));
+  const off = (p - 1) * l;
+  return { page: p, limit: l, offset: off, lim: l, off };
+}
+
 // ===================== 路由 =====================
 
 // 健康检查（/health 本地直连，/api/health 经 Nginx 代理）
+// 本地排查：GET /health?diag=1 返回当前连接的数据库名、关键表是否存在（仅非 production）
 const healthHandler = async (req, res) => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
-    connection.release();
-    res.json(successResponse({ 
-      status: 'ok', 
-      database: 'connected',
-      timestamp: new Date().toISOString()
-    }, 'API服务运行正常'));
+    connection = await pool.getConnection();
+    if (req.query.diag === '1' && !isProd) {
+      const [dbRow] = await connection.query('SELECT DATABASE() AS db');
+      const [tblMu] = await connection.query("SHOW TABLES LIKE 'merchant_users'");
+      const [tblOrders] = await connection.query("SHOW TABLES LIKE 'orders'");
+      return res.json(
+        successResponse({
+          status: 'ok',
+          database: 'connected',
+          current_database: dbRow[0]?.db ?? null,
+          merchant_users_exists: tblMu.length > 0,
+          orders_exists: tblOrders.length > 0,
+          timestamp: new Date().toISOString(),
+        })
+      );
+    }
+    res.json(
+      successResponse(
+        {
+          status: 'ok',
+          database: 'connected',
+          timestamp: new Date().toISOString(),
+        },
+        'API服务运行正常'
+      )
+    );
   } catch (error) {
     res.status(500).json(errorResponse('数据库连接失败', 500));
+  } finally {
+    if (connection) connection.release();
   }
 };
 app.get('/health', healthHandler);
@@ -412,7 +691,11 @@ app.post('/api/v1/auth/phone/verify-sms', authenticateToken, async (req, res) =>
 // 服务商注册
 app.post('/api/v1/merchant/register', async (req, res) => {
   try {
-    const result = await authService.merchantRegister(pool, req, { JWT_SECRET });
+    const result = await authService.merchantRegister(pool, req, {
+      JWT_SECRET,
+      WX_APPID,
+      WX_SECRET,
+    });
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
@@ -944,22 +1227,75 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
     );
 
     const complexityService = require('./services/complexity-service');
-    const repairItems = complexityService.normalizeRepairItems(
-      quoted.length > 0 ? (typeof quoted[0].items === 'string' ? JSON.parse(quoted[0].items || '[]') : quoted[0].items) : [],
-      analysis
-    );
-    const { level: complexityLevel } = await complexityService.resolveComplexityFromItems(pool, repairItems);
+    let quoteItemsForNorm = [];
+    if (quoted.length > 0) {
+      try {
+        quoteItemsForNorm =
+          typeof quoted[0].items === 'string' ? JSON.parse(quoted[0].items || '[]') : (quoted[0].items || []);
+      } catch (_) {
+        quoteItemsForNorm = [];
+      }
+    }
+    const repairItems = complexityService.normalizeRepairItems(quoteItemsForNorm, analysis);
+    let complexityLevel = 'L2';
+    try {
+      const resolved = await complexityService.resolveComplexityFromItems(pool, repairItems);
+      if (resolved && resolved.level) complexityLevel = resolved.level;
+    } catch (cErr) {
+      console.warn(
+        '[merchant/bidding/:id] 复杂度依赖 reward_rules.complexityLevels，本地未配置时降级 L2。云端请在后台补全奖励规则。',
+        cErr.message
+      );
+    }
     const est = analysis.total_estimate;
     const estMid = Array.isArray(est) && est.length >= 2 ? (parseFloat(est[0]) + parseFloat(est[1])) / 2 : 5000;
     const orderTier = estMid < 1000 ? 1 : estMid < 5000 ? 2 : estMid < 20000 ? 3 : 4;
 
     const userDescription = (b.user_description || '').trim() || null;
 
+    let insuranceInfo = {};
+    try {
+      insuranceInfo =
+        typeof b.insurance_info === 'string' ? JSON.parse(b.insurance_info || '{}') : (b.insurance_info || {});
+    } catch (_) {
+      insuranceInfo = {};
+    }
+
+    let myQuote = null;
+    if (quoted.length > 0) {
+      const q0 = quoted[0];
+      let qItems = [];
+      let qVa = [];
+      try {
+        qItems = typeof q0.items === 'string' ? JSON.parse(q0.items || '[]') : (q0.items || []);
+      } catch (_) {
+        qItems = [];
+      }
+      try {
+        qVa =
+          typeof q0.value_added_services === 'string'
+            ? JSON.parse(q0.value_added_services || '[]')
+            : (q0.value_added_services || []);
+      } catch (_) {
+        qVa = [];
+      }
+      myQuote = {
+        quote_id: q0.quote_id,
+        amount: q0.amount,
+        items: qItems,
+        value_added_services: qVa,
+        duration: q0.duration,
+        remark: q0.remark,
+        quote_status: q0.quote_status != null ? q0.quote_status : 0,
+        quote_valid_until: q0.quote_valid_until
+      };
+    }
+
     res.json(successResponse({
       bidding_id: b.bidding_id,
       report_id: b.report_id,
       vehicle_info: vehicleInfo,
-      insurance_info: typeof b.insurance_info === 'string' ? JSON.parse(b.insurance_info || '{}') : (b.insurance_info || {}),
+      insurance_info: insuranceInfo,
       range_km: b.range_km,
       expire_at: b.expire_at,
       status: b.status,
@@ -968,35 +1304,24 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
       analysis_result: analysis,
       complexity_level: complexityLevel,
       order_tier: orderTier,
-      my_quote: quoted.length > 0 ? {
-        quote_id: quoted[0].quote_id,
-        amount: quoted[0].amount,
-        items: typeof quoted[0].items === 'string' ? JSON.parse(quoted[0].items || '[]') : (quoted[0].items || []),
-        value_added_services: typeof quoted[0].value_added_services === 'string' ? JSON.parse(quoted[0].value_added_services || '[]') : (quoted[0].value_added_services || []),
-        duration: quoted[0].duration,
-        remark: quoted[0].remark,
-        quote_status: quoted[0].quote_status != null ? quoted[0].quote_status : 0,
-        quote_valid_until: quoted[0].quote_valid_until
-      } : null
+      my_quote: myQuote
     }));
   } catch (error) {
     console.error('服务商竞价详情错误:', error);
-    res.status(500).json(errorResponse('获取竞价详情失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取竞价详情失败'), 500));
   }
 });
 
 // 提交报价（需资质审核通过）
 app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, async (req, res) => {
   try {
-    const { bidding_id, amount, items, value_added_services, duration, remark, quote_validity_days } = req.body;
+    const { bidding_id, amount, items, value_added_services, duration, remark } = req.body;
     const shopId = req.shopId;
 
     if (!bidding_id || !amount || amount <= 0) {
       return res.status(400).json(errorResponse('请填写有效报价金额'));
     }
-    // 报价有效期（天），服务商可自定义，默认 3 天
-    const validityDays = quote_validity_days != null && quote_validity_days !== '' ? parseInt(quote_validity_days, 10) : 3;
-    const validDays = (isNaN(validityDays) || validityDays < 1 || validityDays > 30) ? 3 : Math.min(30, Math.max(1, validityDays));
+    // 预报价有效期：固定 24 小时（规则强约束），不允许服务商自定义，避免选厂时口径不一致
     const dur = duration != null && duration !== '' ? parseInt(duration, 10) : NaN;
     if (isNaN(dur) || dur < 0) {
       return res.status(400).json(errorResponse('请填写预计工期（天）'));
@@ -1054,11 +1379,11 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     if (!visible) return res.status(403).json(errorResponse('该竞价未邀请您'));
 
     const quoteId = 'QUO' + Date.now();
-    // 报价有效期与 NOW() 比较一致，避免 toISOString(UTC) 写入 DATETIME 导致与库时区错位、提前判过期
+    // 有效期与 NOW() 比较一致，避免 toISOString(UTC) 写入 DATETIME 导致与库时区错位、提前判过期
     await pool.execute(
       `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))`,
-      [quoteId, bidding_id, shopId, amount, JSON.stringify(sanitized.items), JSON.stringify(value_added_services || []), dur, war, remark || null, validDays]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+      [quoteId, bidding_id, shopId, amount, JSON.stringify(sanitized.items), JSON.stringify(value_added_services || []), dur, war, remark || null]
     );
 
     try {
@@ -1112,7 +1437,8 @@ app.get('/api/v1/merchant/orders', authenticateMerchant, async (req, res) => {
     const status = req.query.status;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 10));
-    const offset = (page - 1) * limit;
+    const lim = Math.trunc(limit);
+    const off = Math.trunc((page - 1) * limit);
 
     let where = 'WHERE o.shop_id = ?';
     const params = [shopId];
@@ -1131,8 +1457,8 @@ app.get('/api/v1/merchant/orders', authenticateMerchant, async (req, res) => {
        LEFT JOIN damage_reports dr ON b.report_id = dr.report_id
        ${where}
        ORDER BY o.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+       LIMIT ${lim} OFFSET ${off}`,
+      [...params]
     );
 
     const [countRes] = await pool.execute(
@@ -1217,6 +1543,7 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       single: '单方事故',
       self_fault: '己方全责',
       other_fault: '对方全责',
+      equal_fault: '同等责任',
       other_main: '对方主责',
       self_main: '己方主责'
     };
@@ -1260,7 +1587,8 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       };
     })();
 
-    const pendingCancel = await orderService.getPendingCancelRequest(pool, id, shopId);
+    // 撤单申请旧链路已下线
+    const pendingCancel = null;
 
     let materialAuditStatus = null;
     let materialAuditRejectReason = null;
@@ -1302,6 +1630,73 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       }
     } catch (_) {}
 
+    let repairMilestones = [];
+    try {
+      if (await repairMilestoneService.milestonesTableExists(pool)) {
+        repairMilestones = await repairMilestoneService.listForOrder(pool, id);
+      }
+    } catch (_) {}
+
+    // 车主自救请求（维修商未处理/强制结单）
+    let selfHelpRequests = [];
+    try {
+      const [sRows] = await pool.execute(
+        `SELECT request_id, user_id, request_type, note, image_urls, status, created_at
+         FROM order_self_help_requests
+         WHERE order_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [id]
+      );
+      selfHelpRequests = (sRows || []).map((r) => {
+        let imgs = [];
+        try {
+          imgs = typeof r.image_urls === 'string' ? JSON.parse(r.image_urls || '[]') : (r.image_urls || []);
+        } catch (_) {
+          imgs = [];
+        }
+        return {
+          request_id: r.request_id,
+          user_id: r.user_id,
+          request_type: r.request_type,
+          note: r.note,
+          status: r.status,
+          image_urls: Array.isArray(imgs) ? imgs : [],
+          created_at: r.created_at
+        };
+      });
+    } catch (_) {}
+
+    // 等待配件延期记录
+    let waitingPartsExtensions = [];
+    try {
+      const [eRows] = await pool.execute(
+        `SELECT extension_id, shop_id, note, proof_urls, extend_days, status, created_at
+         FROM order_waiting_parts_extensions
+         WHERE order_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [id]
+      );
+      waitingPartsExtensions = (eRows || []).map((p) => {
+        let imgs = [];
+        try {
+          imgs = typeof p.proof_urls === 'string' ? JSON.parse(p.proof_urls || '[]') : (p.proof_urls || []);
+        } catch (_) {
+          imgs = [];
+        }
+        return {
+          extension_id: p.extension_id,
+          shop_id: p.shop_id,
+          note: p.note,
+          extend_days: p.extend_days,
+          status: p.status,
+          proof_urls: Array.isArray(imgs) ? imgs : [],
+          created_at: p.created_at
+        };
+      });
+    } catch (_) {}
+
     res.json(successResponse({
       order_id: o.order_id,
       bidding_id: o.bidding_id,
@@ -1330,12 +1725,20 @@ app.get('/api/v1/merchant/orders/:id', authenticateMerchant, async (req, res) =>
       deviation_rate: o.deviation_rate != null ? parseFloat(o.deviation_rate) : null,
       duration_deadline: durationDeadline,
       duration_deadline_text: durationDeadlineText,
+      lifecycle_main: o.lifecycle_main || null,
+      lifecycle_sub: o.lifecycle_sub || null,
+      lifecycle_started_at: o.lifecycle_started_at || null,
+      lifecycle_deadline_at: o.lifecycle_deadline_at || null,
+      promised_delivery_at: o.promised_delivery_at || null,
       created_at: o.created_at,
       accepted_at: o.accepted_at,
-      pending_cancel_request: pendingCancel,
+      pending_cancel_request: null,
       material_audit_status: materialAuditStatus,
       material_audit_reject_reason: materialAuditRejectReason,
       quote_proposals: quoteProposals,
+      repair_milestones: repairMilestones,
+      self_help_requests: selfHelpRequests,
+      waiting_parts_extensions: waitingPartsExtensions,
       warranty_card_template_id:
         o.warranty_card_template_id != null && o.warranty_card_template_id !== ''
           ? orderWarrantyCardService.normalizeTemplateId(o.warranty_card_template_id)
@@ -1373,8 +1776,100 @@ app.post('/api/v1/merchant/orders/:id/accept', authenticateMerchant, requireQual
   }
 });
 
-// 更新订单状态（维修中→待确认，1→2 时 completion_evidence 必传）
-// 材料 AI 审核：返回 auditing 时异步审核，通过后自动 status=2
+// 服务商：确认车主到店（生命周期倒计时推进）
+app.post('/api/v1/merchant/orders/:id/arrived-confirm', authenticateMerchant, requireQualification, async (req, res) => {
+  try {
+    const result = await orderLifecycleService.merchantConfirmArrived(pool, req.params.id, req.shopId);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '已确认到店'));
+  } catch (error) {
+    console.error('merchant arrived-confirm error:', error);
+    res.status(500).json(errorResponse('确认到店失败', 500));
+  }
+});
+
+// 服务商：设置承诺交车时间（硬deadline）
+app.put('/api/v1/merchant/orders/:id/promised-delivery', authenticateMerchant, requireQualification, async (req, res) => {
+  try {
+    const raw = req.body && (req.body.promised_delivery_at || req.body.promisedDeliveryAt);
+    const dt = raw ? new Date(raw) : null;
+    if (!dt || Number.isNaN(dt.getTime())) return res.status(400).json(errorResponse('请提供有效的承诺交车时间'));
+    const now = Date.now();
+    const min = now + 24 * 3600 * 1000;
+    const max = now + 30 * 24 * 3600 * 1000;
+    if (dt.getTime() < min) return res.status(400).json(errorResponse('承诺交车时间不得早于24小时后'));
+    if (dt.getTime() > max) return res.status(400).json(errorResponse('承诺交车时间不得晚于30天后'));
+    await pool.execute(
+      `UPDATE orders SET promised_delivery_at = ?, updated_at = NOW() WHERE order_id = ? AND shop_id = ?`,
+      [dt, req.params.id, req.shopId]
+    );
+    res.json(successResponse({ order_id: req.params.id, promised_delivery_at: dt.toISOString() }, '已设置承诺交车时间'));
+  } catch (e) {
+    console.error('promised-delivery error:', e);
+    res.status(500).json(errorResponse('设置失败', 500));
+  }
+});
+
+// 服务商：拆检项目清单/收据留痕（图片必填，金额/备注可选）
+app.post('/api/v1/merchant/orders/:id/offline-fee-proof', authenticateMerchant, requireQualification, async (req, res) => {
+  try {
+    const { amount, note, image_urls } = req.body || {};
+    const urls = Array.isArray(image_urls) ? image_urls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+    if (!urls.length) return res.status(400).json(errorResponse('请至少上传 1 张图片'));
+    const proofId = 'oofp_' + crypto.randomBytes(12).toString('hex');
+    const amt = amount != null && amount !== '' ? parseFloat(amount) : null;
+    const noteTrim = note != null ? String(note).trim() : '';
+    await pool.execute(
+      `INSERT INTO order_offline_fee_proofs
+        (proof_id, order_id, uploader_type, uploader_id, proof_kind, amount, note, image_urls)
+       VALUES (?, ?, 'merchant', ?, 'diagnostic_fee_receipt', ?, ?, ?)`,
+      [proofId, req.params.id, String(req.shopId), Number.isFinite(amt) ? amt : null, noteTrim || null, JSON.stringify(urls)]
+    );
+    res.json(successResponse({ proof_id: proofId }, '已提交留痕'));
+  } catch (e) {
+    console.error('merchant offline fee proof error:', e);
+    res.status(500).json(errorResponse('提交失败', 500));
+  }
+});
+
+// 服务商：等待配件延期（上传采购凭证，默认延长 15 天）
+app.post('/api/v1/merchant/orders/:id/waiting-parts-extension', authenticateMerchant, requireQualification, async (req, res) => {
+  try {
+    const { note, proof_urls, extend_days } = req.body || {};
+    const urls = Array.isArray(proof_urls) ? proof_urls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+    if (!urls.length) return res.status(400).json(errorResponse('请至少上传 1 张采购/到货凭证'));
+    const daysRaw = extend_days != null && extend_days !== '' ? parseInt(extend_days, 10) : 15;
+    const days = Number.isNaN(daysRaw) ? 15 : Math.min(30, Math.max(1, daysRaw));
+    const extId = 'owpe_' + crypto.randomBytes(12).toString('hex');
+    await pool.execute(
+      `INSERT INTO order_waiting_parts_extensions (extension_id, order_id, shop_id, note, proof_urls, extend_days, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'approved')`,
+      [extId, req.params.id, String(req.shopId), note ? String(note).trim() : null, JSON.stringify(urls), days]
+    );
+    // 延长订单 deadline（仅当存在 lifecycle_deadline_at）
+    try {
+      await pool.execute(
+        `UPDATE orders
+         SET lifecycle_sub = 'waiting_parts',
+             lifecycle_deadline_at = CASE
+               WHEN lifecycle_deadline_at IS NULL THEN DATE_ADD(NOW(), INTERVAL ? DAY)
+               ELSE DATE_ADD(lifecycle_deadline_at, INTERVAL ? DAY)
+             END,
+             updated_at = NOW()
+         WHERE order_id = ? AND shop_id = ?`,
+        [days, days, req.params.id, req.shopId]
+      );
+    } catch (_) {}
+    res.json(successResponse({ extension_id: extId, extend_days: days }, '已记录等待配件延期'));
+  } catch (e) {
+    console.error('waiting parts extension error:', e);
+    res.status(500).json(errorResponse('提交失败', 500));
+  }
+});
+
+// 更新订单状态（维修中→待确认；1→2 先提交材料并创建审核任务，审核通过后再推进到 2，不阻塞商户提交）
 app.put('/api/v1/merchant/orders/:id/status', authenticateMerchant, async (req, res) => {
   try {
     const { status, completion_evidence, warranty_card_template_id } = req.body || {};
@@ -1385,17 +1880,44 @@ app.put('/api/v1/merchant/orders/:id/status', authenticateMerchant, async (req, 
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    if (result.data.status === 'auditing' && result.data.task_id) {
+    if (result.data.task_id) {
       const baseUrl = process.env.BASE_URL || (req.protocol || 'http') + '://' + (req.get?.('host') || `localhost:${PORT}`);
       materialAuditService.runMaterialAuditAsync(pool, result.data.task_id, baseUrl);
-      return res.json(successResponse(result.data, result.data.message || '材料审核中，请稍后查看结果'));
     }
-    res.json(successResponse(result.data, '已标记为待用户确认'));
+    const msg = result.data.task_id
+      ? '已提交完工材料；后台将核验结算单与金额一致性，通过后自动进入待验收'
+      : '已标记为待用户确认';
+    res.json(successResponse(result.data, msg));
   } catch (error) {
     console.error('更新订单状态错误:', error);
     res.status(500).json(errorResponse('更新失败', 500));
   }
 });
+
+// 维修过程关键节点（维修中留痕 + 通知车主）
+app.post(
+  '/api/v1/merchant/orders/:id/repair-milestones',
+  authenticateMerchant,
+  requireCapability(CAPABILITIES.REPAIR_TIMELINE_PUBLIC, { message: '维修过程留痕暂未开放' }),
+  async (req, res) => {
+  try {
+    const r = await repairMilestoneService.createMilestone(
+      pool,
+      req.params.id,
+      req.shopId,
+      req.body || {},
+      req.merchantId
+    );
+    if (!r.success) {
+      return res.status(r.statusCode || 400).json(errorResponse(r.error));
+    }
+    res.json(successResponse(r.data, '已记录维修进展'));
+  } catch (error) {
+    console.error('维修进展记录错误:', error);
+    res.status(500).json(errorResponse('记录失败', 500));
+  }
+  }
+);
 
 // 服务商修改维修方案（仅 status=1 时可调用）
 app.put('/api/v1/merchant/orders/:id/repair-plan', authenticateMerchant, async (req, res) => {
@@ -1422,23 +1944,6 @@ app.put('/api/v1/merchant/orders/:id/final-quote', authenticateMerchant, async (
   } catch (error) {
     console.error('提交最终报价错误:', error);
     res.status(500).json(errorResponse('提交失败', 500));
-  }
-});
-
-// 服务商响应撤单申请（同意/拒绝）
-app.post('/api/v1/merchant/orders/:id/cancel-request/:requestId/respond', authenticateMerchant, async (req, res) => {
-  try {
-    const { requestId } = req.params;
-    const approve = req.body && req.body.approve === true;
-    const result = await orderService.respondCancelRequest(pool, requestId, req.shopId, approve);
-    if (!result.success) {
-      return res.status(result.statusCode || 400).json(errorResponse(result.error));
-    }
-    const msg = approve ? '已同意撤单' : '已拒绝，可通知车主';
-    res.json(successResponse(result.data, msg));
-  } catch (error) {
-    console.error('响应撤单申请错误:', error);
-    res.status(500).json(errorResponse('操作失败', 500));
   }
 });
 
@@ -1504,17 +2009,15 @@ app.post('/api/v1/merchant/shop/withdraw-qualification', authenticateMerchant, a
 // 服务商消息列表
 app.get('/api/v1/merchant/messages', authenticateMerchant, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-    const offset = (page - 1) * limit;
+    const { page, limit, lim, off } = clampPagination(req.query.page, req.query.limit, 10, 50);
 
     const [list] = await pool.execute(
       `SELECT message_id, type, title, content, related_id, is_read, created_at
        FROM merchant_messages
        WHERE merchant_id = ?
        ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [req.merchantId, limit, offset]
+       LIMIT ${lim} OFFSET ${off}`,
+      [req.merchantId]
     );
 
     const [countRes] = await pool.execute(
@@ -1937,7 +2440,11 @@ app.post(
 );
 
 /** 报价单拍照 AI 结构化（需配置 QWEN_API_KEY / DASHSCOPE_API_KEY） */
-app.post('/api/v1/merchant/quote-sheet/analyze-image', authenticateMerchant, async (req, res) => {
+app.post(
+  '/api/v1/merchant/quote-sheet/analyze-image',
+  authenticateMerchant,
+  requireCapability(CAPABILITIES.QUOTE_OCR_IMPORT, { message: '报价单识别暂未开放' }),
+  async (req, res) => {
   try {
     const imageUrl = req.body && req.body.image_url;
     const apiKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.ALIYUN_AI_KEY;
@@ -1949,7 +2456,8 @@ app.post('/api/v1/merchant/quote-sheet/analyze-image', authenticateMerchant, asy
   } catch (e) {
     res.status(400).json(errorResponse(e.message || '识别失败'));
   }
-});
+  }
+);
 
 // 获取用户信息
 app.get('/api/v1/user/profile', authenticateToken, async (req, res) => {
@@ -2103,6 +2611,22 @@ app.get('/api/v1/user/level-detail', authenticateToken, async (req, res) => {
   }
 });
 
+// 绑定一级推荐人（仅首次；成功后 is_distribution_buyer=1，供转化/post_verify 作者侧减半）
+app.post('/api/v1/user/referral/bind', authenticateToken, async (req, res) => {
+  try {
+    const referralService = require('./services/referral-service');
+    const { referrer_user_id } = req.body || {};
+    const result = await referralService.bindReferrer(pool, req.userId, referrer_user_id);
+    if (!result.success) {
+      return res.status(400).json(errorResponse(result.error || '绑定失败'));
+    }
+    res.json(successResponse({ bound: true }));
+  } catch (error) {
+    console.error('[user/referral/bind]', error);
+    res.status(500).json(errorResponse(safeErrorMessage(error, '绑定失败'), 500));
+  }
+});
+
 // 绑定车辆（阶段1：实名+车辆完成可升级1级并触发回溯）
 app.post('/api/v1/user/vehicles', authenticateToken, async (req, res) => {
   try {
@@ -2160,9 +2684,7 @@ app.get('/api/v1/user/vehicles', authenticateToken, async (req, res) => {
 // 获取余额、累计返点、明细列表
 app.get('/api/v1/user/balance', authenticateToken, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, lim, off } = clampPagination(req.query.page, req.query.limit, 20, 100);
     const month = (req.query.month || '').trim();
     const typeFilter = (req.query.type || '').trim();
 
@@ -2185,8 +2707,8 @@ app.get('/api/v1/user/balance', authenticateToken, async (req, res) => {
       pool.execute(
         `SELECT transaction_id, type, amount, description, settlement_month, related_id, reward_tier, review_stage, tax_deducted, created_at
          FROM transactions WHERE ${where}
-         ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-        [...params, limit, offset]
+         ORDER BY created_at DESC LIMIT ${lim} OFFSET ${off}`,
+        [...params]
       ),
       pool.execute(`SELECT COUNT(*) as total FROM transactions WHERE ${where}`, params)
     ]);
@@ -2369,17 +2891,15 @@ app.post('/api/v1/user/withdraw/cancel-pending', authenticateToken, async (req, 
 // 获取用户消息列表
 app.get('/api/v1/user/messages', authenticateToken, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-    const offset = (page - 1) * limit;
+    const { page, limit, lim, off } = clampPagination(req.query.page, req.query.limit, 10, 50);
 
     const [list] = await pool.execute(
       `SELECT message_id, type, title, content, related_id, is_read, created_at
        FROM user_messages
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [req.userId, limit, offset]
+       LIMIT ${lim} OFFSET ${off}`,
+      [req.userId]
     );
 
     const [countRes] = await pool.execute(
@@ -2443,9 +2963,7 @@ app.get('/api/v1/user/messages/unread-count', authenticateToken, async (req, res
 app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
   try {
     const status = req.query.status; // 0-进行中 1-已结束 2-已取消，不传则全部
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, lim, off } = clampPagination(req.query.page, req.query.limit, 20, 100);
 
     let where = 'WHERE b.user_id = ?';
     const params = [req.userId];
@@ -2464,8 +2982,8 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
        LEFT JOIN damage_reports dr ON b.report_id = dr.report_id
        ${where}
        ORDER BY b.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+       LIMIT ${lim} OFFSET ${off}`,
+      [...params]
     );
 
     const [countRes] = await pool.execute(
@@ -2510,7 +3028,8 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
       limit
     }));
   } catch (error) {
-    res.status(500).json(errorResponse('获取竞价列表失败', 500));
+    console.error('获取用户竞价列表失败:', error);
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取竞价列表失败'), 500));
   }
 });
 
@@ -2518,9 +3037,7 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
 app.get('/api/v1/user/orders', authenticateToken, async (req, res) => {
   try {
     const status = req.query.status; // 0-待接单 1-维修中 2-待确认 3-已完成 4-已取消，to_review-待评价（status=3且未评价）
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, lim, off } = clampPagination(req.query.page, req.query.limit, 20, 100);
 
     let where = 'WHERE o.user_id = ?';
     const params = [req.userId];
@@ -2549,8 +3066,8 @@ app.get('/api/v1/user/orders', authenticateToken, async (req, res) => {
        LEFT JOIN shops s ON o.shop_id = s.shop_id
        ${where}
        ORDER BY o.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+       LIMIT ${lim} OFFSET ${off}`,
+      [...params]
     );
 
     const [countRes] = await pool.execute(
@@ -2580,7 +3097,7 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const [rows] = await pool.execute(
       `SELECT o.*, s.name as shop_name, s.logo as shop_logo, s.phone as shop_phone, s.address,
-        b.vehicle_info, b.report_id, dr.analysis_result,
+        b.vehicle_info, b.report_id, dr.analysis_result, dr.images as damage_report_images,
         q.duration as quote_duration
        FROM orders o
        LEFT JOIN shops s ON o.shop_id = s.shop_id
@@ -2601,6 +3118,132 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
         typeof order.analysis_result === 'string' ? JSON.parse(order.analysis_result || '{}') : (order.analysis_result || {})
       );
     } catch (_) {}
+
+    let damageReportImages = [];
+    try {
+      const raw = order.damage_report_images;
+      const arr =
+        typeof raw === 'string' ? JSON.parse(raw || '[]') : Array.isArray(raw) ? raw : [];
+      damageReportImages = arr
+        .map((u) => {
+          if (typeof u === 'string') return u.trim();
+          if (u && typeof u.url === 'string') return u.url.trim();
+          return '';
+        })
+        .filter((u) => u.length > 0);
+    } catch (_) {
+      damageReportImages = [];
+    }
+    order.damage_report_images = damageReportImages;
+
+    // 拆检费线下支付留痕（车主支付凭证/服务商收据）
+    try {
+      const [pRows] = await pool.execute(
+        `SELECT proof_id, uploader_type, proof_kind, amount, note, image_urls, created_at
+         FROM order_offline_fee_proofs
+         WHERE order_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [id]
+      );
+      order.offline_fee_proofs = (pRows || []).map((p) => {
+        let imgs = [];
+        try {
+          imgs = typeof p.image_urls === 'string' ? JSON.parse(p.image_urls || '[]') : (p.image_urls || []);
+        } catch (_) {
+          imgs = [];
+        }
+        return {
+          proof_id: p.proof_id,
+          uploader_type: p.uploader_type,
+          proof_kind: p.proof_kind,
+          amount: p.amount,
+          note: p.note,
+          image_urls: Array.isArray(imgs) ? imgs : [],
+          created_at: p.created_at
+        };
+      });
+    } catch (e) {
+      if (!String((e && e.message) || '').includes('order_offline_fee_proofs')) {
+        console.warn('[user/orders] offline fee proofs query error:', e && e.message);
+      }
+      order.offline_fee_proofs = [];
+    }
+
+    // 等待配件延期留痕（服务商上传采购凭证）
+    try {
+      const [eRows] = await pool.execute(
+        `SELECT extension_id, shop_id, note, proof_urls, extend_days, status, created_at
+         FROM order_waiting_parts_extensions
+         WHERE order_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [id]
+      );
+      order.waiting_parts_extensions = (eRows || []).map((p) => {
+        let imgs = [];
+        try {
+          imgs = typeof p.proof_urls === 'string' ? JSON.parse(p.proof_urls || '[]') : (p.proof_urls || []);
+        } catch (_) {
+          imgs = [];
+        }
+        return {
+          extension_id: p.extension_id,
+          shop_id: p.shop_id,
+          note: p.note,
+          extend_days: p.extend_days,
+          status: p.status,
+          proof_urls: Array.isArray(imgs) ? imgs : [],
+          created_at: p.created_at
+        };
+      });
+    } catch (e) {
+      if (!String((e && e.message) || '').includes('order_waiting_parts_extensions')) {
+        console.warn('[user/orders] waiting parts extensions query error:', e && e.message);
+      }
+      order.waiting_parts_extensions = [];
+    }
+
+    // 车主自救请求留痕（维修商未处理/强制结单）
+    try {
+      const [sRows] = await pool.execute(
+        `SELECT request_id, user_id, request_type, note, image_urls, status, created_at
+         FROM order_self_help_requests
+         WHERE order_id = ?
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [id]
+      );
+      order.self_help_requests = (sRows || []).map((r) => {
+        let imgs = [];
+        try {
+          imgs = typeof r.image_urls === 'string' ? JSON.parse(r.image_urls || '[]') : (r.image_urls || []);
+        } catch (_) {
+          imgs = [];
+        }
+        return {
+          request_id: r.request_id,
+          user_id: r.user_id,
+          request_type: r.request_type,
+          note: r.note,
+          status: r.status,
+          image_urls: Array.isArray(imgs) ? imgs : [],
+          created_at: r.created_at
+        };
+      });
+    } catch (e) {
+      if (!String((e && e.message) || '').includes('order_self_help_requests')) {
+        console.warn('[user/orders] self help requests query error:', e && e.message);
+      }
+      order.self_help_requests = [];
+    }
+
+    // 生命周期字段（用于倒计时/解释）
+    order.lifecycle_main = order.lifecycle_main || null;
+    order.lifecycle_sub = order.lifecycle_sub || null;
+    order.lifecycle_started_at = order.lifecycle_started_at || null;
+    order.lifecycle_deadline_at = order.lifecycle_deadline_at || null;
+    order.promised_delivery_at = order.promised_delivery_at || null;
 
     let quote = null;
     if (order.quote_id) {
@@ -2679,19 +3322,11 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
       }
     }
     if (order.status !== 3 && order.status !== 4) {
-      const needRequest = order.status >= 1 && order.accepted_at;
-      let within30 = false;
-      if (needRequest && order.accepted_at) {
-        const at = new Date(order.accepted_at);
-        within30 = Date.now() - at.getTime() <= 30 * 60 * 1000;
-      }
+      // 撤单申请旧链路已下线：取消交易不再需要理由，也不存在“提交人工通道”
       order.can_cancel = true;
-      order.cancel_needs_reason = needRequest && !within30;
-      const cancelReq = await orderService.getLatestCancelRequestForUser(pool, id, req.userId);
-      if (cancelReq && cancelReq.status === 2) {
-        order.cancel_rejected = true;
-        order.cancel_request_id = cancelReq.request_id;
-      }
+      order.cancel_needs_reason = false;
+      order.cancel_rejected = false;
+      order.cancel_request_id = null;
     }
     const dur = order.quote_duration;
     const created = order.created_at;
@@ -2723,6 +3358,15 @@ app.get('/api/v1/user/orders/:id', authenticateToken, async (req, res) => {
       }
     } catch (_) {
       order.quote_proposals = [];
+    }
+    try {
+      if (await repairMilestoneService.milestonesTableExists(pool)) {
+        order.repair_milestones = await repairMilestoneService.listForOrder(pool, id);
+      } else {
+        order.repair_milestones = [];
+      }
+    } catch (_) {
+      order.repair_milestones = [];
     }
     res.json(successResponse(order));
   } catch (error) {
@@ -2759,7 +3403,7 @@ app.post('/api/v1/public/warranty-card/verify', async (req, res) => {
   }
 });
 
-// 奖励金预估（按《全指标底层逻辑梳理》第四章核算）
+// 奖励金预估（按 reward-calculator / docs/体系/03 + 附录 A；历史见 docs/已归档/全指标底层逻辑梳理.md）
 app.get('/api/v1/user/orders/:id/reward-preview', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2947,7 +3591,7 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
     }
     const dualStageQuote = !!(preQuotePlan && preQuotePlan.items && preQuotePlan.items.length);
 
-    // 奖励金按《全指标底层逻辑梳理》第四章核算，此处仅作展示用占位
+    // 奖励金按 reward-calculator / 体系 03 + 附录 A；此处仅作展示用占位
     const amount = parseFloat(order.actual_amount || order.quoted_amount) || 0;
     const rebateAmount = order.reward_preview != null ? parseFloat(order.reward_preview) : (amount * 0.08);
 
@@ -3048,6 +3692,30 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       biddingQuotesTotal,
     });
 
+    let repair_milestone_trace = { count: 0, items: [] };
+    try {
+      const mrows = await repairMilestoneService.listForOrder(pool, id);
+      repair_milestone_trace = {
+        count: mrows.length,
+        items: mrows.map((r) => {
+          const mainArr = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+          const partsArr = Array.isArray(r.parts_photo_urls) ? r.parts_photo_urls : [];
+          return {
+            milestone_id: r.milestone_id,
+            milestone_code: r.milestone_code,
+            milestone_label: r.milestone_label,
+            created_at: r.created_at,
+            photo_count: mainArr.length + partsArr.length,
+            parts_photo_count: partsArr.length,
+            parts_verify_note: r.parts_verify_note != null ? String(r.parts_verify_note) : '',
+            /** 评价页「流程透明度」仅展示过程照片，价格变动见「报价透明度」；零配件验真节点在端上归入第4题 */
+            photo_urls: mainArr,
+            parts_photo_urls: partsArr,
+          };
+        }),
+      };
+    } catch (_) {}
+
     let system_checks_preview = {};
     try {
       const initialChecks = await reviewSystemCheckService.buildInitialSystemChecksForOrder(pool, id);
@@ -3122,6 +3790,8 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
       order_verification_all_ok: allVerified,
       quote_proposal_history: quoteProposalHistory,
       quote_timeline,
+      /** 维修过程节点留痕（评价页「流程透明度」折叠区） */
+      repair_milestone_trace,
       /** 与小程序 utils/quote-nomenclature 对齐，便于端上少硬编码 */
       quote_nomenclature: {
         stage_codes: quoteNomenclature.QUOTE_STAGE_CODES,
@@ -3138,30 +3808,72 @@ app.get('/api/v1/user/orders/:id/for-review', authenticateToken, async (req, res
 // 取消订单（直接撤销或创建撤单申请，按《订单撤单与维修完成流程.md》）
 app.post('/api/v1/user/orders/:id/cancel', authenticateToken, async (req, res) => {
   try {
-    const reason = (req.body && req.body.reason) || '';
-    const result = await orderService.cancelOrder(pool, req.params.id, req.userId, reason);
+    const result = await orderService.cancelOrder(pool, req.params.id, req.userId);
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    const msg = result.data.direct ? '已撤销，可重新选择其他报价' : '撤单申请已提交，请等待服务商处理';
-    res.json(successResponse(result.data, msg));
+    res.json(successResponse(result.data, '已取消交易'));
   } catch (error) {
     res.status(500).json(errorResponse('取消订单失败', 500));
   }
 });
 
-// 车主提交人工通道（撤单申请被服务商拒绝后）
-app.post('/api/v1/user/orders/:id/cancel-request/:requestId/escalate', authenticateToken, async (req, res) => {
+// 车主：我已到店（生命周期倒计时推进）
+app.post('/api/v1/user/orders/:id/arrived', authenticateToken, async (req, res) => {
   try {
-    const { id, requestId } = req.params;
-    const [orders] = await pool.execute('SELECT order_id FROM orders WHERE order_id = ? AND user_id = ?', [id, req.userId]);
-    if (orders.length === 0) return res.status(404).json(errorResponse('订单不存在'));
-    const result = await orderService.escalateCancelRequest(pool, requestId, req.userId);
+    const result = await orderLifecycleService.ownerMarkArrived(pool, req.params.id, req.userId);
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    res.json(successResponse(result.data, '已提交人工通道，请等待处理'));
-  } catch (error) {
+    res.json(successResponse(result.data, '已记录到店'));
+  } catch (e) {
+    console.error('owner arrived error:', e);
+    res.status(500).json(errorResponse('记录到店失败', 500));
+  }
+});
+
+// 车主：维修商未处理（最后通牒 24h；到期系统自动取消并触发赔付留痕）
+app.post('/api/v1/user/orders/:id/merchant-not-handled', authenticateToken, async (req, res) => {
+  try {
+    const result = await orderLifecycleService.ownerClaimMerchantNotHandled(pool, req.params.id, req.userId, req.body || {});
+    if (!result.success) return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    res.json(successResponse(result.data, '已提交催办，将再次提醒维修商尽快处理'));
+  } catch (e) {
+    console.error('merchant-not-handled error:', e);
+    res.status(500).json(errorResponse('提交失败', 500));
+  }
+});
+
+// 车主：强制结单（上传取车凭证→直接进入待评价）
+app.post('/api/v1/user/orders/:id/force-close', authenticateToken, async (req, res) => {
+  try {
+    const result = await orderLifecycleService.ownerForceCloseOrder(pool, req.params.id, req.userId, req.body || {});
+    if (!result.success) return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    res.json(successResponse(result.data, '已强制结单，您可进入评价流程'));
+  } catch (e) {
+    console.error('force-close error:', e);
+    res.status(500).json(errorResponse('操作失败', 500));
+  }
+});
+
+// 车主：拆检费线下支付凭证留痕（图片必填，金额/备注可选）
+app.post('/api/v1/user/orders/:id/offline-fee-proof', authenticateToken, async (req, res) => {
+  try {
+    const { amount, note, image_urls } = req.body || {};
+    const urls = Array.isArray(image_urls) ? image_urls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+    if (!urls.length) return res.status(400).json(errorResponse('请至少上传 1 张凭证图片'));
+    const proofId = 'oofp_' + crypto.randomBytes(12).toString('hex');
+    const amt = amount != null && amount !== '' ? parseFloat(amount) : null;
+    const noteTrim = note != null ? String(note).trim() : '';
+    await pool.execute(
+      `INSERT INTO order_offline_fee_proofs
+        (proof_id, order_id, uploader_type, uploader_id, proof_kind, amount, note, image_urls)
+       VALUES (?, ?, 'user', ?, 'diagnostic_fee_payment', ?, ?, ?)`,
+      [proofId, req.params.id, req.userId, Number.isFinite(amt) ? amt : null, noteTrim || null, JSON.stringify(urls)]
+    );
+    res.json(successResponse({ proof_id: proofId }, '已提交留痕'));
+  } catch (e) {
+    console.error('offline fee proof error:', e);
     res.status(500).json(errorResponse('提交失败', 500));
   }
 });
@@ -3211,8 +3923,82 @@ app.post('/api/v1/user/orders/:id/final-quote/confirm', authenticateToken, async
 
 // ===================== 2. 定损相关接口 =====================
 
+// 获取当前用户可用能力列表（Phase1：仅全局开关；后续可扩展 user/shop/tenant entitlement）
+app.get('/api/v1/capabilities', authenticateToken, async (req, res) => {
+  try {
+    const caps = await capabilityService.getEnabledCapabilitiesForSubject(pool, { user_id: req.userId });
+    res.json(successResponse({ enabled: caps.enabled, map: caps.map }));
+  } catch (error) {
+    console.error('获取 capabilities 失败:', error && error.message);
+    res.status(500).json(errorResponse('获取能力配置失败', 500));
+  }
+});
+
+// 能力目录（Catalog v1）：面向端内与第三方发现（公共，但不返回敏感配置）
+app.get('/api/v1/public/capabilities/catalog', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const catalogPath = path.join(__dirname, 'capability-catalog.v1.json');
+    const raw = fs.readFileSync(catalogPath, 'utf8');
+    const json = JSON.parse(raw);
+    res.json(successResponse(json));
+  } catch (error) {
+    console.error('获取 capability catalog 失败:', error && error.message);
+    res.status(500).json(errorResponse('获取能力目录失败', 500));
+  }
+});
+
+// OpenAPI：第三方调用能力发现（需 API Key）
+app.get('/api/v1/open/capabilities', authenticateOpenApiKey, async (req, res) => {
+  try {
+    const caps = await capabilityService.getEnabledCapabilitiesForSubject(pool, {
+      api_key_id: req.openApi.api_key_id,
+      owner_type: req.openApi.owner_type,
+      owner_id: req.openApi.owner_id,
+    });
+    res.json(successResponse({ enabled: caps.enabled, map: caps.map, api_key_id: req.openApi.api_key_id }));
+  } catch (error) {
+    console.error('open/capabilities failed:', error && error.message);
+    res.status(500).json(errorResponse('获取能力失败', 500));
+  }
+});
+
+// ===================== 编排接口（v1） =====================
+
+// 场景：生成“分享摘要”闭环（输入 report_id → 输出 share_token）
+app.post(
+  '/api/v1/orchestrate/damage/report/:id/share',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_REPORT_SHARE, { message: '报告分享暂未开放' }),
+  async (req, res) => {
+    try {
+      const expiresInSecRaw = req.body && req.body.expires_in_sec;
+      const expiresInSec = expiresInSecRaw != null ? parseInt(expiresInSecRaw, 10) : undefined;
+      const out = await orchestratorService.runDamageAnalyzeToShareToken({
+        pool,
+        damageService,
+        reportId: req.params.id,
+        userId: req.userId,
+        expiresInSec,
+      });
+      if (!out.success) {
+        return res.status(out.statusCode || 400).json(errorResponse(out.error));
+      }
+      res.json(successResponse(out.data));
+    } catch (error) {
+      console.error('[orchestrate] damage report share:', error && error.message);
+      res.status(500).json(errorResponse('编排执行失败', 500));
+    }
+  }
+);
+
 // 获取定损每日剩余次数
-app.get('/api/v1/damage/daily-quota', authenticateToken, async (req, res) => {
+app.get(
+  '/api/v1/damage/daily-quota',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_AI_ANALYZE, { message: 'AI 定损暂未开放' }),
+  async (req, res) => {
   try {
     const quota = await damageService.getDamageDailyQuota(pool, req.userId);
     res.json(successResponse(quota));
@@ -3220,10 +4006,15 @@ app.get('/api/v1/damage/daily-quota', authenticateToken, async (req, res) => {
     console.error('获取定损配额失败:', error);
     res.status(500).json(errorResponse('获取配额失败', 500));
   }
-});
+  }
+);
 
 // AI定损分析
-app.post('/api/v1/damage/analyze', authenticateToken, async (req, res) => {
+app.post(
+  '/api/v1/damage/analyze',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_AI_ANALYZE, { message: 'AI 定损暂未开放' }),
+  async (req, res) => {
   try {
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
     const result = await damageService.analyzeDamage(pool, req, baseUrl);
@@ -3235,10 +4026,35 @@ app.post('/api/v1/damage/analyze', authenticateToken, async (req, res) => {
     console.error('AI定损分析错误:', error);
     res.status(500).json(errorResponse('分析失败', 500));
   }
-});
+  }
+);
+
+// 创建定损报告（跳过等待：仅收图入库 + 异步分析入队）
+app.post(
+  '/api/v1/damage/reports/create',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_AI_ANALYZE, { message: 'AI 定损暂未开放' }),
+  async (req, res) => {
+  try {
+    const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+    const result = await damageService.createReportAndEnqueue(pool, req, baseUrl);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(result.data, '已提交，后台分析中'));
+  } catch (error) {
+    console.error('创建定损报告失败:', error);
+    res.status(500).json(errorResponse('创建报告失败', 500));
+  }
+  }
+);
 
 // 获取定损报告列表
-app.get('/api/v1/damage/reports', authenticateToken, async (req, res) => {
+app.get(
+  '/api/v1/damage/reports',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_REPORT_HISTORY, { message: '定损历史暂未开放' }),
+  async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 10));
@@ -3248,10 +4064,15 @@ app.get('/api/v1/damage/reports', authenticateToken, async (req, res) => {
     console.error('获取定损报告列表失败:', error);
     res.status(500).json(errorResponse('获取报告列表失败', 500));
   }
-});
+  }
+);
 
 // 获取定损报告
-app.get('/api/v1/damage/report/:id', authenticateToken, async (req, res) => {
+app.get(
+  '/api/v1/damage/report/:id',
+  authenticateToken,
+  requireCapability(CAPABILITIES.DAMAGE_REPORT_HISTORY, { message: '定损报告暂未开放' }),
+  async (req, res) => {
   try {
     const result = await damageService.getReport(pool, req.params.id, req.userId);
     if (!result.success) {
@@ -3259,9 +4080,13 @@ app.get('/api/v1/damage/report/:id', authenticateToken, async (req, res) => {
     }
     res.json(successResponse(result.data));
   } catch (error) {
+    console.error('获取定损报告失败:', req.params.id, error && error.message);
     res.status(500).json(errorResponse('获取报告失败', 500));
   }
-});
+  }
+);
+
+// （分享/H5/JSSDK 路由已迁入 modules/AccidentAssistant_v1）
 
 // ===================== 3. 竞价相关接口 =====================
 
@@ -3288,7 +4113,7 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
 
     const [biddings] = await pool.execute(
-      `SELECT b.*, dr.analysis_result 
+      `SELECT b.*, dr.analysis_result, dr.status AS analysis_status, dr.analysis_relevance
        FROM biddings b 
        LEFT JOIN damage_reports dr ON b.report_id = dr.report_id 
        WHERE b.bidding_id = ? AND b.user_id = ?`,
@@ -3307,23 +4132,63 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
     );
     const quoteCountVal = quoteCount[0]?.count ?? 0;
 
-    const [distRows] = await pool.execute(
-      'SELECT tier FROM bidding_distribution WHERE bidding_id = ?',
-      [id]
-    );
-    const tier1Count = (distRows || []).filter((r) => r.tier === 1).length;
-    const tier2Count = (distRows || []).filter((r) => r.tier === 2).length;
-    const tier3Count = (distRows || []).filter((r) => r.tier === 3).length;
-    const invited_count = (distRows || []).length;
+    let distRows = [];
+    try {
+      const [rows] = await pool.execute(
+        'SELECT tier FROM bidding_distribution WHERE bidding_id = ?',
+        [id]
+      );
+      distRows = rows || [];
+    } catch (distErr) {
+      console.warn(
+        '[bidding/:id] bidding_distribution 不可用，分发统计已降级为空（本地请执行 migration-20260225-bidding-distribution.sql）:',
+        distErr.message
+      );
+    }
+    const tierNum = (r) => Number(r.tier);
+    let tier1Count = (distRows || []).filter((r) => tierNum(r) === 1).length;
+    let tier2Count = (distRows || []).filter((r) => tierNum(r) === 2).length;
+    let tier3Count = (distRows || []).filter((r) => tierNum(r) === 3).length;
+    let invited_count = (distRows || []).length;
+    // 无 bidding_distribution 行时商户端仍可按距离可见，车主端 invited_count 不能恒为 0（否则误提示「范围内无服务商」）
+    if (invited_count === 0 && Number(bidding.status) === 0) {
+      try {
+        const geo = await biddingService.countShopsGeographicallyEligibleForBidding(pool, id);
+        if (geo > 0) {
+          invited_count = geo;
+          tier1Count = geo;
+          tier2Count = 0;
+          tier3Count = 0;
+        }
+      } catch (geoErr) {
+        console.warn('[bidding/:id] 地理范围受邀店铺数回退失败:', geoErr.message);
+      }
+    }
     const tier1EndsAt = bidding.tier1_window_ends_at ? new Date(bidding.tier1_window_ends_at) : null;
     const now = new Date();
     const all_notified = !tier1EndsAt || now >= tier1EndsAt;
     const notified_count = all_notified ? invited_count : tier1Count;
 
+    let vehicleInfoObj = {};
+    let insuranceInfoObj = {};
+    try {
+      vehicleInfoObj = JSON.parse(bidding.vehicle_info || '{}');
+    } catch (_) {
+      vehicleInfoObj = {};
+    }
+    try {
+      insuranceInfoObj = JSON.parse(bidding.insurance_info || '{}');
+    } catch (_) {
+      insuranceInfoObj = {};
+    }
+
     res.json(successResponse({
       bidding_id: bidding.bidding_id,
       report_id: bidding.report_id,
       status: bidding.status,
+      distribution_status: bidding.distribution_status || null,
+      analysis_status: bidding.analysis_status != null ? Number(bidding.analysis_status) : null,
+      analysis_relevance: bidding.analysis_relevance || null,
       selected_shop_id: bidding.selected_shop_id || null,
       expire_at: bidding.expire_at,
       tier1_window_ends_at: bidding.tier1_window_ends_at,
@@ -3333,8 +4198,8 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
       notified_count,
       tier1_count: tier1Count,
       all_notified,
-      vehicle_info: JSON.parse(bidding.vehicle_info || '{}'),
-      insurance_info: JSON.parse(bidding.insurance_info || '{}'),
+      vehicle_info: vehicleInfoObj,
+      insurance_info: insuranceInfoObj,
       analysis_result: (() => {
         let ar = {};
         try {
@@ -3346,7 +4211,8 @@ app.get('/api/v1/bidding/:id', authenticateToken, async (req, res) => {
       })()
     }));
   } catch (error) {
-    res.status(500).json(errorResponse('获取竞价详情失败', 500));
+    console.error('获取车主竞价详情错误:', error);
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取竞价详情失败'), 500));
   }
 });
 
@@ -3563,7 +4429,7 @@ app.get('/api/v1/bidding/:id/quotes', authenticateToken, async (req, res) => {
           deviation_rate: q.deviation_rate,
           total_orders: q.total_orders,
           amount: q.amount,
-          items: JSON.parse(q.items || '[]'),
+          items: typeof q.items === 'string' ? JSON.parse(q.items || '[]') : (q.items || []),
           value_added_services: typeof q.value_added_services === 'string' ? JSON.parse(q.value_added_services || '[]') : (q.value_added_services || []),
           duration: q.duration,
           remark: q.remark,
@@ -3662,7 +4528,7 @@ if (process.env.NODE_ENV !== 'production') {
         const warranty = 12;
         await pool.execute(
           `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 3 DAY))`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
           [
             quoteId,
             bidding_id,
@@ -3749,9 +4615,13 @@ app.get('/api/v1/shops/:id/reviews', optionalAuth, async (req, res) => {
   try {
     const query = { ...req.query, currentUserId: req.userId };
     const result = await shopService.getReviews(pool, req.params.id, query);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error || '获取评价失败'));
+    }
     res.json(successResponse(result.data));
   } catch (error) {
-    res.status(500).json(errorResponse('获取评价失败', 500));
+    console.error('获取维修厂评价错误:', error);
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取评价失败'), 500));
   }
 });
 
@@ -3924,6 +4794,32 @@ app.post('/api/v1/reviews', authenticateToken, async (req, res) => {
   }
 });
 
+// 评价列表行曝光（日去重，表 migration-20260414-review-list-impressions.sql）
+app.post('/api/v1/reviews/:id/impression', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [exists] = await pool.execute('SELECT 1 FROM reviews WHERE review_id = ?', [id]);
+    if (!exists.length) return res.status(404).json(errorResponse('评价不存在', 404));
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await pool.execute(
+        `INSERT INTO review_list_impressions (review_id, user_id, impression_date) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE review_id = review_id`,
+        [id, req.userId, today]
+      );
+    } catch (err) {
+      if (String(err && err.code) === 'ER_NO_SUCH_TABLE') {
+        return res.json(successResponse({ recorded: false, reason: 'table_missing' }));
+      }
+      throw err;
+    }
+    res.json(successResponse({ recorded: true }));
+  } catch (err) {
+    console.error('[reviews/impression]', err);
+    res.status(500).json(errorResponse(safeErrorMessage(err, '上报失败'), 500));
+  }
+});
+
 // 上报有效阅读会话（点赞追加奖金：看到了+有效阅读时长）
 app.post('/api/v1/reviews/:id/reading', authenticateToken, async (req, res) => {
   try {
@@ -3944,7 +4840,7 @@ app.post('/api/v1/reviews/:id/reading', authenticateToken, async (req, res) => {
   }
 });
 
-// 点赞评价（可直接点，后台校验有效阅读≥30秒决定是否纳入奖金）
+// 点赞评价（可直接点，后台校验有效阅读≥10秒决定是否纳入奖金）
 app.post('/api/v1/reviews/:id/dislike', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -3967,7 +4863,7 @@ app.post('/api/v1/reviews/:id/like', authenticateToken, async (req, res) => {
     res.json(successResponse({
       like_id: result.like_id,
       is_valid_for_bonus: result.is_valid_for_bonus,
-      message: result.is_valid_for_bonus ? '点赞成功' : '点赞成功（有效阅读不足30秒，不纳入奖金核算）',
+      message: result.is_valid_for_bonus ? '点赞成功' : '点赞成功（有效阅读不足10秒，不纳入奖金核算）',
     }));
   } catch (err) {
     console.error('[reviews/like]', err);
@@ -4002,6 +4898,27 @@ app.get('/api/v1/reviews/:id', authenticateToken, async (req, res) => {
     const totalReward = Math.min(cfg.fixed + amount * cfg.ratio, cfg.cap);
     const followup1m = '0';
     const followup3m = '0';
+
+    let engagement = {
+      total_effective_read_seconds: 0,
+      like_count: parseInt(r.like_count, 10) || 0,
+      feed_unique_viewers: 0,
+    };
+    try {
+      const [readRows] = await pool.execute(
+        `SELECT COALESCE(SUM(effective_seconds), 0) AS t FROM review_reading_sessions WHERE review_id = ?`,
+        [id]
+      );
+      engagement.total_effective_read_seconds = parseInt(readRows[0]?.t || 0, 10);
+    } catch (_) {}
+    try {
+      const [viewRows] = await pool.execute(
+        `SELECT COUNT(*) AS c FROM review_feed_views WHERE review_id = ?`,
+        [id]
+      );
+      engagement.feed_unique_viewers = parseInt(viewRows[0]?.c || 0, 10);
+    } catch (_) {}
+
     res.json(successResponse({
       review_id: r.review_id,
       order_id: r.order_id,
@@ -4015,7 +4932,8 @@ app.get('/api/v1/reviews/:id', authenticateToken, async (req, res) => {
       followup_reward_1m: followup1m,
       followup_reward_3m: followup3m,
       followup_reward: followup1m,
-      followup_rebate: followup1m
+      followup_rebate: followup1m,
+      engagement,
     }));
   } catch (error) {
     res.status(500).json(errorResponse('获取评价详情失败', 500));
@@ -4173,16 +5091,38 @@ app.post('/api/v1/reviews/return', authenticateToken, async (req, res) => {
       [returnId, order_id, order.shop_id, req.userId, content || '', JSON.stringify(images), rebateAmount]
     );
 
+    const orderRewardCapRet = require('./services/order-reward-cap-service');
+    if (rebateAmount > 0) {
+      const [ordFull] = await pool.execute(
+        'SELECT o.order_id, o.quoted_amount, o.actual_amount, o.complexity_level, o.shop_id, o.quote_id, o.is_insurance_accident, o.repair_plan, o.bidding_id FROM orders o WHERE o.order_id = ?',
+        [order_id]
+      );
+      const orderRow = ordFull[0] || order;
+      const capped = await orderRewardCapRet.clampPayoutToOrderHardCap(pool, order_id, orderRow, {
+        afterTax: rebateAmount,
+        taxDeducted: 0,
+      });
+      rebateAmount = capped.afterTax;
+    }
     if (rebateAmount > 0) {
       await pool.execute(
         'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
         [rebateAmount, rebateAmount, req.userId]
       );
-      await pool.execute(
-        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, created_at)
-         VALUES (?, ?, 'rebate', ?, '返厂评价返点', ?, NOW())`,
-        ['TXN' + Date.now(), req.userId, rebateAmount, returnId]
-      );
+      const hasSrc = await orderRewardCapRet.hasRewardSourceOrderColumn(pool);
+      if (hasSrc) {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, created_at)
+           VALUES (?, ?, 'rebate', ?, '返厂评价返点', ?, ?, NOW())`,
+          ['TXN' + Date.now(), req.userId, rebateAmount, returnId, order_id]
+        );
+      } else {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, created_at)
+           VALUES (?, ?, 'rebate', ?, '返厂评价返点', ?, NOW())`,
+          ['TXN' + Date.now(), req.userId, rebateAmount, returnId]
+        );
+      }
     }
 
     res.json(successResponse({
@@ -4231,6 +5171,32 @@ const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'upload
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
+/** 生成可拼进 URL 的相对路径（用 path.relative + 禁止 ..，兼容 Windows 大小写/盘符） */
+function safeUploadRelativePath(fileAbsolutePath) {
+  const root = path.resolve(uploadsDir);
+  const file = path.resolve(fileAbsolutePath);
+  const rel = path.relative(root, file);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('上传文件路径越界');
+  }
+  return rel.replace(/\\/g, '/');
+}
+
+/** 返回给前端的图片访问根（须与小程序当前请求的 API 主机一致，本地联调才不会变成公网 URL） */
+function publicBaseUrlForUpload(req) {
+  const host = req.get('host') || '';
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+    .split(',')[0]
+    .trim();
+  // 非生产：始终以本次请求的 Host 为准（避免 .env 里 BASE_URL=https://simplewin.cn 时本机仍返回公网地址）
+  if (!isProd && host) {
+    return `${proto}://${host}`;
+  }
+  const fromEnv = (process.env.BASE_URL || '').trim().replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  return `${proto}://${host || 'localhost:3000'}`;
+}
+
 // 图片上传（multipart，需登录）- multer 可选，未安装时返回 503
 // 支持常见格式：JPG、PNG、GIF、WebP
 const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
@@ -4270,25 +5236,49 @@ app.post('/api/v1/upload/image', authenticateToken, (req, res, next) => {
   uploadMiddleware(req, res, (err) => {
     if (err) return res.status(400).json(errorResponse(safeErrorMessage(err, '上传失败')));
     if (!req.file) return res.status(400).json(errorResponse('请选择图片'));
-    const baseUrl = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
-    const relativePath = path.relative(uploadsDir, req.file.path).replace(/\\/g, '/');
-    const url = (baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl) + '/uploads/' + relativePath;
-    res.json(successResponse({ url }, '上传成功'));
+    try {
+      const relativePath = safeUploadRelativePath(req.file.path);
+      const baseUrl = publicBaseUrlForUpload(req);
+      const url = `${baseUrl}/uploads/${relativePath}`;
+      console.log(`[upload] ok ${req.reqId || ''} ${url}`);
+      res.json(successResponse({ url }, '上传成功'));
+    } catch (e) {
+      console.error('[upload] 处理失败', req.reqId || '', e && e.message);
+      return res.status(500).json(errorResponse(safeErrorMessage(e, '上传处理失败'), 500));
+    }
   });
 });
 
 // 服务商端图片上传（需 merchant_token）
 app.post('/api/v1/merchant/upload/image', authenticateMerchant, (req, res, next) => {
+  const rid = req.reqId || '';
+  const ct = (req.headers['content-type'] || '').split(';')[0].trim();
+  console.log(`[merchant/upload] enter ${rid} shopId=${req.shopId || ''} content-type=${ct || '(none)'}`);
+  res.on('finish', () => {
+    console.log(`[merchant/upload] finish ${rid} status=${res.statusCode}`);
+  });
   if (!uploadMiddleware) {
     return res.status(503).json(errorResponse('图片上传功能暂不可用，请在服务器安装 multer 依赖', 503));
   }
   uploadMiddleware(req, res, (err) => {
-    if (err) return res.status(400).json(errorResponse(safeErrorMessage(err, '上传失败')));
-    if (!req.file) return res.status(400).json(errorResponse('请选择图片'));
-    const baseUrl = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
-    const relativePath = path.relative(uploadsDir, req.file.path).replace(/\\/g, '/');
-    const url = (baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl) + '/uploads/' + relativePath;
-    res.json(successResponse({ url }, '上传成功'));
+    if (err) {
+      console.error('[merchant/upload] multer', rid, err && err.message);
+      return res.status(400).json(errorResponse(safeErrorMessage(err, '上传失败')));
+    }
+    if (!req.file) {
+      console.warn('[merchant/upload] no file', rid, 'body_keys=', req.body && typeof req.body === 'object' ? Object.keys(req.body) : []);
+      return res.status(400).json(errorResponse('请选择图片'));
+    }
+    try {
+      const relativePath = safeUploadRelativePath(req.file.path);
+      const baseUrl = publicBaseUrlForUpload(req);
+      const url = `${baseUrl}/uploads/${relativePath}`;
+      console.log(`[merchant/upload] ok ${rid} ${url}`);
+      res.json(successResponse({ url }, '上传成功'));
+    } catch (e) {
+      console.error('[merchant/upload] 处理失败', rid, e && e.message);
+      return res.status(500).json(errorResponse(safeErrorMessage(e, '上传处理失败'), 500));
+    }
   });
 });
 
@@ -4355,7 +5345,7 @@ app.get('/api/v1/admin/merchants', authenticateAdmin, async (req, res) => {
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取服务商列表失败:', error);
-    res.status(500).json(errorResponse('获取服务商列表失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取服务商列表失败'), 500));
   }
 });
 
@@ -4434,6 +5424,111 @@ app.post('/api/v1/admin/shop-products/:productId/audit', authenticateAdmin, asyn
   }
 });
 
+// ===================== 定损AI过滤：人工审核队列 =====================
+
+// 列出待人工审核的定损报告（AI连续失败 3 次后进入）
+app.get('/api/v1/admin/damage-analysis/manual-review', authenticateAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+    const [rows] = await pool.execute(
+      `SELECT dr.report_id, dr.user_id, dr.images, dr.user_description, dr.analysis_error, dr.analysis_attempts, dr.created_at,
+              t.task_id, t.status AS task_status, t.last_error, t.updated_at AS task_updated_at
+       FROM damage_reports dr
+       LEFT JOIN damage_analysis_tasks t ON t.report_id = dr.report_id
+       WHERE dr.status = 4
+       ORDER BY dr.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    const [cnt] = await pool.execute('SELECT COUNT(*) as c FROM damage_reports WHERE status = 4');
+    const list = (rows || []).map((r) => {
+      let images = [];
+      try { images = typeof r.images === 'string' ? JSON.parse(r.images || '[]') : (r.images || []); } catch (_) {}
+      return {
+        report_id: r.report_id,
+        user_id: r.user_id,
+        images,
+        user_description: r.user_description || '',
+        analysis_attempts: r.analysis_attempts || 0,
+        analysis_error: r.analysis_error || r.last_error || '',
+        task_id: r.task_id || null,
+        task_status: r.task_status || null,
+        created_at: r.created_at,
+        updated_at: r.task_updated_at || null,
+      };
+    });
+    res.json(successResponse({ list, total: cnt[0]?.c || 0, page, limit }));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '加载失败'), 500));
+  }
+});
+
+// 人工判定修车相关性（最终决定是否分发）
+app.post('/api/v1/admin/damage-analysis/reports/:reportId/decision', authenticateAdmin, async (req, res) => {
+  try {
+    const reportId = (req.params.reportId || '').trim();
+    const relevance = String((req.body || {}).relevance || '').trim().toLowerCase();
+    if (!reportId) return res.status(400).json(errorResponse('reportId 无效'));
+    if (relevance !== 'relevant' && relevance !== 'irrelevant') {
+      return res.status(400).json(errorResponse('relevance 必须为 relevant 或 irrelevant'));
+    }
+
+    if (relevance === 'irrelevant') {
+      await pool.execute(
+        `UPDATE damage_reports
+         SET status = 3, analysis_relevance = 'irrelevant', analysis_error = NULL, updated_at = NOW()
+         WHERE report_id = ?`,
+        [reportId]
+      );
+      await pool.execute(
+        `UPDATE biddings SET distribution_status = 'rejected' WHERE report_id = ? AND status = 0`,
+        [reportId]
+      );
+      await pool.execute(
+        `UPDATE damage_analysis_tasks SET status='done', locked_at=NULL, locked_by=NULL, updated_at=NOW()
+         WHERE report_id = ? AND status = 'manual_review'`,
+        [reportId]
+      );
+      return res.json(successResponse({ report_id: reportId, relevance }, '已拒绝分发'));
+    }
+
+    // relevant：允许分发（即使 analysis_result 为空，复杂度服务也会回退 L2）
+    await pool.execute(
+      `UPDATE damage_reports
+       SET status = 1, analysis_relevance = 'relevant', analysis_error = NULL, updated_at = NOW()
+       WHERE report_id = ?`,
+      [reportId]
+    );
+    await pool.execute(
+      `UPDATE damage_analysis_tasks SET status='done', locked_at=NULL, locked_by=NULL, updated_at=NOW()
+       WHERE report_id = ? AND status = 'manual_review'`,
+      [reportId]
+    );
+
+    // 触发分发：仅对 pending/manual_review 的竞价执行
+    const [bids] = await pool.execute(
+      `SELECT bidding_id FROM biddings
+       WHERE report_id = ? AND status = 0 AND (distribution_status IS NULL OR distribution_status IN ('pending','manual_review'))`,
+      [reportId]
+    );
+    const biddingIds = (bids || []).map((r) => r.bidding_id).filter(Boolean);
+    for (const bid of biddingIds) {
+      try {
+        await biddingDistribution.runBiddingDistribution(pool, bid);
+        await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['done', bid]);
+      } catch (distErr) {
+        console.warn('[admin/damage-analysis] distribute failed:', bid, distErr.message);
+        await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['pending', bid]);
+      }
+    }
+    res.json(successResponse({ report_id: reportId, relevance, bidding_ids: biddingIds }, '已通过并触发分发'));
+  } catch (e) {
+    res.status(500).json(errorResponse(safeErrorMessage(e, '操作失败'), 500));
+  }
+});
+
 app.post('/api/v1/admin/merchants/:id/audit', authenticateAdmin, async (req, res) => {
   try {
     const result = await adminService.merchantAudit(pool, req);
@@ -4450,7 +5545,7 @@ app.get('/api/v1/admin/orders', authenticateAdmin, async (req, res) => {
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取订单列表失败:', error);
-    res.status(500).json(errorResponse('获取订单列表失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取订单列表失败'), 500));
   }
 });
 
@@ -4464,7 +5559,7 @@ app.get('/api/v1/admin/orders/:orderNo', authenticateAdmin, async (req, res) => 
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取订单详情失败:', error);
-    res.status(500).json(errorResponse('获取订单详情失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取订单详情失败'), 500));
   }
 });
 
@@ -4478,29 +5573,17 @@ app.post('/api/v1/admin/orders/:orderNo/audit-quote', authenticateAdmin, async (
   }
 });
 
-// 撤单申请列表（status=3 已提交人工）
-app.get('/api/v1/admin/order-cancel-requests', authenticateAdmin, async (req, res) => {
+// 取消交易处置：结案（写入 order_lifecycle_events，供订单详情展示）
+app.post('/api/v1/admin/orders/:orderNo/cancel-disposal/close', authenticateAdmin, async (req, res) => {
   try {
-    const list = await orderService.listCancelRequestsForAdmin(pool, 3);
-    res.json(successResponse({ list }));
-  } catch (error) {
-    console.error('获取撤单申请列表失败:', error);
-    res.status(500).json(errorResponse('获取失败', 500));
-  }
-});
-
-// 人工处理撤单申请（同意/拒绝）
-app.post('/api/v1/admin/order-cancel-requests/:id/resolve', authenticateAdmin, async (req, res) => {
-  try {
-    const approve = req.body && req.body.approve === true;
-    const result = await orderService.resolveCancelRequestByAdmin(pool, req.params.id, approve);
+    const result = await adminService.closeCancelDisposal(pool, req);
     if (!result.success) {
       return res.status(result.statusCode || 400).json(errorResponse(result.error));
     }
-    res.json(successResponse(result.data, approve ? '已同意撤单' : '已拒绝'));
+    res.json(successResponse(result.data, result.message || '已结案'));
   } catch (error) {
-    console.error('人工处理撤单失败:', error);
-    res.status(500).json(errorResponse('处理失败', 500));
+    console.error('取消交易处置结案失败:', error);
+    res.status(500).json(errorResponse('操作失败', 500));
   }
 });
 
@@ -4514,7 +5597,7 @@ app.get('/api/v1/admin/biddings/:id/distribution', authenticateAdmin, async (req
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取竞价分发详情失败:', error);
-    res.status(500).json(errorResponse('获取失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取失败'), 500));
   }
 });
 
@@ -4525,7 +5608,7 @@ app.get('/api/v1/admin/statistics', authenticateAdmin, async (req, res) => {
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取统计数据失败:', error);
-    res.status(500).json(errorResponse('获取统计数据失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取统计数据失败'), 500));
   }
 });
 
@@ -4536,7 +5619,7 @@ app.get('/api/v1/admin/settlements', authenticateAdmin, async (req, res) => {
     res.json(successResponse(result.data));
   } catch (error) {
     console.error('获取结算数据失败:', error);
-    res.status(500).json(errorResponse('获取结算数据失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取结算数据失败'), 500));
   }
 });
 
@@ -4546,7 +5629,7 @@ app.get('/api/v1/admin/complaints', authenticateAdmin, async (req, res) => {
     const result = await adminService.getComplaints(pool, req);
     res.json(successResponse(result.data));
   } catch (error) {
-    res.status(500).json(errorResponse('获取投诉列表失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取投诉列表失败'), 500));
   }
 });
 
@@ -4585,7 +5668,7 @@ app.get('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
     const result = await adminService.getConfig(pool, req);
     res.json(successResponse(result.data));
   } catch (error) {
-    res.status(500).json(errorResponse('获取配置失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '获取配置失败'), 500));
   }
 });
 
@@ -4598,7 +5681,7 @@ app.put('/api/v1/admin/config', authenticateAdmin, async (req, res) => {
     }
     res.json(successResponse(null, result.message));
   } catch (error) {
-    res.status(500).json(errorResponse('保存配置失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '保存配置失败'), 500));
   }
 });
 
@@ -4608,7 +5691,7 @@ app.post('/api/v1/admin/config/batch', authenticateAdmin, async (req, res) => {
     const result = await adminService.batchConfig(pool, req);
     res.json(successResponse(null, result.message));
   } catch (error) {
-    res.status(500).json(errorResponse('保存配置失败', 500));
+    res.status(500).json(errorResponse(safeErrorMessage(error, '保存配置失败'), 500));
   }
 });
 
@@ -4781,6 +5864,35 @@ app.post('/api/v1/admin/material-audit-tasks/:taskId/resolve', authenticateAdmin
   }
 });
 
+// 评价 vs 过程 AI 极端冲突：待人工队列
+app.get('/api/v1/admin/review-evidence-anomaly-tasks', authenticateAdmin, async (req, res) => {
+  try {
+    const result = await adminService.listReviewEvidenceAnomalyTasks(pool);
+    res.json(successResponse(result.data));
+  } catch (error) {
+    console.error('获取评价证据异常单失败:', error);
+    res.status(500).json(errorResponse('获取失败', 500));
+  }
+});
+app.post('/api/v1/admin/review-evidence-anomaly-tasks/:taskId/resolve', authenticateAdmin, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const result = await adminService.resolveReviewEvidenceAnomalyTask(
+      pool,
+      taskId,
+      req.body || {},
+      req.adminUserId || 'admin'
+    );
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json(errorResponse(result.error));
+    }
+    res.json(successResponse(null, result.message));
+  } catch (error) {
+    console.error('评价证据异常单结案失败:', error);
+    res.status(500).json(errorResponse('处理失败', 500));
+  }
+});
+
 // ===================== A10 奖励金规则配置 =====================
 // 统一配置接口：读写 reward_rules 表（唯一数据源）
 app.get('/api/v1/admin/reward-rules/config', authenticateAdmin, async (req, res) => {
@@ -4882,87 +5994,6 @@ app.post('/api/v1/admin/reward-rules/rules', authenticateAdmin, async (req, res)
   } catch (error) {
     console.error('保存奖励金规则失败:', error);
     res.status(500).json(errorResponse('保存失败', 500));
-  }
-});
-
-// ===================== A11 评价审核与人工复核 =====================
-app.get('/api/v1/admin/review-audit/list', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.getReviewAuditList(pool, req);
-    res.json(successResponse(result.data));
-  } catch (error) {
-    console.error('获取评价审核列表失败:', error);
-    res.status(500).json(errorResponse('获取评价审核列表失败', 500));
-  }
-});
-
-app.post('/api/v1/admin/review-audit/:reviewId/pending-human-resolve', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.postReviewPendingHumanResolve(pool, req);
-    if (!result.success) {
-      return res.status(result.statusCode || 400).json(errorResponse(result.error));
-    }
-    res.json(successResponse(result.data, result.message));
-  } catch (error) {
-    console.error('AI 驳回人工裁定失败:', error);
-    res.status(500).json(errorResponse(error.message || '操作失败', 500));
-  }
-});
-
-app.post('/api/v1/admin/review-audit/:reviewId/manual', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.postReviewAuditManual(pool, req);
-    if (!result.success) {
-      return res.status(result.statusCode || 400).json(errorResponse(result.error));
-    }
-    res.json(successResponse(null, result.message));
-  } catch (error) {
-    console.error('人工复核失败:', error);
-    res.status(500).json(errorResponse('复核失败', 500));
-  }
-});
-
-app.get('/api/v1/admin/review-audit/star-ai-anomaly-config', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.getReviewStarAiAnomalyConfig(pool, req);
-    res.json(successResponse(result.data));
-  } catch (error) {
-    console.error('获取星级-AI矛盾配置失败:', error);
-    res.status(500).json(errorResponse('获取配置失败', 500));
-  }
-});
-
-app.put('/api/v1/admin/review-audit/star-ai-anomaly-config', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.putReviewStarAiAnomalyConfig(pool, req);
-    res.json(successResponse(result.data, result.message));
-  } catch (error) {
-    console.error('保存星级-AI矛盾配置失败:', error);
-    res.status(500).json(errorResponse('保存失败', 500));
-  }
-});
-
-// ===================== A12 破格升级审核 =====================
-app.get('/api/v1/admin/complexity-upgrade/list', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.getComplexityUpgradeList(pool, req);
-    res.json(successResponse(result.data));
-  } catch (error) {
-    console.error('获取破格升级列表失败:', error);
-    res.status(500).json(errorResponse('获取破格升级列表失败', 500));
-  }
-});
-
-app.post('/api/v1/admin/complexity-upgrade/:requestId/audit', authenticateAdmin, async (req, res) => {
-  try {
-    const result = await adminService.postComplexityUpgradeAudit(pool, req);
-    if (!result.success) {
-      return res.status(result.statusCode || 400).json(errorResponse(result.error));
-    }
-    res.json(successResponse(null, result.message));
-  } catch (error) {
-    console.error('破格升级审核失败:', error);
-    res.status(500).json(errorResponse('审核失败', 500));
   }
 });
 
@@ -5134,8 +6165,8 @@ if (process.env.NODE_ENV !== 'production') {
       const reportId = 'RPT' + Date.now();
       const mockResult = damageService.getMockAnalysisResult(reportId, { plate_number: '京A12345', brand: '大众', model: '帕萨特' });
       await pool.execute(
-        `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, analysis_result, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 1, NOW())`,
+        `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, analysis_result, analysis_relevance, analysis_attempts, analysis_error, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'relevant', 1, NULL, 1, NOW())`,
         [reportId, user_id, JSON.stringify({}), JSON.stringify(['https://example.com/test.jpg']), JSON.stringify(mockResult)]
       );
       res.json(successResponse({ report_id: reportId }, '定损报告已创建'));
@@ -5235,7 +6266,20 @@ if (process.env.NODE_ENV !== 'production') {
       addStep('8-用户确认完成', { order_id: orderId });
 
       // 9. 用户评价 → 返佣 8%
-      const rebateAmount = quoteAmount * 0.08;
+      let rebateAmount = quoteAmount * 0.08;
+      const orderRewardCapSim = require('./services/order-reward-cap-service');
+      const [ordSim] = await pool.execute(
+        'SELECT o.order_id, o.quoted_amount, o.actual_amount, o.complexity_level, o.shop_id, o.quote_id, o.is_insurance_accident, o.repair_plan, o.bidding_id FROM orders o WHERE o.order_id = ?',
+        [orderId]
+      );
+      const ordSimRow = ordSim[0];
+      if (ordSimRow && rebateAmount > 0) {
+        const capped = await orderRewardCapSim.clampPayoutToOrderHardCap(pool, orderId, ordSimRow, {
+          afterTax: rebateAmount,
+          taxDeducted: 0,
+        });
+        rebateAmount = capped.afterTax;
+      }
       const reviewId = 'REV' + Date.now();
       await pool.execute(
         `INSERT INTO reviews (review_id, order_id, shop_id, user_id, type, rating, content, rebate_amount, rebate_rate, status, created_at)
@@ -5246,11 +6290,20 @@ if (process.env.NODE_ENV !== 'production') {
         'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
         [rebateAmount, rebateAmount, user_id]
       );
-      await pool.execute(
-        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, created_at)
-         VALUES (?, ?, 'rebate', ?, '评价返点', ?, NOW())`,
-        ['TXN' + Date.now(), user_id, rebateAmount, reviewId]
-      );
+      const hasSrcSim = await orderRewardCapSim.hasRewardSourceOrderColumn(pool);
+      if (hasSrcSim) {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, created_at)
+           VALUES (?, ?, 'rebate', ?, '评价返点', ?, ?, NOW())`,
+          ['TXN' + Date.now(), user_id, rebateAmount, reviewId, orderId]
+        );
+      } else {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, created_at)
+           VALUES (?, ?, 'rebate', ?, '评价返点', ?, NOW())`,
+          ['TXN' + Date.now(), user_id, rebateAmount, reviewId]
+        );
+      }
       addStep('9-评价返佣', { review_id: reviewId, rebate_amount: rebateAmount, rate: '8%' });
 
       res.json(successResponse({

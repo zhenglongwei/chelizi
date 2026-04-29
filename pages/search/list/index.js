@@ -6,7 +6,7 @@ const { getShopsSearch } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 
 const logger = getLogger('SearchList');
-const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
+const { buildOwnerSideScoreRow } = require('../../../utils/shop-public-score');
 
 const CATEGORIES = ['钣金喷漆', '发动机维修', '电路维修', '保养服务'];
 const SORT_OPTIONS_BASE = [
@@ -24,7 +24,7 @@ const SORT_OPTIONS_WITH_PRICE = [
 ];
 
 function mapShopItem(s, idx) {
-  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
+  const scoreRow = buildOwnerSideScoreRow(s);
   let badgeText = '';
   let badgeClass = '';
   let locationText = s.district || s.address || '—';
@@ -39,14 +39,21 @@ function mapShopItem(s, idx) {
     badgeText = s.distance + 'km';
     badgeClass = 'badge-distance';
   }
+  const ratingLine = scoreRow.showPublicScore
+    ? scoreRow.rating + ' | ' + scoreRow.orderCount + '单'
+    : scoreRow.orderCount > 0
+      ? scoreRow.rating + ' · ' + scoreRow.orderCount + '单'
+      : scoreRow.rating;
   return {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
-    rating: starDisplay.scoreText,
-    starsDisplay: starDisplay.stars,
-    scoreNum: starDisplay.score,
-    orderCount: s.total_orders || s.rating_count || 0,
+    showPublicScore: scoreRow.showPublicScore,
+    rating: scoreRow.rating,
+    ratingLine,
+    starsDisplay: scoreRow.starsDisplay,
+    scoreNum: scoreRow.scoreNum,
+    orderCount: scoreRow.orderCount,
     is_certified: s.is_certified,
     badgeText,
     badgeClass,

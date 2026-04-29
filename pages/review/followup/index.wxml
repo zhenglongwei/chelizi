@@ -29,6 +29,10 @@
         <text class="fs-body">{{info.shop_name || '维修厂'}}</text>
         <text class="text-weak fs-sm" style="margin-top: var(--space-sm);">完工时间：{{info.created_at}}</text>
       </view>
+      <view class="followup-section" wx:if="{{engagementHint}}">
+        <view class="followup-section-title fs-body fw-bold">主评互动概览</view>
+        <text class="text-muted fs-sm" style="line-height:1.55;display:block;">{{engagementHint}}</text>
+      </view>
       <view class="followup-section">
         <view class="followup-section-title fs-body fw-bold">客观题 {{orderTier <= 2 ? '（选填）' : ''}}</view>
         <view class="followup-objective">

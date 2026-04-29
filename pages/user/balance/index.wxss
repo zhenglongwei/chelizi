@@ -29,6 +29,12 @@
   margin-bottom: var(--space-md);
 }
 
+.balance-rules-link {
+  display: block;
+  margin-top: var(--space-sm);
+  color: var(--primary);
+}
+
 .balance-withdraw-btn {
   margin-top: var(--space-lg);
   width: 100%;

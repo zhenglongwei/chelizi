@@ -15,58 +15,37 @@ const orderWarrantyCardService = require('./order-warranty-card-service');
 const { partsTypesEquivalent } = require('../constants/parts-types');
 const CANCEL_30_MIN_MS = 30 * 60 * 1000;
 
-const PARTS_VERIFICATION_METHOD_KEYS = new Set([
-  'official',
-  'qr_scan',
-  'face_to_face',
-  'paper_proof',
-  'other',
-]);
-
-function validateCompletionEvidence(evidence, opts = {}) {
-  if (!evidence || typeof evidence !== 'object') return { ok: false, msg: '请上传维修完成凭证' };
-  const repair = evidence.repair_photos;
-  const settlement = evidence.settlement_photos;
-  const material = evidence.material_photos;
-  const arr = (v) => (Array.isArray(v) ? v : []);
-  if (arr(repair).length < 1) return { ok: false, msg: '请上传至少 1 张修复后照片' };
-  if (arr(settlement).length < 1) return { ok: false, msg: '请上传至少 1 张定损单或结算单照片' };
-  if (arr(material).length < 1) return { ok: false, msg: '请上传至少 1 张物料照片' };
-  if (opts.requireLeadTechnician) {
-    const lt = evidence.lead_technician;
-    if (!lt || typeof lt !== 'object' || !(String(lt.name || '').trim())) {
-      return { ok: false, msg: '请选择或填写负责维修的技师或负责人' };
-    }
-  }
-  if (opts.requirePartsVerification) {
-    const pv = evidence.parts_verification;
-    if (!pv || typeof pv !== 'object') {
-      return { ok: false, msg: '请填写配件验真方式，或勾选「暂不填写验真说明」' };
-    }
-    if (pv.not_provided === true) {
-      // 明确放弃填写
-    } else {
-      const methods = Array.isArray(pv.methods) ? pv.methods.filter((m) => PARTS_VERIFICATION_METHOD_KEYS.has(String(m))) : [];
-      if (methods.length < 1) {
-        return { ok: false, msg: '请至少选择一种配件验真方式，或勾选暂不填写' };
-      }
-      if (methods.includes('other')) {
-        const note = String(pv.note || '').trim();
-        if (note.length < 2) return { ok: false, msg: '选择「其他」时请简短说明验真方式' };
-      }
-    }
+/** 完工凭证：仅校验为对象；张数、技师、验真等由端上引导，接口不强制 */
+function validateCompletionEvidence(evidence) {
+  if (evidence === undefined || evidence === null) return { ok: true };
+  if (typeof evidence !== 'object' || Array.isArray(evidence)) {
+    return { ok: false, msg: '完工凭证格式无效' };
   }
   return { ok: true };
 }
 
+function countCompletionEvidenceImages(evidence) {
+  const e = evidence && typeof evidence === 'object' && !Array.isArray(evidence) ? evidence : {};
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  return arr(e.repair_photos).length + arr(e.settlement_photos).length + arr(e.material_photos).length;
+}
+
+function hasSettlementDocs(evidence) {
+  const e = evidence && typeof evidence === 'object' && !Array.isArray(evidence) ? evidence : {};
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  return arr(e.settlement_photos).length > 0;
+}
+
 /**
- * 用户取消订单（直接撤销或创建撤单申请）
- * 未接单/接单≤30分钟：直接撤销
- * 接单>30分钟：创建撤单申请，需填写理由
+ * 车主取消交易（新口径：以“拆检留痕”为锚点）
+ * 规则（方案2）：
+ * - 若订单已存在拆检费/拆检收据等线下留痕（order_offline_fee_proofs），视为已发生拆检，禁止直接取消；
+ *   引导走“拆检费处置/结案”流程（后台/客服）。
+ * - 若无任何拆检留痕：允许取消交易（直接取消订单并释放竞价）。
  */
-async function cancelOrder(pool, orderId, userId, reason = '') {
+async function cancelOrder(pool, orderId, userId) {
   const [orders] = await pool.execute(
-    'SELECT order_id, bidding_id, status, accepted_at FROM orders WHERE order_id = ? AND user_id = ?',
+    'SELECT order_id, bidding_id, status FROM orders WHERE order_id = ? AND user_id = ?',
     [orderId, userId]
   );
   if (orders.length === 0) {
@@ -80,41 +59,43 @@ async function cancelOrder(pool, orderId, userId, reason = '') {
     return { success: false, error: '订单已取消', statusCode: 400 };
   }
 
-  const needRequest = order.status >= 1 && order.accepted_at;
-  let acceptedAt = order.accepted_at;
-  if (acceptedAt && typeof acceptedAt === 'string') acceptedAt = new Date(acceptedAt);
-  const within30 = needRequest && acceptedAt && (Date.now() - acceptedAt.getTime() <= CANCEL_30_MIN_MS);
-
-  if (!needRequest || within30) {
-    await doCancelOrder(pool, orderId, order.bidding_id);
-    return { success: true, data: { order_id: orderId, direct: true } };
-  }
-
-  const reasonTrim = (reason || '').trim();
-  if (!reasonTrim) {
-    return { success: false, error: '接单超过 30 分钟，请填写撤单理由', statusCode: 400 };
-  }
-
-  const [existing] = await pool.execute(
-    'SELECT request_id, status FROM order_cancel_requests WHERE order_id = ? AND status IN (0, 3)',
-    [orderId]
-  );
-  if (existing.length > 0) {
-    if (existing[0].status === 0) {
-      return { success: false, error: '已有待处理的撤单申请', statusCode: 400 };
+  // 若已发生拆检留痕，禁止直接取消
+  try {
+    const [proofRows] = await pool.execute(
+      'SELECT 1 FROM order_offline_fee_proofs WHERE order_id = ? LIMIT 1',
+      [orderId]
+    );
+    if (proofRows && proofRows.length > 0) {
+      return {
+        success: false,
+        error: '已产生拆检费/拆检收据等留痕，无法直接取消交易。请按拆检费处置流程处理（上传凭证/联系客服）。',
+        statusCode: 400,
+      };
     }
-    return { success: false, error: '已提交人工通道，请等待处理', statusCode: 400 };
+  } catch (e) {
+    // 若未创建该表（早期环境），按“允许取消”兜底，避免阻断正常取消
+    if (!String((e && e.message) || '').includes('order_offline_fee_proofs')) {
+      console.warn('[cancelOrder] check order_offline_fee_proofs error:', e && e.message);
+    }
   }
 
-  const requestId = 'OCR' + Date.now();
-  await pool.execute(
-    'INSERT INTO order_cancel_requests (request_id, order_id, user_id, reason, status) VALUES (?, ?, ?, ?, 0)',
-    [requestId, orderId, userId, reasonTrim]
-  );
-  return {
-    success: true,
-    data: { order_id: orderId, cancel_request_id: requestId, direct: false, status: 'pending' },
-  };
+  await doCancelOrder(pool, orderId, order.bidding_id);
+  // 生命周期字段若存在，补写 cancelled（不依赖 order-lifecycle-service，避免循环依赖）
+  try {
+    const { hasColumn } = require('../utils/db-utils');
+    if (await hasColumn(pool, 'orders', 'lifecycle_main')) {
+      await pool.execute(
+        `UPDATE orders
+         SET lifecycle_main = 'cancelled',
+             lifecycle_sub = 'owner_cancelled',
+             updated_at = NOW()
+         WHERE order_id = ?`,
+        [orderId]
+      );
+    }
+  } catch (_) {}
+
+  return { success: true, data: { order_id: orderId, direct: true } };
 }
 
 async function doCancelOrder(pool, orderId, biddingId) {
@@ -182,6 +163,34 @@ async function confirmOrder(pool, orderId, userId) {
 }
 
 /**
+ * 系统自动确认交车（待交车超48h）
+ * 与 confirmOrder 同口径计算佣金，但不要求 userId 匹配。
+ */
+async function confirmOrderBySystem(pool, orderId) {
+  const [orders] = await pool.execute(
+    'SELECT order_id, shop_id, quote_id, status, quoted_amount, actual_amount, commission_rate FROM orders WHERE order_id = ?',
+    [orderId]
+  );
+  if (!orders.length) {
+    return { success: false, error: '订单不存在', statusCode: 404 };
+  }
+  const order = orders[0];
+  if (parseInt(order.status, 10) !== 2) {
+    return { success: false, error: '当前状态不可自动确认交车', statusCode: 400 };
+  }
+
+  const amount = parseFloat(order.actual_amount || order.quoted_amount) || 0;
+  const rate = (parseFloat(order.commission_rate) || 0) / 100;
+  const commission = Math.round(amount * rate * 100) / 100;
+  await pool.execute(
+    'UPDATE orders SET status = 3, completed_at = NOW(), updated_at = NOW(), commission = ?, delivery_confirmed_at = NOW() WHERE order_id = ?',
+    [commission, orderId]
+  );
+
+  return { success: true, data: { order_id: orderId, auto: true } };
+}
+
+/**
  * 服务商接单（0->1），写入 accepted_at，复制 quote 到 repair_plan
  */
 async function acceptOrder(pool, orderId, shopId) {
@@ -238,9 +247,10 @@ async function acceptOrder(pool, orderId, shopId) {
 
 /**
  * 服务商更新订单状态（维修中 1->待确认 2）
- * 1->2 时 completion_evidence 必传：repair_photos、settlement_photos、material_photos 各至少 1 张
- * 材料 AI 审核：数量校验通过后创建审核任务，status 保持 1，返回 auditing；后台 AI 通过则更新为 2
- * repair_plan_status=1（待车主确认）时不可点击维修完成
+ * 1->2 时 completion_evidence 可选；若含至少 1 张凭证图则**仍立即**落库为待验收（status=2），并创建 `material_audit_tasks` 供后台异步质检，**不阻塞**完工。
+ * 材料审核仅更新任务状态与可选回写 `completion_evidence`，不再负责把订单从 1 推到 2。
+ * repair_plan_status=1（待车主确认）时不可点击维修完成。
+ * 若已启用 `order_repair_milestones`：须已存在至少一条 `after_process` 留痕后才允许 1→2（非完工节点仅更新进展）。
  */
 async function resolveWarrantyCardTemplateId(pool, shopId, explicitFromBody, evidenceObj) {
   const fromEv = evidenceObj && evidenceObj.warranty_card_template_id != null
@@ -295,11 +305,26 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, payload) {
     if (hasPreQuoteSnapshot && finalQs === 1) {
       return { success: false, error: '请等待车主在小程序确认最终报价后再提交维修完成', statusCode: 400 };
     }
-    const requireLt = hasPreQuoteSnapshot;
-    const valid = validateCompletionEvidence(completionEvidence, {
-      requireLeadTechnician: requireLt,
-      requirePartsVerification: requireLt,
-    });
+    try {
+      const repairMilestoneService = require('./repair-milestone-service');
+      if (await repairMilestoneService.milestonesTableExists(pool)) {
+        const milestones = await repairMilestoneService.listForOrder(pool, orderId);
+        const hasAfterProcess = milestones.some(
+          (m) => m && String(m.milestone_code || '') === 'after_process'
+        );
+        if (!hasAfterProcess) {
+          return {
+            success: false,
+            error:
+              '请先在「更新关键节点」中上传并提交「完工」环节过程照片后，再申请待验收；其他节点留痕不会结束维修',
+            statusCode: 400,
+          };
+        }
+      }
+    } catch (mErr) {
+      console.warn('[OrderService] 完工前置校验（milestones）:', mErr && mErr.message);
+    }
+    const valid = validateCompletionEvidence(completionEvidence);
     if (!valid.ok) {
       return { success: false, error: valid.msg, statusCode: 400 };
     }
@@ -313,27 +338,21 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, payload) {
     const evidenceForStore = { ...(completionEvidence || {}) };
     evidenceForStore.warranty_card_template_id = templateIdResolved;
 
+    const imageCount = countCompletionEvidenceImages(completionEvidence);
     const hasMaterialAuditTable = await hasTable(pool, 'material_audit_tasks');
-    if (hasMaterialAuditTable) {
-      const taskId = 'mat_' + crypto.randomBytes(12).toString('hex');
-      const evidenceJson = JSON.stringify(evidenceForStore);
+    let auditTaskId = null;
+    if (hasMaterialAuditTable && imageCount > 0) {
+      auditTaskId = 'mat_' + crypto.randomBytes(12).toString('hex');
+      const evidenceJsonEarly = JSON.stringify(evidenceForStore);
       try {
         await pool.execute(
           `INSERT INTO material_audit_tasks (task_id, order_id, shop_id, completion_evidence, status)
            VALUES (?, ?, ?, ?, 'pending')`,
-          [taskId, orderId, shopId, evidenceJson]
+          [auditTaskId, orderId, shopId, evidenceJsonEarly]
         );
-        return {
-          success: true,
-          data: {
-            order_id: orderId,
-            status: 'auditing',
-            task_id: taskId,
-            message: '材料审核中，请稍后查看结果'
-          }
-        };
       } catch (err) {
-        console.warn('[OrderService] 创建材料审核任务失败，回退为直接通过:', err.message);
+        console.warn('[OrderService] 创建材料审核任务失败:', err.message);
+        auditTaskId = null;
       }
     }
 
@@ -350,23 +369,47 @@ async function updateOrderStatus(pool, orderId, shopId, targetStatus, payload) {
     const evidenceJson = JSON.stringify(evidenceToStore);
     const hasEvidence = await hasColumn(pool, 'orders', 'completion_evidence');
     const hasOrderWct = await hasColumn(pool, 'orders', 'warranty_card_template_id');
+    // 新流程：完工提交不再立即推进到 status=2（待验收）；先落库凭证 + 创建材料审核任务，
+    // 待 AI/人工确认（结算单存在且金额一致性无异常）后再由 material-audit-service 推进到 2。
     if (hasEvidence && hasOrderWct) {
       await pool.execute(
-        'UPDATE orders SET status = 2, completion_evidence = ?, warranty_card_template_id = ?, updated_at = NOW() WHERE order_id = ?',
+        'UPDATE orders SET completion_evidence = ?, warranty_card_template_id = ?, updated_at = NOW() WHERE order_id = ?',
         [evidenceJson, templateIdResolved, orderId]
       );
     } else if (hasEvidence) {
       await pool.execute(
-        'UPDATE orders SET status = 2, completion_evidence = ?, updated_at = NOW() WHERE order_id = ?',
+        'UPDATE orders SET completion_evidence = ?, updated_at = NOW() WHERE order_id = ?',
         [evidenceJson, orderId]
       );
     } else {
-      await pool.execute(
-        'UPDATE orders SET status = 2, updated_at = NOW() WHERE order_id = ?',
-        [orderId]
-      );
+      await pool.execute('UPDATE orders SET updated_at = NOW() WHERE order_id = ?', [orderId]);
     }
-    return { success: true, data: { order_id: orderId } };
+
+    // 结算单/定损单必传：缺失则直接转人工审核（订单保持维修中）
+    if (hasMaterialAuditTable && auditTaskId && !hasSettlementDocs(completionEvidence)) {
+      try {
+        await pool.execute(
+          `UPDATE material_audit_tasks
+           SET status = 'manual_review',
+               reject_reason = '缺失定损单/结算单（结算金额无法核验），请补充后重新提交',
+               completed_at = NULL
+           WHERE task_id = ?`,
+          [auditTaskId]
+        );
+      } catch (_) {}
+      return { success: true, data: { order_id: orderId, task_id: auditTaskId, hold_status: 1, need_manual: true } };
+    }
+    const outData = { order_id: orderId };
+    if (auditTaskId) outData.task_id = auditTaskId;
+    try {
+      const rpa = require('./repair-process-ai-service');
+      if (typeof rpa.scheduleRepairProcessAiForOrder === 'function') {
+        rpa.scheduleRepairProcessAiForOrder(pool, orderId);
+      }
+    } catch (e) {
+      console.warn('[OrderService] scheduleRepairProcessAiForOrder:', e && e.message);
+    }
+    return { success: true, data: outData };
   }
   return { success: false, error: '当前状态不可更新', statusCode: 400 };
 }
@@ -381,40 +424,6 @@ async function hasTable(pool, tableName) {
   } catch {
     return false;
   }
-}
-
-/**
- * 服务商响应撤单申请（同意/拒绝）
- */
-async function respondCancelRequest(pool, requestId, shopId, approve) {
-  const [reqs] = await pool.execute(
-    `SELECT r.request_id, r.order_id, r.status, o.shop_id, o.bidding_id
-     FROM order_cancel_requests r
-     INNER JOIN orders o ON r.order_id = o.order_id
-     WHERE r.request_id = ? AND o.shop_id = ?`,
-    [requestId, shopId]
-  );
-  if (reqs.length === 0) {
-    return { success: false, error: '撤单申请不存在', statusCode: 404 };
-  }
-  const r = reqs[0];
-  if (r.status !== 0) {
-    return { success: false, error: '该申请已处理', statusCode: 400 };
-  }
-
-  const newStatus = approve ? 1 : 2;
-  await pool.execute(
-    'UPDATE order_cancel_requests SET status = ?, shop_response_at = NOW(), updated_at = NOW() WHERE request_id = ?',
-    [newStatus, requestId]
-  );
-
-  if (approve) {
-    await doCancelOrder(pool, r.order_id, r.bidding_id);
-  }
-  return {
-    success: true,
-    data: { request_id: requestId, approved: approve },
-  };
 }
 
 /**
@@ -600,88 +609,7 @@ async function approveRepairPlan(pool, orderId, userId, approved) {
   return { success: true, data: { order_id: orderId, approved: false }, msg: '如有疑问请联系客服' };
 }
 
-/**
- * 车主提交人工通道（服务商拒绝后）
- */
-async function escalateCancelRequest(pool, requestId, userId) {
-  const [reqs] = await pool.execute(
-    'SELECT request_id, order_id, user_id, status FROM order_cancel_requests WHERE request_id = ?',
-    [requestId]
-  );
-  if (reqs.length === 0) {
-    return { success: false, error: '撤单申请不存在', statusCode: 404 };
-  }
-  const r = reqs[0];
-  if (r.user_id !== userId) {
-    return { success: false, error: '无权操作', statusCode: 403 };
-  }
-  if (r.status !== 2) {
-    return { success: false, error: '仅服务商拒绝后可提交人工', statusCode: 400 };
-  }
-
-  await pool.execute(
-    'UPDATE order_cancel_requests SET status = 3, escalated_at = NOW(), updated_at = NOW() WHERE request_id = ?',
-    [requestId]
-  );
-  return { success: true, data: { request_id: requestId, status: 'escalated' } };
-}
-
-/**
- * 获取订单待处理的撤单申请（服务商用）
- */
-async function getPendingCancelRequest(pool, orderId, shopId) {
-  try {
-    const [rows] = await pool.execute(
-      `SELECT r.request_id, r.reason, r.created_at
-       FROM order_cancel_requests r
-       INNER JOIN orders o ON r.order_id = o.order_id
-       WHERE r.order_id = ? AND o.shop_id = ? AND r.status = 0`,
-      [orderId, shopId]
-    );
-    return rows.length > 0 ? rows[0] : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 获取订单最新撤单申请（车主用，用于显示「提交人工」入口）
- */
-async function getLatestCancelRequestForUser(pool, orderId, userId) {
-  try {
-    const [rows] = await pool.execute(
-      'SELECT request_id, status, reason FROM order_cancel_requests WHERE order_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1',
-      [orderId, userId]
-    );
-    return rows.length > 0 ? rows[0] : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 后台：撤单申请列表（status=3 已提交人工）
- */
-async function listCancelRequestsForAdmin(pool, status = 3) {
-  try {
-    const [rows] = await pool.execute(
-      `SELECT r.request_id, r.order_id, r.user_id, r.reason, r.status, r.created_at, r.escalated_at,
-        o.bidding_id, o.quoted_amount, o.status as order_status
-       FROM order_cancel_requests r
-       INNER JOIN orders o ON r.order_id = o.order_id
-       WHERE r.status = ?
-       ORDER BY r.escalated_at DESC, r.created_at DESC`,
-      [status]
-    );
-    return rows || [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * 后台：人工处理撤单申请（同意/拒绝）
- */
+// 撤单申请（order_cancel_requests）旧链路已废弃：不再支持服务商响应、车主升级人工、后台列表/处理。
 /**
  * 服务商提交到店报价（车主确认前；有 order_quote_proposals 表时可多轮，每轮须证明材料）
  */
@@ -1051,44 +979,14 @@ async function confirmFinalQuote(pool, orderId, userId, approved) {
   return { success: true, data: { order_id: orderId, approved: true, deviation_rate: deviation } };
 }
 
-async function resolveCancelRequestByAdmin(pool, requestId, approve) {
-  const [reqs] = await pool.execute(
-    'SELECT r.request_id, r.order_id, r.status, o.bidding_id FROM order_cancel_requests r INNER JOIN orders o ON r.order_id = o.order_id WHERE r.request_id = ?',
-    [requestId]
-  );
-  if (reqs.length === 0) {
-    return { success: false, error: '撤单申请不存在', statusCode: 404 };
-  }
-  const r = reqs[0];
-  if (r.status !== 3) {
-    return { success: false, error: '仅已提交人工的申请可处理', statusCode: 400 };
-  }
-
-  const newStatus = approve ? 4 : 5;
-  await pool.execute(
-    'UPDATE order_cancel_requests SET status = ?, admin_resolution = ?, admin_resolved_at = NOW(), updated_at = NOW() WHERE request_id = ?',
-    [newStatus, approve ? 'approved' : 'rejected', requestId]
-  );
-
-  if (approve) {
-    await doCancelOrder(pool, r.order_id, r.bidding_id);
-  }
-  return { success: true, data: { request_id: requestId, approved: approve } };
-}
-
 module.exports = {
   cancelOrder,
   confirmOrder,
+  confirmOrderBySystem,
   acceptOrder,
   updateOrderStatus,
   updateRepairPlan,
   approveRepairPlan,
   submitFinalQuote,
   confirmFinalQuote,
-  respondCancelRequest,
-  escalateCancelRequest,
-  getPendingCancelRequest,
-  getLatestCancelRequestForUser,
-  listCancelRequestsForAdmin,
-  resolveCancelRequestByAdmin,
 };

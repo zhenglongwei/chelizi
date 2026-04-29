@@ -3,6 +3,7 @@
   "enablePullDownRefresh": false,
   "navigationStyle": "custom",
   "usingComponents": {
-    "custom-nav-bar": "/components/custom-nav-bar/index"
+    "custom-nav-bar": "/components/custom-nav-bar/index",
+    "accident-report-view": "/components/accident-report-view/index"
   }
 }

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "拆检费留痕",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}
+

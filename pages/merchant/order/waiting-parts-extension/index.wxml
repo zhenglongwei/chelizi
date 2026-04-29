@@ -1,0 +1,36 @@
+<custom-nav-bar title="等待配件延期" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card proof-card">
+    <text class="fs-body fw-medium">上传采购/到货凭证</text>
+    <text class="text-muted fs-cap proof-hint">用于说明“等待配件”导致工期延长。请上传采购单、物流单、到货照片等凭证。平台仅做留痕，减少纠纷。</text>
+
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">延长天数</text>
+      <input class="form-input" type="number" placeholder="默认15天，最多30天" value="{{extendDays}}" bindinput="onExtendDaysInput" />
+    </view>
+
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">备注（选填）</text>
+      <input class="form-input" placeholder="如：配件名称、预计到货时间" value="{{note}}" bindinput="onNoteInput" maxlength="200" />
+    </view>
+
+    <view class="form-row form-row--images">
+      <text class="form-label text-muted fs-cap">凭证图片（至少1张）</text>
+      <view class="img-grid">
+        <view class="img-item" wx:for="{{imageUrls}}" wx:key="*this">
+          <image class="img-thumb" src="{{item}}" mode="aspectFill" bindtap="onPreviewImage" data-url="{{item}}" />
+          <view class="img-del" catchtap="onRemoveImage" data-url="{{item}}">×</view>
+        </view>
+        <view class="img-add" wx:if="{{imageUrls.length < 6}}" bindtap="onChooseImages">
+          <text class="img-add-plus">+</text>
+          <text class="text-muted fs-cap">上传</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="btn-primary proof-submit" loading="{{submitting}}" disabled="{{submitting || !imageUrls.length}}" bindtap="onSubmit">
+      {{submitting ? '提交中...' : '提交延期留痕'}}
+    </button>
+  </view>
+</view>
+

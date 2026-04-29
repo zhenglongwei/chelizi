@@ -15,12 +15,26 @@ App({
 
   onLaunch(options) {
     logger.info('小程序启动', options);
+    this.captureReferrerFromLaunch(options);
     this.initSystemInfo();
     this.checkUpdate();
   },
 
+  captureReferrerFromLaunch(options) {
+    try {
+      const q = options && options.query;
+      const ref = q && (q.ref || q.referrer_user_id);
+      if (ref && String(ref).trim()) {
+        wx.setStorageSync('pending_referrer_user_id', String(ref).trim());
+      }
+    } catch (e) {
+      logger.warn('记录推荐参数失败', e);
+    }
+  },
+
   onShow(options) {
     logger.debug('小程序显示', options);
+    this.captureReferrerFromLaunch(options);
     try {
       const { scheduleFetchUnreadBadge } = require('./utils/message-badge');
       scheduleFetchUnreadBadge();

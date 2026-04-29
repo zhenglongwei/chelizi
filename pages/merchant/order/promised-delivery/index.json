@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "承诺交车时间",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}
+

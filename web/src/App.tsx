@@ -15,14 +15,13 @@ import DataStatistics from './admin/pages/DataStatistics';
 import SystemConfig from './admin/pages/SystemConfig';
 import RewardRulesConfig from './admin/pages/RewardRulesConfig';
 import CommissionRulesConfig from './admin/pages/CommissionRulesConfig';
-import ReviewAudit from './admin/pages/ReviewAudit';
 import AppealReviewManagement from './admin/pages/AppealReviewManagement';
-import ComplexityUpgrade from './admin/pages/ComplexityUpgrade';
 import AntiFraudManagement from './admin/pages/AntiFraudManagement';
-import OrderCancelRequests from './admin/pages/OrderCancelRequests';
 import MaterialAuditTasks from './admin/pages/MaterialAuditTasks';
+import ReviewEvidenceAnomalyTasks from './admin/pages/ReviewEvidenceAnomalyTasks';
 import ShopProductAudit from './admin/pages/ShopProductAudit';
 import CorpIncomeWithdraw from './admin/pages/CorpIncomeWithdraw';
+import DamageAnalysisManualReview from './admin/pages/DamageAnalysisManualReview';
 import { useAuth } from './admin/hooks/useAuth';
 
 function App() {
@@ -45,23 +44,23 @@ function App() {
           </ProtectedRoute>
         }
       >
+        <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="merchants" element={<MerchantManagement />} />
         <Route path="orders" element={<OrderManagement />} />
-        <Route path="order-cancel-requests" element={<OrderCancelRequests />} />
         <Route path="material-audit-tasks" element={<MaterialAuditTasks />} />
+        <Route path="review-evidence-anomaly-tasks" element={<ReviewEvidenceAnomalyTasks />} />
         <Route path="settlement" element={<SettlementManagement />} />
         <Route path="disputes" element={<DisputeManagement />} />
         <Route path="statistics" element={<DataStatistics />} />
         <Route path="config" element={<SystemConfig />} />
         <Route path="reward-rules" element={<RewardRulesConfig />} />
         <Route path="commission-rules" element={<CommissionRulesConfig />} />
-        <Route path="review-audit" element={<ReviewAudit />} />
         <Route path="appeal-reviews" element={<AppealReviewManagement />} />
-        <Route path="complexity-upgrade" element={<ComplexityUpgrade />} />
         <Route path="antifraud" element={<AntiFraudManagement />} />
         <Route path="shop-products" element={<ShopProductAudit />} />
         <Route path="shop-income-corp" element={<CorpIncomeWithdraw />} />
+        <Route path="damage-analysis-manual-review" element={<DamageAnalysisManualReview />} />
       </Route>
     </Routes>
   );

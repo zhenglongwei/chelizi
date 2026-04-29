@@ -1,0 +1,9 @@
+{
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index",
+    "accident-report-view": "/components/accident-report-view/index"
+  },
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": false
+}
+

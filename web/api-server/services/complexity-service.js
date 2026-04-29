@@ -7,7 +7,7 @@
 const LEVEL_ORDER = { L1: 1, L2: 2, L3: 3, L4: 4 };
 
 /**
- * 单行报价/方案项的可匹配文本（与 quote-import、reward-calculator.applyComplexityUpgrade 对齐）
+ * 单行报价/方案项的可匹配文本（与 quote-import、reward-calculator 入参对齐）
  */
 function getItemMatchText(i) {
   if (!i || typeof i !== 'object') return '';
@@ -67,7 +67,7 @@ async function resolveComplexityFromItems(pool, items) {
  * @returns {Promise<string|null>} L1|L2|L3|L4 或 null
  */
 async function inferComplexityByAI(items, orderAmount) {
-  // TODO: 接入 AI 大模型，根据《复杂度分级详细标准》定义判定
+  // TODO: 接入 AI 大模型；历史分级叙述见 docs/已归档/复杂度分级详细标准.md
   return null;
 }
 

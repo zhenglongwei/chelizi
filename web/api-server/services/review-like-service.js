@@ -1,6 +1,6 @@
 /**
  * 点赞追加奖金 - 阅读与点赞服务
- * 按《点赞追加奖金体系完整标准方案-V1.0正式版》实现
+ * 按 docs/体系/04 与附录 A（历史方案见 docs/已归档/点赞追加奖金体系完整标准方案-V1.0正式版.md）
  * 用户等级与权重以《用户等级体系》为准：0/0.3/1.0/1.5/2.0
  */
 
@@ -14,6 +14,8 @@ const LIKE_CREDIBILITY_WEIGHT = { 0: 0, 1: 0.3, 2: 1.0, 3: 1.5, 4: 2.0 };
 const MAX_EFFECTIVE_READING_TOTAL = 300;
 // 单次会话有效阅读上限（秒）
 const MAX_EFFECTIVE_READING_PER_SESSION = 180;
+/** 累计有效阅读达到该值及以上时，点赞可记为有效赞（纳入互动月结等），与《04》§二「有效点赞」一致 */
+const MIN_EFFECTIVE_READING_SECONDS_FOR_BONUS = 10;
 
 function genId(prefix) {
   return prefix + crypto.randomBytes(12).toString('hex');
@@ -28,22 +30,50 @@ function getCredibilityWeight(level) {
   return LIKE_CREDIBILITY_WEIGHT[L] ?? 0;
 }
 
-/**
- * 车型匹配：仅车牌号，点赞者与评价订单车辆 plate_number 一致为 1 否则 0
- */
-function getVehicleMatchByPlate(likerPlate, reviewOrderPlate) {
-  const a = (likerPlate || '').trim().toUpperCase();
-  const b = (reviewOrderPlate || '').trim().toUpperCase();
-  if (!a || !b) return 0;
-  return a === b ? 1 : 0;
+function parseVehicleInfoLoose(raw) {
+  if (!raw) return { plate: '', brand: '', model: '' };
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return {
+      plate: String(o.plate_number || o.plateNumber || '').trim(),
+      brand: String(o.brand || '').trim(),
+      model: String(o.model || '').trim(),
+    };
+  } catch (_) {
+    return { plate: '', brand: '', model: '' };
+  }
+}
+
+function normVehicleToken(s) {
+  return String(s || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 /**
- * 账号综合权重系数 = 基础可信度权重 × 车型匹配权重
- * 车型匹配：1=精准(2.0) 0=无匹配(0.5)，简化版仅车牌一致/否
+ * 同车型高权匹配键：品牌与车型均需非空（避免半信息误匹配）
+ * @returns {string|null}
  */
-function calcWeightCoefficient(credibilityWeight, vehicleMatchByPlate) {
-  const vehicleWeight = vehicleMatchByPlate ? 2.0 : 0.5;
+function buildModelMatchKey(brand, model) {
+  const b = normVehicleToken(brand);
+  const m = normVehicleToken(model);
+  if (!b || !m) return null;
+  return `${b}|${m}`;
+}
+
+/** 点赞者画像车 vs 评价锚定订单车：规范化「品牌|车型」一致为 1，否则 0（不比较车牌，避免同车家庭成员刷高权） */
+function getVehicleMatchByModel(likerKey, orderKey) {
+  if (!likerKey || !orderKey) return 0;
+  return likerKey === orderKey ? 1 : 0;
+}
+
+/**
+ * 账号综合权重系数 = 基础可信度权重 × 车型匹配乘子
+ * 乘子：同品牌+同车型（规范化）2.0，否则 0.5
+ */
+function calcWeightCoefficient(credibilityWeight, vehicleMatchByModel) {
+  const vehicleWeight = vehicleMatchByModel ? 2.0 : 0.5;
   return Math.round(credibilityWeight * vehicleWeight * 10000) / 10000;
 }
 
@@ -154,69 +184,71 @@ async function likeReview(pool, userId, reviewId) {
   if (review.status !== 1) return { success: false, error: '评价已隐藏' };
   if (review.author_id === userId) return { success: false, error: '不能给自己的评价点赞' };
 
-  // 2. 是否已点赞或已踩（单用户单评价终身1次，点赞与踩互斥）
+  // 2. 是否已点赞（单用户单评价终身 1 次赞；「踩」已废止，不再与赞互斥）
   const [existing] = await pool.execute(
     'SELECT like_id, is_valid_for_bonus FROM review_likes WHERE review_id = ? AND user_id = ?',
     [reviewId, userId]
   );
   if (existing.length) return { success: false, error: '您已点赞过该评价' };
-  const [hasDislike] = await pool.execute('SELECT 1 FROM review_dislikes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
-  if (hasDislike.length) return { success: false, error: '已踩过该评价，不可点赞' };
 
   // 3. 累计有效阅读时长
   const totalReading = await getTotalEffectiveReading(pool, userId, reviewId);
-  const hasEnoughReading = totalReading >= 30;
+  const hasEnoughReading = totalReading >= MIN_EFFECTIVE_READING_SECONDS_FOR_BONUS;
 
   // 4. 用户等级与权重（以 antifraud.getUserTrustLevel 动态核算为准）
   const trust = await antifraud.getUserTrustLevel(pool, userId);
   const credibilityWeight = getCredibilityWeight(trust.level);
 
-  // 5. 点赞者车辆（优先 user_vehicles.plate_number，否则 vehicle_info 或最近订单）
+  // 5. 点赞者车辆画像（优先 user_vehicles；若缺品牌/车型则回退最近完工订单的 bidding.vehicle_info）
   let likerPlate = '';
+  let likerBrand = '';
+  let likerModel = '';
   const [uv] = await pool.execute(
     `SELECT plate_number, vehicle_info FROM user_vehicles WHERE user_id = ? AND status = 1 ORDER BY created_at DESC LIMIT 1`,
     [userId]
   );
   if (uv.length) {
-    likerPlate = (uv[0].plate_number || '').trim();
-    if (!likerPlate && uv[0].vehicle_info) {
-      try {
-        const vi = typeof uv[0].vehicle_info === 'string' ? JSON.parse(uv[0].vehicle_info) : uv[0].vehicle_info;
-        likerPlate = vi.plate_number || vi.plateNumber || '';
-      } catch (_) {}
-    }
+    likerPlate = String(uv[0].plate_number || '').trim();
+    const fromUv = parseVehicleInfoLoose(uv[0].vehicle_info);
+    if (!likerPlate) likerPlate = fromUv.plate;
+    likerBrand = fromUv.brand;
+    likerModel = fromUv.model;
   }
-  if (!likerPlate) {
+  let likerModelKey = buildModelMatchKey(likerBrand, likerModel);
+  if (likerModelKey === null) {
     const [ord] = await pool.execute(
       `SELECT b.vehicle_info FROM orders o JOIN biddings b ON o.bidding_id = b.bidding_id
        WHERE o.user_id = ? AND o.status = 3 ORDER BY o.completed_at DESC LIMIT 1`,
       [userId]
     );
     if (ord.length && ord[0].vehicle_info) {
-      try {
-        const vi = typeof ord[0].vehicle_info === 'string' ? JSON.parse(ord[0].vehicle_info) : ord[0].vehicle_info;
-        likerPlate = vi.plate_number || vi.plateNumber || '';
-      } catch (_) {}
+      const ov = parseVehicleInfoLoose(ord[0].vehicle_info);
+      likerModelKey = buildModelMatchKey(ov.brand, ov.model);
+      if (!likerPlate) likerPlate = ov.plate;
     }
   }
 
-  // 6. 评价订单车辆
+  // 6. 评价锚定订单车辆
   let orderPlate = '';
+  let orderBrand = '';
+  let orderModel = '';
   const [ord2] = await pool.execute(
     `SELECT b.vehicle_info FROM orders o JOIN biddings b ON o.bidding_id = b.bidding_id WHERE o.order_id = ?`,
     [review.order_id]
   );
   if (ord2.length && ord2[0].vehicle_info) {
-    try {
-      const vi = typeof ord2[0].vehicle_info === 'string' ? JSON.parse(ord2[0].vehicle_info) : ord2[0].vehicle_info;
-      orderPlate = vi.plate_number || vi.plateNumber || '';
-    } catch (_) {}
+    const ov = parseVehicleInfoLoose(ord2[0].vehicle_info);
+    orderPlate = ov.plate;
+    orderBrand = ov.brand;
+    orderModel = ov.model;
   }
+  const orderModelKey = buildModelMatchKey(orderBrand, orderModel);
 
-  const vehicleMatchByPlate = getVehicleMatchByPlate(likerPlate, orderPlate);
-  const weightCoefficient = calcWeightCoefficient(credibilityWeight, vehicleMatchByPlate);
+  /** 落库列名仍为 vehicle_match_by_plate，语义为「同车型高权」1/0（见迁移 COMMENT） */
+  const vehicleMatchByModel = getVehicleMatchByModel(likerModelKey, orderModelKey);
+  const weightCoefficient = calcWeightCoefficient(credibilityWeight, vehicleMatchByModel);
 
-  // 7. 是否纳入奖金：有效阅读≥30秒 且 账号权重>0
+  // 7. 是否纳入奖金：有效阅读≥10 秒 且 账号权重>0
   const isValidForBonus = hasEnoughReading && credibilityWeight > 0 ? 1 : 0;
 
   // 8. 事后验证判定：下单前7天有浏览 + 同品牌同车系同类项目真实交易 + 完工后30天内点赞
@@ -230,7 +262,7 @@ async function likeReview(pool, userId, reviewId) {
   await pool.execute(
     `INSERT INTO review_likes (like_id, review_id, user_id, effective_reading_seconds, like_type, is_valid_for_bonus, weight_coefficient, vehicle_match_by_plate)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [likeId, reviewId, userId, totalReading, likeType, isValidForBonus, weightCoefficient, vehicleMatchByPlate]
+    [likeId, reviewId, userId, totalReading, likeType, isValidForBonus, weightCoefficient, vehicleMatchByModel]
   );
 
   // 9. 更新 reviews.like_count、post_verify_like_count
@@ -271,7 +303,9 @@ async function likeReview(pool, userId, reviewId) {
       credibility_weight: credibilityWeight,
       liker_plate: likerPlate,
       order_plate: orderPlate,
-      vehicle_match_by_plate: vehicleMatchByPlate,
+      liker_model_key: likerModelKey,
+      order_model_key: orderModelKey,
+      vehicle_match_by_plate: vehicleMatchByModel,
       weight_coefficient: weightCoefficient,
       is_valid_for_bonus: !!isValidForBonus,
       like_type: likeType,
@@ -315,37 +349,10 @@ async function getReviewLikeStats(pool, reviewIds) {
 }
 
 /**
- * 踩评价（负向反馈，影响内容质量与奖金）
- * 单用户单评价终身 1 次踩，与点赞互斥（踩后不可点赞，点赞后不可踩）
+ * 踩评价（已废止）：不再写入 review_dislikes，不参与质量/奖金/排序；接口保留并返回明确错误，兼容旧客户端。
  */
-async function dislikeReview(pool, userId, reviewId) {
-  const [reviews] = await pool.execute(
-    'SELECT review_id, user_id as author_id, status FROM reviews WHERE review_id = ?',
-    [reviewId]
-  );
-  if (!reviews.length) return { success: false, error: '评价不存在' };
-  const review = reviews[0];
-  if (review.status !== 1) return { success: false, error: '评价已隐藏' };
-  if (review.author_id === userId) return { success: false, error: '不能踩自己的评价' };
-
-  const [hasLike] = await pool.execute('SELECT 1 FROM review_likes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
-  if (hasLike.length) return { success: false, error: '已点赞过该评价，不可踩' };
-
-  const [hasDislike] = await pool.execute('SELECT 1 FROM review_dislikes WHERE review_id = ? AND user_id = ?', [reviewId, userId]);
-  if (hasDislike.length) return { success: false, error: '您已踩过该评价' };
-
-  const dislikeId = genId('rd_');
-  await pool.execute(
-    'INSERT INTO review_dislikes (dislike_id, review_id, user_id) VALUES (?, ?, ?)',
-    [dislikeId, reviewId, userId]
-  );
-
-  await pool.execute(
-    'UPDATE reviews SET dislike_count = COALESCE(dislike_count, 0) + 1 WHERE review_id = ?',
-    [reviewId]
-  );
-
-  return { success: true, dislike_id: dislikeId, dislike_count_delta: 1 };
+async function dislikeReview(_pool, _userId, _reviewId) {
+  return { success: false, error: '暂不支持踩评价' };
 }
 
 module.exports = {
@@ -356,6 +363,9 @@ module.exports = {
   getReviewLikeStats,
   getCredibilityWeight,
   calcWeightCoefficient,
+  buildModelMatchKey,
+  getVehicleMatchByModel,
   MAX_EFFECTIVE_READING_TOTAL,
   MAX_EFFECTIVE_READING_PER_SESSION,
+  MIN_EFFECTIVE_READING_SECONDS_FOR_BONUS,
 };

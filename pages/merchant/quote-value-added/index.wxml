@@ -1,0 +1,34 @@
+<view class="qva-page">
+  <scroll-view scroll-y class="qva-scroll">
+    <view class="mqf-section mqf-value-added">
+      <text class="mqf-section-title fs-body fw-bold">增值服务</text>
+      <text class="mqf-section-hint text-weak fs-sm">{{vaComplianceHintMerchant}}</text>
+      <view class="mqf-va-tpl-wrap">
+        <view class="mqf-va-tpl-group" wx:for="{{vaTemplateGroupsUI}}" wx:for-item="grp" wx:key="id">
+          <text class="mqf-va-tpl-group-title fs-body fw-medium">{{grp.merchantTitle}}</text>
+          <view class="mqf-va-chk-row" wx:for="{{grp.itemRows}}" wx:for-item="row" wx:key="label" data-name="{{row.label}}" bindtap="onVaTemplateTap">
+            <view class="mqf-va-chk-icon {{row.checked ? 'mqf-va-chk-icon--on' : ''}}"/>
+            <text class="mqf-va-chk-label fs-body">{{row.label}}</text>
+          </view>
+        </view>
+      </view>
+      <text class="mqf-va-custom-title fs-cap text-muted">其他补充（选填，每条一行）</text>
+      <view class="mqf-va-list">
+        <view class="mqf-va-row" wx:for="{{customVaRows}}" wx:key="id">
+          <input class="mqf-va-input" placeholder="如：指定品牌玻璃水等" value="{{item.name}}" data-id="{{item.id}}" bindinput="onCustomVaInput"/>
+          <view class="mqf-va-del" data-id="{{item.id}}" bindtap="onDelCustomVa">删除</view>
+        </view>
+        <view class="mqf-va-add" bindtap="onAddCustomVa">
+          <text class="text-primary fs-body">+ 补充一条</text>
+        </view>
+      </view>
+      <view class="mqf-va-compliance-block">
+        <text class="mqf-va-compliance-line text-weak fs-cap" wx:for="{{vaComplianceLines}}" wx:for-index="ci" wx:key="ci">{{item}}</text>
+      </view>
+    </view>
+  </scroll-view>
+  <view class="qva-footer">
+    <button class="qva-footer-btn qva-footer-btn--ghost" bindtap="onCancelTap">返回</button>
+    <button class="qva-footer-btn btn-primary" bindtap="onDoneTap">完成</button>
+  </view>
+</view>

@@ -62,10 +62,21 @@
 .user-wallet-content { display: flex; gap: var(--space-2xl); margin-bottom: var(--space-lg); }
 .user-wallet-item { display: flex; flex-direction: column; gap: var(--space-xs); }
 .user-wallet-actions .user-withdraw-btn { min-width: 160rpx; height: 64rpx; line-height: 64rpx; }
+
+.user-referral-hint {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+}
+
+.user-referral-hint-txt {
+  display: block;
+  line-height: 1.55;
+}
 /* 订单/竞价区域 */
 .user-section { margin-top: var(--space-lg); }
-.user-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md); }
-.user-order-header .user-order-header-left {
+.user-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm); }
+/* 标题行：整块可点进列表，右侧「查看列表 + ›」提示可点击 */
+.user-section-title-row {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -74,6 +85,20 @@
   gap: var(--space-md);
   text-decoration: none;
   color: inherit;
+  padding: var(--space-xs) 0;
+}
+.user-section-title-row-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+.user-section-title-cta { color: var(--primary); font-weight: 500; }
+.user-section-title-arrow { width: 24rpx; height: 24rpx; opacity: 0.55; flex-shrink: 0; }
+.user-section-subhint {
+  display: block;
+  margin-bottom: var(--space-md);
+  line-height: 1.45;
 }
 .user-order-book-btn {
   flex-shrink: 0;
@@ -81,9 +106,23 @@
   font-weight: 500;
 }
 .user-section-more { color: var(--primary); font-size: var(--fs-cap); }
-.user-section-tabs { display: flex; gap: var(--space-lg); }
-.user-tab { color: var(--text-secondary); font-size: var(--fs-body); padding: var(--space-sm) 0; }
-.user-tab:active { color: var(--primary); }
+.user-section-tabs { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; }
+.user-section-tabs--chips { gap: var(--space-sm); }
+.user-tab {
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  padding: var(--space-sm) var(--space-lg);
+  line-height: 1.35;
+}
+.user-tab-chip {
+  border-radius: var(--radius-full);
+  background: var(--primary-bg);
+  border: 1rpx solid var(--border);
+}
+.user-tab-chip:active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
 /* 菜单 */
 .user-menu { margin-top: var(--space-lg); }
 .user-menu-item { display: flex; align-items: center; justify-content: space-between; padding: var(--space-xl); border-bottom: 1rpx solid var(--border); }

@@ -131,7 +131,7 @@ export default function MaterialAuditTasks() {
     setSubmitting(true);
     try {
       await api.post(`/v1/admin/material-audit-tasks/${detailRecord.task_id}/resolve`, { approve: true });
-      message.success('已通过，订单已进入待车主确认');
+      message.success('已通过材料质检（订单若已在待验收则仅更新质检结论）');
       closeDetail();
       loadList();
     } catch (error: any) {
@@ -168,6 +168,37 @@ export default function MaterialAuditTasks() {
     { title: '任务ID', dataIndex: 'task_id', key: 'task_id', width: 200, ellipsis: true },
     { title: '店铺', dataIndex: 'shop_name', key: 'shop_name', width: 120, ellipsis: true },
     { title: '订单ID', dataIndex: 'order_id', key: 'order_id', width: 160, ellipsis: true },
+    {
+      title: '金额核验',
+      key: 'amount_check',
+      width: 220,
+      render: (_: unknown, record: any) => {
+        const expected = record?.expected_amount;
+        const extracted = record?.extracted_amount;
+        const diffRatio = record?.diff_ratio;
+        const ok =
+          expected != null &&
+          extracted != null &&
+          record?.diff_amount != null &&
+          diffRatio != null &&
+          !(Math.abs(Number(record.diff_amount)) > 1 && Number(diffRatio) > 1);
+        const color = expected == null || extracted == null ? 'default' : ok ? 'green' : 'red';
+        const expText = expected != null ? `¥${Number(expected).toFixed(2)}` : '—';
+        const extText = extracted != null ? `¥${Number(extracted).toFixed(2)}` : '—';
+        const ratioText = diffRatio != null ? `${Number(diffRatio).toFixed(2)}%` : '—';
+        return (
+          <div style={{ lineHeight: 1.4 }}>
+            <Tag color={color} style={{ marginBottom: 4 }}>
+              {expected == null || extracted == null ? '未提取' : ok ? '一致' : '不一致'}
+            </Tag>
+            <div style={{ fontSize: 12, color: '#666' }}>
+              系统 {expText} / 识别 {extText}
+            </div>
+            <div style={{ fontSize: 12, color: '#888' }}>偏差 {ratioText}</div>
+          </div>
+        );
+      },
+    },
     {
       title: '凭证张数',
       key: 'evidence_counts',
@@ -300,6 +331,28 @@ export default function MaterialAuditTasks() {
             >
               <Text>{r.reject_reason || '（无单独说明，请结合下方 AI 详情与图片判断）'}</Text>
             </div>
+
+            <Title level={5} style={{ marginTop: 0 }}>
+              金额核验（结算单识别 vs 系统）
+            </Title>
+            <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 12 }}>
+              <Text>
+                <strong>系统金额</strong>{' '}
+                {r.expected_amount != null ? `¥${Number(r.expected_amount).toFixed(2)}` : '—'}
+              </Text>
+              <Text>
+                <strong>AI 识别结算金额</strong>{' '}
+                {r.extracted_amount != null ? `¥${Number(r.extracted_amount).toFixed(2)}` : '—（未识别/未提取）'}
+              </Text>
+              <Text>
+                <strong>差额</strong>{' '}
+                {r.diff_amount != null ? `¥${Number(r.diff_amount).toFixed(2)}` : '—'}
+                {r.diff_ratio != null ? `（偏差 ${Number(r.diff_ratio).toFixed(2)}%）` : ''}
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                规则：差额 &gt; 1 元且偏差 &gt; 1% → 转人工核验
+              </Text>
+            </Space>
 
             {r.ai_details && Object.keys(r.ai_details).length > 0 && (
               <>

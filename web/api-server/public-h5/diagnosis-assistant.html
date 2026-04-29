@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>__PAGE_TITLE__</title>
+  <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+  <style>
+    body { margin: 0; background:#f6f7fb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#111; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .card { background:#fff; border-radius: 12px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.04); margin-bottom: 12px; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    h3 { margin: 10px 0 6px; font-size: 15px; }
+    label { display:block; font-size:13px; color:#444; margin:6px 0; }
+    input, textarea { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:8px; padding:10px; font-size:14px; }
+    .actions { display:flex; flex-wrap: wrap; gap:8px; margin-top:10px; }
+    .btn { border:0; border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; }
+    .btn-primary { background:#1677ff; color:#fff; }
+    .btn-ghost { background:#f2f4f8; color:#333; }
+    .muted { color:#888; font-size:12px; }
+    .hidden { display:none; }
+    ul { margin: 6px 0 0 0; padding-left:18px; }
+    .share-line { display:flex; gap:8px; margin-top:10px; }
+    .share-line input { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>__PAGE_H1__</h1>
+      <p class="muted" id="pageDesc">支持图片诊断、故障码诊断、症状诊断。无需填写技术参数，直接提交即可。</p>
+
+      <div id="sectionImage">
+      <h3>图片诊断</h3>
+      <label>图片链接（换行或英文逗号分隔）</label>
+      <textarea id="imageUrls" rows="3" placeholder="https://.../1.jpg, https://.../2.jpg"></textarea>
+      <label>补充描述（可选）</label>
+      <textarea id="imageDesc" rows="2" placeholder="例如：低速追尾，前杠凹陷"></textarea>
+      <div class="actions">
+        <button class="btn btn-primary" id="btnImageDiag">开始图片诊断</button>
+      </div>
+      </div>
+
+      <div id="sectionDtc">
+      <h3>故障码诊断</h3>
+      <label>DTC 故障码</label>
+      <input id="dtcCode" placeholder="例如：P0300" />
+      <div class="actions">
+        <button class="btn btn-ghost" id="btnDtcDiag">开始故障码诊断</button>
+      </div>
+      </div>
+
+      <div id="sectionSymptom">
+      <h3>症状文本诊断</h3>
+      <label>症状描述</label>
+      <textarea id="symptomText" rows="2" placeholder="例如：怠速抖动，发动机故障灯亮"></textarea>
+      <div class="actions">
+        <button class="btn btn-ghost" id="btnSymptomDiag">开始症状诊断</button>
+      </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="resultCard">
+      <div id="resultHead"></div>
+      <div id="resultBody"></div>
+      <div class="share-line">
+        <input id="shareLink" readonly placeholder="诊断结果分享链接会显示在这里" />
+        <button class="btn btn-ghost" id="btnCopyShare">复制链接</button>
+      </div>
+      <div id="wxLaunchWrap" class="hidden">
+        <wx-open-launch-weapp id="wxLaunch" username="__WEAPP_ORIGINAL_ID__" path="/pages/damage/upload/index">
+          <script type="text/wxtag-template">
+            <style>.wxbtn{display:flex;align-items:center;justify-content:center;height:44px;border-radius:10px;background:#1677ff;color:#fff;font-weight:700;margin-top:8px;}</style>
+            <div class="wxbtn">获取维修商报价（打开小程序）</div>
+          </script>
+        </wx-open-launch-weapp>
+      </div>
+      <button class="btn btn-primary" id="fallbackOpen" style="margin-top:8px;">获取维修商报价（打开小程序）</button>
+      <p class="muted" id="resultDisclaimer"></p>
+    </div>
+  </div>
+
+  <script>
+    const isWechat = /MicroMessenger/i.test(navigator.userAgent || '');
+    const searchParams = new URLSearchParams(location.search);
+    const sourceChannel = (searchParams.get('src') || 'direct').trim() || 'direct';
+    const cid = (searchParams.get('cid') || '').trim();
+    const kw = (searchParams.get('kw') || '').trim();
+    const weappPath = '/pages/damage/upload/index?from=h5_diagnosis&src=' + encodeURIComponent(sourceChannel);
+    const entry = (function inferEntry() {
+      const p = location.pathname || '';
+      if (/\/h5\/diagnosis\/dtc\/?$/.test(p)) return 'dtc';
+      if (/\/h5\/diagnosis\/symptom\/?$/.test(p)) return 'symptom';
+      return (searchParams.get('entry') || '').trim() || 'all';
+    })();
+
+    (function applyEntryMode() {
+      const secImage = document.getElementById('sectionImage');
+      const secDtc = document.getElementById('sectionDtc');
+      const secSymptom = document.getElementById('sectionSymptom');
+      const desc = document.getElementById('pageDesc');
+      function show(el, ok) { if (el) el.style.display = ok ? '' : 'none'; }
+      if (entry === 'dtc') {
+        show(secImage, false); show(secDtc, true); show(secSymptom, false);
+        if (desc) desc.textContent = '输入故障码（如 P0300），快速了解含义、风险提示与下一步建议。';
+      } else if (entry === 'symptom') {
+        show(secImage, false); show(secDtc, false); show(secSymptom, true);
+        if (desc) desc.textContent = '用一句话描述故障现象，获取风险提示与下一步检查建议。';
+      } else {
+        show(secImage, true); show(secDtc, true); show(secSymptom, true);
+      }
+    })();
+
+    (function setupLaunchPath() {
+      const launch = document.getElementById('wxLaunch');
+      if (launch) launch.setAttribute('path', weappPath);
+    })();
+
+    async function track(action, extra) {
+      try {
+        await fetch('/api/v1/public/h5/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'diagnosis-assistant',
+            source: sourceChannel,
+            action: String(action || ''),
+            extra: {
+              ...(extra && typeof extra === 'object' ? extra : {}),
+              cid: cid || undefined,
+              kw: kw || undefined,
+              entry,
+            },
+          }),
+        });
+      } catch (_) {}
+    }
+
+    async function callPublic(path, body) {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok || (json && json.code && json.code !== 200)) {
+        throw new Error((json && json.message) || '请求失败');
+      }
+      return json.data || {};
+    }
+
+    function splitUrls(raw) {
+      return String(raw || '').split(/[\n,]/g).map((x) => x.trim()).filter(Boolean);
+    }
+
+    function renderDiagResult(data) {
+      const card = document.getElementById('resultCard');
+      card.classList.remove('hidden');
+      const title = data.report_title || '损失报告（AI）';
+      document.getElementById('resultHead').innerHTML =
+        '<h3>' + title + '</h3>' +
+        '<p>' + (data.problem_summary || '诊断完成') + '</p>' +
+        '<p>风险等级：' + (data.severity || '-') + '，置信度：' + Math.round((data.confidence || 0) * 100) + '%</p>';
+      const sections = Array.isArray(data.report_sections) ? data.report_sections : [];
+      const obvious = sections.find((x) => x && x.key === 'obvious_damage');
+      const possible = sections.find((x) => x && x.key === 'possible_damage');
+      const repair = sections.find((x) => x && x.key === 'repair_advice');
+      const obviousList = (obvious && Array.isArray(obvious.items) ? obvious.items : []).map((x) => '<li>' + x + '</li>').join('');
+      const possibleList = (possible && Array.isArray(possible.items) ? possible.items : []).map((x) => '<li>' + x + '</li>').join('');
+      const repairList = (repair && Array.isArray(repair.items) ? repair.items : []).map((x) => '<li>' + x + '</li>').join('');
+      const notes = (data.safety_notes || []).map((x) => '<li>' + x + '</li>').join('');
+      const range = Array.isArray(data.price_range) ? data.price_range.join(' - ') : '-';
+      document.getElementById('resultBody').innerHTML =
+        '<p>费用区间参考：' + range + '</p>' +
+        '<p>明显损伤：</p><ul>' + (obviousList || '<li>暂无明显可见损伤</li>') + '</ul>' +
+        '<p>可能损伤：</p><ul>' + (possibleList || '<li>暂无待进一步确认项</li>') + '</ul>' +
+        '<p>维修建议：</p><ul>' + (repairList || '<li>暂无专项建议</li>') + '</ul>' +
+        '<p>安全提示：</p><ul>' + (notes || '<li>暂无</li>') + '</ul>';
+      document.getElementById('resultDisclaimer').textContent = data.disclaimer || '';
+      const shareUrl = new URL(location.href);
+      shareUrl.searchParams.set('src', sourceChannel);
+      document.getElementById('shareLink').value = shareUrl.toString();
+      track('result_rendered', {
+        severity: data.severity || '',
+        confidence: Number(data.confidence || 0),
+      });
+    }
+
+    async function setupWxOpenTag() {
+      if (!isWechat || !window.wx) return false;
+      try {
+        const curUrl = location.href.split('#')[0];
+        const r = await fetch('/api/v1/public/wechat/jssdk-config?url=' + encodeURIComponent(curUrl));
+        const body = await r.json();
+        if (!body || body.code !== 200 || !body.data) return false;
+        const cfg = body.data;
+        return await new Promise((resolve) => {
+          window.wx.config({
+            debug: false,
+            appId: cfg.appId,
+            timestamp: cfg.timestamp,
+            nonceStr: cfg.nonceStr,
+            signature: cfg.signature,
+            jsApiList: [],
+            openTagList: ['wx-open-launch-weapp']
+          });
+          window.wx.ready(() => resolve(true));
+          window.wx.error(() => resolve(false));
+        });
+      } catch (_) {
+        return false;
+      }
+    }
+
+    document.getElementById('btnImageDiag').addEventListener('click', async () => {
+      try {
+        const urls = splitUrls(document.getElementById('imageUrls').value);
+        const userDesc = (document.getElementById('imageDesc').value || '').trim();
+        if (!urls.length) throw new Error('请先输入图片链接');
+        const data = await callPublic('/api/v1/public/diagnosis/image-analyze', { images: urls, user_description: userDesc, source_channel: sourceChannel });
+        renderDiagResult(data);
+        track('submit_image_diagnosis', { image_count: urls.length });
+      } catch (e) {
+        alert(e.message || '图片诊断失败');
+      }
+    });
+
+    document.getElementById('btnDtcDiag').addEventListener('click', async () => {
+      try {
+        const code = (document.getElementById('dtcCode').value || '').trim();
+        if (!code) throw new Error('请先输入故障码');
+        const data = await callPublic('/api/v1/public/diagnosis/dtc-interpret', { dtc_code: code, source_channel: sourceChannel });
+        renderDiagResult(data);
+        track('submit_dtc_diagnosis', { dtc_code: code });
+      } catch (e) {
+        alert(e.message || '故障码诊断失败');
+      }
+    });
+
+    document.getElementById('btnSymptomDiag').addEventListener('click', async () => {
+      try {
+        const text = (document.getElementById('symptomText').value || '').trim();
+        if (!text) throw new Error('请先输入症状描述');
+        const data = await callPublic('/api/v1/public/diagnosis/symptom-analyze', { symptom_text: text, source_channel: sourceChannel });
+        renderDiagResult(data);
+        track('submit_symptom_diagnosis', { text_length: text.length });
+      } catch (e) {
+        alert(e.message || '症状诊断失败');
+      }
+    });
+
+    document.getElementById('fallbackOpen').addEventListener('click', () => {
+      const appId = '__WEAPP_APPID__';
+      const path = weappPath;
+      track('cta_open_miniapp_click', { is_wechat: isWechat });
+      if (isWechat) {
+        alert('若未自动拉起，请使用微信按钮打开小程序。');
+      } else {
+        alert('请在微信内打开此页后再拉起小程序。\nAppID=' + appId + '\npath=' + path);
+      }
+    });
+
+    document.getElementById('btnCopyShare').addEventListener('click', async () => {
+      const input = document.getElementById('shareLink');
+      const value = (input.value || '').trim();
+      if (!value) {
+        alert('请先完成一次诊断，再复制分享链接');
+        return;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          input.focus();
+          input.select();
+          document.execCommand('copy');
+        }
+        alert('分享链接已复制');
+        track('copy_share_link', { link_length: value.length });
+      } catch (_) {
+        alert('复制失败，请手动长按复制');
+      }
+    });
+
+    setupWxOpenTag().then((ok) => {
+      if (ok) {
+        const wrap = document.getElementById('wxLaunchWrap');
+        if (wrap) wrap.classList.remove('hidden');
+        document.getElementById('fallbackOpen').style.display = 'none';
+      }
+    });
+
+    track('page_view', { is_wechat: isWechat, path: location.pathname });
+  </script>
+</body>
+</html>
+

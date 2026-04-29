@@ -1,7 +1,7 @@
 /**
  * 材料 AI 审核服务
- * 1→2：服务商提交维修完成凭证后创建审核任务；AI 通过则 status=2；
- * AI 未通过 / 异常 / 未配置 Key → manual_review，由后台人工处理（不直接驳回给商户重提）
+ * 完工不卡审：订单 1→2 已由 order-service 直接落库；本服务仅异步质检材料并更新任务/可选回写 completion_evidence。
+ * AI 通过则任务 passed；AI 未通过 / 异常 / 未配置 Key → manual_review，由后台人工处理。
  */
 
 const crypto = require('crypto');
@@ -95,37 +95,62 @@ async function finalizeMaterialAuditPass(pool, task, evidence, aiDetailsObj) {
     updateSql = 'UPDATE orders SET status = 2, updated_at = NOW() WHERE order_id = ?';
     updateParams = [task.order_id];
   }
+  let orderWasAlreadyTwo = false;
+  try {
+    const [stRows] = await pool.execute('SELECT status FROM orders WHERE order_id = ?', [task.order_id]);
+    if (stRows.length > 0) orderWasAlreadyTwo = parseInt(stRows[0].status, 10) === 2;
+  } catch (_) {}
   await pool.execute(updateSql, updateParams);
   await pool.execute(
     `UPDATE material_audit_tasks SET status = 'passed', ai_details = ?, completed_at = NOW() WHERE task_id = ?`,
     [detailsJson, taskId]
   );
-  await sendMerchantMessage(
-    pool,
-    task.shop_id,
-    'material_audit',
-    '审核通过',
-    '订单已进入待确认，请通知车主验收。',
-    task.order_id,
-    '请通知车主验收'
-  );
-  try {
-    const [orderRows] = await pool.execute('SELECT user_id FROM orders WHERE order_id = ?', [task.order_id]);
-    if (orderRows.length > 0) {
-      const subMsg = require('./subscribe-message-service');
-      subMsg
-        .sendToUser(
-          pool,
-          orderRows[0].user_id,
-          'user_order_update',
-          { title: '待验收', content: '维修完成，请验收', relatedId: task.order_id },
-          process.env.WX_APPID,
-          process.env.WX_SECRET
-        )
-        .catch((e) => console.warn(`${LOG_PREFIX} 车主订阅消息发送异常:`, e && e.message));
+  if (!orderWasAlreadyTwo) {
+    await sendMerchantMessage(
+      pool,
+      task.shop_id,
+      'material_audit',
+      '审核通过',
+      '订单已进入待确认，请通知车主验收。',
+      task.order_id,
+      '请通知车主验收'
+    );
+    try {
+      const [orderRows] = await pool.execute('SELECT user_id FROM orders WHERE order_id = ?', [task.order_id]);
+      if (orderRows.length > 0) {
+        const subMsg = require('./subscribe-message-service');
+        subMsg
+          .sendToUser(
+            pool,
+            orderRows[0].user_id,
+            'user_order_update',
+            { title: '待验收', content: '维修完成，请验收', relatedId: task.order_id },
+            process.env.WX_APPID,
+            process.env.WX_SECRET
+          )
+          .catch((e) => console.warn(`${LOG_PREFIX} 车主订阅消息发送异常:`, e && e.message));
+      }
+    } catch (userMsgErr) {
+      console.warn(`${LOG_PREFIX} 车主订阅消息失败:`, userMsgErr && userMsgErr.message);
     }
-  } catch (userMsgErr) {
-    console.warn(`${LOG_PREFIX} 车主订阅消息失败:`, userMsgErr && userMsgErr.message);
+  } else {
+    await sendMerchantMessage(
+      pool,
+      task.shop_id,
+      'material_audit',
+      '材料质检已通过',
+      '后台材料质检已完成，凭证已同步至订单。',
+      task.order_id,
+      '材料质检已完成'
+    );
+  }
+  try {
+    const rpa = require('./repair-process-ai-service');
+    if (typeof rpa.scheduleRepairProcessAiForOrder === 'function') {
+      rpa.scheduleRepairProcessAiForOrder(pool, task.order_id);
+    }
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} scheduleRepairProcessAiForOrder:`, e && e.message);
   }
 }
 
@@ -165,8 +190,37 @@ async function approveMaterialAuditManual(pool, taskId) {
   if (orders.length === 0) {
     return { ok: false, error: '订单不存在' };
   }
-  if (parseInt(orders[0].status, 10) !== 1) {
-    return { ok: false, error: '订单状态已不是维修中，无法完成审核' };
+  const ost = parseInt(orders[0].status, 10);
+  if (ost === 2) {
+    let evidence = {};
+    try {
+      evidence =
+        typeof task.completion_evidence === 'string'
+          ? JSON.parse(task.completion_evidence || '{}')
+          : task.completion_evidence || {};
+    } catch (_) {}
+    let prevDetails = {};
+    try {
+      prevDetails =
+        typeof task.ai_details === 'string' ? JSON.parse(task.ai_details || '{}') : task.ai_details || {};
+    } catch (_) {}
+    let evidenceOut = evidence;
+    try {
+      const bu = process.env.BASE_URL || 'http://localhost:3000';
+      evidenceOut = await enrichCompletionEvidenceWithExteriorRepairAnalysis(pool, task.order_id, evidence, bu);
+      evidenceOut = await enrichCompletionEvidenceWithPartsTraceability(pool, task.order_id, evidenceOut, bu);
+    } catch (exErr) {
+      console.warn(`${LOG_PREFIX} 人工通过-完工 AI 增强写入失败:`, exErr.message);
+    }
+    await finalizeMaterialAuditPass(pool, task, evidenceOut, {
+      ...prevDetails,
+      manual_approved: true,
+      manual_approved_at: new Date().toISOString(),
+    });
+    return { ok: true };
+  }
+  if (ost !== 1) {
+    return { ok: false, error: '订单状态不可完成材料审核' };
   }
   let evidence = {};
   try {
@@ -249,6 +303,17 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
         : task.completion_evidence || {};
   } catch (_) {}
 
+  // 缺失结算单/定损单：不跑 AI，直接转人工审核（订单保持维修中）
+  try {
+    const s = evidence && typeof evidence === 'object' && !Array.isArray(evidence) ? evidence : {};
+    const settle = Array.isArray(s.settlement_photos) ? s.settlement_photos : [];
+    if (settle.length === 0) {
+      await setTaskManualReview(pool, taskId, { reason: 'missing_settlement_docs' }, '缺失定损单/结算单，请补充后重新提交');
+      await notifyMerchantManualReview(pool, task);
+      return;
+    }
+  } catch (_) {}
+
   const apiKey = process.env.ALIYUN_AI_KEY || process.env.DASHSCOPE_API_KEY || '';
   if (!apiKey) {
     console.warn(`${LOG_PREFIX} 未配置千问 API Key，任务 ${taskId} 转人工审核`);
@@ -258,7 +323,7 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
   }
 
   const [orders] = await pool.execute(
-    `SELECT o.order_id, o.repair_plan, o.quoted_amount, o.bidding_id, b.vehicle_info
+    `SELECT o.order_id, o.repair_plan, o.quoted_amount, o.actual_amount, o.bidding_id, b.vehicle_info
      FROM orders o
      LEFT JOIN biddings b ON o.bidding_id = b.bidding_id
      WHERE o.order_id = ?`,
@@ -286,6 +351,7 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
   const orderForAi = {
     repair_plan: repairPlan,
     quoted_amount: order.quoted_amount,
+    expected_amount: order.actual_amount != null ? order.actual_amount : order.quoted_amount,
     vehicle_info: vehicleInfo,
   };
 
@@ -310,6 +376,37 @@ async function processMaterialAuditTask(pool, taskId, baseUrl) {
   }
 
   const detailsJson = result.details || {};
+
+  // 结算金额一致性校验：若 AI 识别出结算金额且与系统金额不一致 → 转人工审核
+  try {
+    const expected = orderForAi.expected_amount != null ? Number(orderForAi.expected_amount) : null;
+    const extracted = detailsJson?.settlementCheck?.extracted_amount;
+    const extNum = extracted != null ? Number(extracted) : null;
+    if (expected != null && Number.isFinite(expected) && expected > 0) {
+      if (extNum == null || !Number.isFinite(extNum) || extNum <= 0) {
+        await setTaskManualReview(
+          pool,
+          taskId,
+          { ...detailsJson, extracted_amount: null, expected_amount: expected, stage: 'settlement_amount_extract_failed' },
+          '结算单已上传但未识别到最终金额，待人工核验'
+        );
+        await notifyMerchantManualReview(pool, task);
+        return;
+      }
+      const absDiff = Math.abs(extNum - expected);
+      const relDiff = absDiff / expected;
+      if (absDiff > 1 && relDiff > 0.01) {
+        await setTaskManualReview(
+          pool,
+          taskId,
+          { ...detailsJson, extracted_amount: extNum, expected_amount: expected, stage: 'settlement_amount_mismatch' },
+          `结算单金额与系统金额不一致（识别¥${extNum} vs 系统¥${expected}），待人工核验`
+        );
+        await notifyMerchantManualReview(pool, task);
+        return;
+      }
+    }
+  } catch (_) {}
 
   if (result.pass) {
     let evidenceOut = evidence;

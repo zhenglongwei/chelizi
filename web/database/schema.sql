@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
   user_id VARCHAR(32) NOT NULL UNIQUE COMMENT '用户唯一ID',
   openid VARCHAR(64) NOT NULL UNIQUE COMMENT '微信openid',
   unionid VARCHAR(64) DEFAULT NULL COMMENT '微信unionid',
+  referrer_user_id VARCHAR(32) DEFAULT NULL COMMENT '一级推荐人 user_id',
+  referral_bound_at DATETIME DEFAULT NULL COMMENT '绑定推荐人时间',
+  is_distribution_buyer TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '经分销引入的买家，转化/post_verify作者侧减半',
   nickname VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
   avatar_url VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
   phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
@@ -41,7 +44,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   
   INDEX idx_openid (openid),
-  INDEX idx_user_id (user_id)
+  INDEX idx_user_id (user_id),
+  INDEX idx_users_referrer_user_id (referrer_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
 -- ========================================================
@@ -123,7 +127,10 @@ CREATE TABLE IF NOT EXISTS damage_reports (
   images JSON NOT NULL COMMENT '事故照片URL数组',
   user_description TEXT DEFAULT NULL COMMENT '用户文字描述（泡水、异响等无法通过照片体现的问题）',
   analysis_result JSON DEFAULT NULL COMMENT 'AI分析结果',
-  status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态 0-分析中 1-已完成',
+  analysis_relevance VARCHAR(20) DEFAULT NULL COMMENT 'relevant/irrelevant/unknown',
+  analysis_attempts TINYINT UNSIGNED DEFAULT 0 COMMENT 'AI分析尝试次数',
+  analysis_error VARCHAR(255) DEFAULT NULL COMMENT '最近一次失败原因（截断）',
+  status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态 0-分析中 1-已完成(可分发) 3-与修车无关(拒绝) 4-人工审核',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   
@@ -147,6 +154,7 @@ CREATE TABLE IF NOT EXISTS biddings (
   expire_at DATETIME NOT NULL COMMENT '过期时间',
   tier1_window_ends_at DATETIME DEFAULT NULL COMMENT '第一梯队独家窗口结束时间',
   selected_shop_id VARCHAR(32) DEFAULT NULL COMMENT '选中的维修厂ID',
+  distribution_status VARCHAR(20) DEFAULT NULL COMMENT 'pending/done/rejected/manual_review',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   
@@ -169,7 +177,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   items JSON DEFAULT NULL COMMENT '维修项目 [{damage_part, repair_type, parts_type?}]',
   value_added_services JSON DEFAULT NULL COMMENT '增值服务 [{name}] 如代步车、上门接送',
   quote_status TINYINT UNSIGNED DEFAULT 0 COMMENT '0-有效 1-成交 2-已失效',
-  quote_valid_until DATETIME DEFAULT NULL COMMENT '报价有效期截止时间，默认 created_at+3天',
+  quote_valid_until DATETIME DEFAULT NULL COMMENT '报价有效期截止时间（产品侧：预报价固定 24 小时；写入时由服务端 DATE_ADD(NOW(), INTERVAL 24 HOUR) 生成）',
   duration INT UNSIGNED DEFAULT 3 COMMENT '预计工期（天）',
   warranty INT UNSIGNED DEFAULT 12 COMMENT '兼容列：按分项 max(warranty_months) 写入，接口与前端不展示整单质保',
   remark TEXT DEFAULT NULL COMMENT '备注',
@@ -184,6 +192,29 @@ CREATE TABLE IF NOT EXISTS quotes (
   FOREIGN KEY (bidding_id) REFERENCES biddings(bidding_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='报价表（产品侧：预报价=据照片与描述、无实物检测的报价行）';
+
+-- 车主选定维修商“三重确认”留痕（与 migration-20260425-order-intent-confirmations.sql 一致）
+CREATE TABLE IF NOT EXISTS order_intent_confirmations (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  confirmation_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  bidding_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  shop_id VARCHAR(32) NOT NULL,
+  quote_id VARCHAR(32) NOT NULL,
+  quoted_amount DECIMAL(10, 2) NOT NULL,
+  dwell_seconds INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '强制停留秒数（客户端上报）',
+  clauses JSON NOT NULL COMMENT '勾选条款快照 {required_clause_ids,checked_clause_ids,clauses_text_map}',
+  client_confirmed_at DATETIME DEFAULT NULL COMMENT '客户端点击确认时间（可空，服务端以 created_at 为准）',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_oic_bidding (bidding_id),
+  INDEX idx_oic_user (user_id),
+  INDEX idx_oic_shop (shop_id),
+  INDEX idx_oic_created (created_at),
+  CONSTRAINT fk_oic_bidding FOREIGN KEY (bidding_id) REFERENCES biddings(bidding_id),
+  CONSTRAINT fk_oic_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+  CONSTRAINT fk_oic_shop FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
+  CONSTRAINT fk_oic_quote FOREIGN KEY (quote_id) REFERENCES quotes(quote_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='车主选定维修商意向确认书（选厂三重确认留痕）';
 
 -- ========================================================
 -- 6. 订单表 (orders)
@@ -219,8 +250,22 @@ CREATE TABLE IF NOT EXISTS orders (
   reward_preview DECIMAL(10, 2) DEFAULT NULL COMMENT '奖励金预估',
   review_stage_status VARCHAR(50) DEFAULT NULL COMMENT '评价阶段完成状态（主评价/1个月追评/3个月追评）',
   status TINYINT UNSIGNED DEFAULT 0 COMMENT '状态: 0-待维修 1-维修中 2-待验收 3-已完成 4-已取消',
+  lifecycle_main VARCHAR(32) DEFAULT NULL COMMENT '生命周期主状态 pending_confirm/pending_arrival/pending_disassembly/pending_decision/repairing/pending_delivery/pending_review/completed/cancelled',
+  lifecycle_sub VARCHAR(32) DEFAULT NULL COMMENT '生命周期子状态（细分阶段）',
+  lifecycle_started_at DATETIME DEFAULT NULL COMMENT '本阶段倒计时起算点',
+  lifecycle_deadline_at DATETIME DEFAULT NULL COMMENT '本阶段硬截止时间',
+  owner_arrived_at DATETIME DEFAULT NULL COMMENT '车主标记到店时间',
+  shop_arrival_confirmed_at DATETIME DEFAULT NULL COMMENT '服务商确认到店时间',
+  disassembly_started_at DATETIME DEFAULT NULL COMMENT '拆解开始时间',
+  disassembly_completed_at DATETIME DEFAULT NULL COMMENT '拆解完成时间',
+  owner_decision_at DATETIME DEFAULT NULL COMMENT '车主决策时间（同意/拒修）',
+  promised_delivery_at DATETIME DEFAULT NULL COMMENT '承诺交车时间（硬deadline）',
+  delivery_confirmed_at DATETIME DEFAULT NULL COMMENT '车主确认交车时间',
+  review_due_at DATETIME DEFAULT NULL COMMENT '待评价截止时间（默认交车后+7天）',
+  appeal_until DATETIME DEFAULT NULL COMMENT '质量申诉期截止（默认完结后+15天）',
   accepted_at DATETIME DEFAULT NULL COMMENT '服务商接单时间（接单时写入，用于撤单30分钟判断）',
   completion_evidence JSON DEFAULT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
+  repair_process_ai JSON DEFAULT NULL COMMENT '全流程过程 AI 结构化结果',
   warranty_card_template_id TINYINT UNSIGNED DEFAULT NULL COMMENT '本单电子质保凭证卡面样式 1-6（完工提交时写入，空则取店铺默认）',
   platform_warranty_card JSON DEFAULT NULL COMMENT '电子质保凭证存证快照（车主确认完成后固化）',
   repair_plan JSON DEFAULT NULL COMMENT '当前维修方案 {items,value_added_services?,amount?,duration?}（质保仅 items[].warranty_months），锁价后与final_quote_snapshot一致',
@@ -246,6 +291,81 @@ CREATE TABLE IF NOT EXISTS orders (
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id),
   FOREIGN KEY (quote_id) REFERENCES quotes(quote_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
+
+-- 订单生命周期事件留痕（与 migration-20260425-order-lifecycle-v1.sql 一致）
+CREATE TABLE IF NOT EXISTS order_lifecycle_events (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  event_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  actor_type VARCHAR(16) NOT NULL COMMENT 'system/user/merchant/admin',
+  actor_id VARCHAR(32) DEFAULT NULL,
+  event_type VARCHAR(40) NOT NULL COMMENT 'init/arrived/arrival_confirmed/timeout_cancel/timeout_push/... ',
+  payload JSON DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_ole_order (order_id),
+  INDEX idx_ole_type_time (event_type, created_at),
+  CONSTRAINT fk_ole_order FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单生命周期事件日志';
+
+-- 拆检费线下支付留痕（与 migration-20260425-offline-fee-proofs.sql 一致）
+CREATE TABLE IF NOT EXISTS order_offline_fee_proofs (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  proof_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  uploader_type VARCHAR(16) NOT NULL COMMENT 'user/merchant/admin',
+  uploader_id VARCHAR(32) DEFAULT NULL,
+  proof_kind VARCHAR(32) NOT NULL COMMENT 'diagnostic_fee_payment|diagnostic_fee_receipt',
+  amount DECIMAL(10, 2) DEFAULT NULL COMMENT '线下支付金额（可选）',
+  note VARCHAR(500) DEFAULT NULL COMMENT '备注（可选）',
+  image_urls JSON NOT NULL COMMENT '凭证图片 URL 数组',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_oofp_order (order_id),
+  INDEX idx_oofp_kind_time (proof_kind, created_at),
+  CONSTRAINT fk_oofp_order FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单拆检费线下支付留痕凭证';
+
+-- 订单自救请求（与 migration-20260425-order-self-help-v1.sql 一致）
+CREATE TABLE IF NOT EXISTS order_self_help_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  request_type VARCHAR(32) NOT NULL COMMENT 'merchant_not_handled|force_close',
+  note VARCHAR(500) DEFAULT NULL,
+  image_urls JSON DEFAULT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'submitted' COMMENT 'submitted|approved|rejected|cancelled|processed',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_oshr_order (order_id),
+  INDEX idx_oshr_type_status (request_type, status),
+  CONSTRAINT fk_oshr_order FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单自救请求（车主侧）';
+
+-- 等待配件延期申请（与 migration-20260425-order-self-help-v1.sql 一致）
+CREATE TABLE IF NOT EXISTS order_waiting_parts_extensions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  extension_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  shop_id VARCHAR(32) NOT NULL,
+  note VARCHAR(500) DEFAULT NULL,
+  proof_urls JSON NOT NULL COMMENT '采购/到货等凭证',
+  extend_days INT UNSIGNED NOT NULL DEFAULT 15,
+  status VARCHAR(20) NOT NULL DEFAULT 'submitted' COMMENT 'submitted|approved|rejected',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_owpe_order (order_id),
+  INDEX idx_owpe_status (status),
+  CONSTRAINT fk_owpe_order FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='等待配件延期申请（服务商侧）';
+
+-- 推荐佣金已结算（与 migration-20260415-referral-agent.sql 一致）
+CREATE TABLE IF NOT EXISTS referral_commission_settled_orders (
+  order_id VARCHAR(32) NOT NULL COMMENT '已结算推荐佣金的订单',
+  settlement_month VARCHAR(7) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (order_id),
+  INDEX idx_referral_settled_month (settlement_month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单推荐佣金已结算防重';
 
 -- 订单到店报价多轮（每轮证明材料 + 车主确认；与 migration-20260328-order-quote-proposals.sql 一致）
 CREATE TABLE IF NOT EXISTS order_quote_proposals (
@@ -298,7 +418,7 @@ CREATE TABLE IF NOT EXISTS material_audit_tasks (
   order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
   shop_id VARCHAR(32) NOT NULL COMMENT '店铺ID',
   completion_evidence JSON NOT NULL COMMENT '维修完成凭证 {repair_photos,settlement_photos,material_photos}',
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending=AI待跑/排队 manual_review=待人工 passed=通过 rejected=不通过',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending=AI待跑/排队 manual_review=待人工 passed=通过 rejected=不通过（不阻塞订单进入待验收）',
   reject_reason VARCHAR(500) DEFAULT NULL COMMENT '不通过原因',
   ai_details JSON DEFAULT NULL COMMENT 'AI 审核详情',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -309,6 +429,49 @@ CREATE TABLE IF NOT EXISTS material_audit_tasks (
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
   FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='材料AI审核任务';
+
+-- ========================================================
+-- 6c. 维修过程关键节点 (order_repair_milestones)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS order_repair_milestones (
+  milestone_id VARCHAR(32) NOT NULL PRIMARY KEY COMMENT '进展记录ID',
+  order_id VARCHAR(32) NOT NULL COMMENT '订单ID',
+  shop_id VARCHAR(32) NOT NULL COMMENT '门店ID',
+  milestone_code VARCHAR(64) NOT NULL COMMENT '节点枚举 code',
+  photo_urls JSON NOT NULL COMMENT '过程照片 URL 数组',
+  parts_photo_urls JSON DEFAULT NULL COMMENT '修中：零配件等补充照片 URL',
+  note VARCHAR(500) DEFAULT NULL COMMENT '可选说明',
+  parts_verify_note VARCHAR(500) DEFAULT NULL COMMENT '修中：零配件验真方式（选填）',
+  created_by_merchant_id VARCHAR(64) DEFAULT NULL COMMENT '上传操作商户账号',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_order_created (order_id, created_at),
+  KEY idx_shop (shop_id),
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (shop_id) REFERENCES shops(shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='维修中过程节点留痕';
+
+-- ========================================================
+-- 6d. 评价—过程证据极端冲突人工队列（与 migration-20260329 一致）
+-- ========================================================
+CREATE TABLE IF NOT EXISTS review_evidence_anomaly_tasks (
+  task_id VARCHAR(40) NOT NULL PRIMARY KEY COMMENT '异常单业务主键',
+  order_id VARCHAR(32) NOT NULL,
+  review_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  shop_id VARCHAR(32) NOT NULL,
+  trigger_reason VARCHAR(64) NOT NULL,
+  ai_snapshot JSON DEFAULT NULL,
+  review_snapshot JSON DEFAULT NULL,
+  alignment_coeff DECIMAL(5,4) DEFAULT 1.0000,
+  status VARCHAR(24) NOT NULL DEFAULT 'pending',
+  resolution VARCHAR(64) DEFAULT NULL,
+  resolved_by VARCHAR(64) DEFAULT NULL,
+  resolved_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_anomaly_status_created (status, created_at),
+  KEY idx_anomaly_review (review_id),
+  KEY idx_anomaly_order (order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评价-过程证据极端冲突人工复核';
 
 -- ========================================================
 -- 7. 评价表 (reviews)
@@ -346,6 +509,9 @@ CREATE TABLE IF NOT EXISTS reviews (
   content_quality VARCHAR(20) DEFAULT NULL COMMENT '内容质量 invalid/valid/premium/标杆/维权参考/爆款（与 migration-20260219 一致）',
   content_quality_level TINYINT UNSIGNED DEFAULT 1 COMMENT '内容质量等级 1-4',
   q3_weight_excluded TINYINT UNSIGNED DEFAULT 0 COMMENT '商户申诉有效时剔除q3权重 0-否 1-是',
+  evidence_alignment_coeff DECIMAL(5,4) NOT NULL DEFAULT 1.0000 COMMENT '过程-评价吻合系数 0~1',
+  anomaly_status VARCHAR(24) DEFAULT NULL COMMENT '证据异常单 pending/resolved/dismissed',
+  review_discovery_boost DECIMAL(6,4) NOT NULL DEFAULT 1.0000 COMMENT '评价流排序轻量乘子',
   vehicle_model_key VARCHAR(100) DEFAULT NULL COMMENT '车型键 brand|model 用于同车型统计',
   repair_project_key VARCHAR(255) DEFAULT NULL COMMENT '维修项目键 用于同项目统计',
   post_verify_like_count INT UNSIGNED DEFAULT 0 COMMENT '事后验证点赞数',
@@ -395,7 +561,7 @@ CREATE TABLE IF NOT EXISTS review_likes (
   like_type VARCHAR(20) DEFAULT 'normal' COMMENT 'normal/post_verify',
   is_valid_for_bonus TINYINT UNSIGNED DEFAULT 0 COMMENT '是否纳入奖金核算',
   weight_coefficient DECIMAL(6,4) DEFAULT 0 COMMENT '账号综合权重系数',
-  vehicle_match_by_plate TINYINT UNSIGNED DEFAULT 0 COMMENT '车型匹配 1=车牌一致',
+  vehicle_match_by_plate TINYINT UNSIGNED DEFAULT 0 COMMENT '高权车型匹配 1=同品牌同车型(规范化)与评价订单一致 0=否',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_user_review (user_id, review_id),
   INDEX idx_review_id (review_id),
@@ -452,6 +618,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   description VARCHAR(500) DEFAULT NULL COMMENT '描述（含计算依据供清单展示）',
   settlement_month VARCHAR(7) DEFAULT NULL COMMENT '结算月份 YYYY-MM（定期结算类）',
   related_id VARCHAR(32) DEFAULT NULL COMMENT '关联ID（如评价ID、提现ID）',
+  reward_source_order_id VARCHAR(32) DEFAULT NULL COMMENT '奖励锚定的订单实收佣金来源 order_id（硬帽汇总）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   
   INDEX idx_transaction_id (transaction_id),
@@ -846,6 +1013,81 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
+-- ========================================================
+-- 15a. OpenAPI Key 表 (api_keys)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS api_keys (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  api_key_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键',
+  api_key_hash CHAR(64) NOT NULL UNIQUE COMMENT 'SHA256(api_key)',
+  owner_type VARCHAR(20) NOT NULL DEFAULT 'tenant' COMMENT 'tenant|shop|system',
+  owner_id VARCHAR(64) NOT NULL COMMENT '租户/主体ID（自定义）',
+  name VARCHAR(100) DEFAULT NULL COMMENT '用途名称',
+  status TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '0-禁用 1-启用',
+  daily_limit INT UNSIGNED DEFAULT 0 COMMENT '0=不限',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_owner (owner_type, owner_id),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='第三方OpenAPI Key';
+
+-- ========================================================
+-- 15b. OpenAPI 调用审计表 (api_call_audit)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS api_call_audit (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  audit_id VARCHAR(50) NOT NULL UNIQUE COMMENT '业务主键',
+  req_id VARCHAR(50) DEFAULT NULL,
+  api_key_id VARCHAR(40) DEFAULT NULL,
+  user_id VARCHAR(32) DEFAULT NULL,
+  merchant_id VARCHAR(32) DEFAULT NULL,
+  path VARCHAR(255) NOT NULL,
+  method VARCHAR(10) NOT NULL,
+  status_code INT NOT NULL,
+  duration_ms INT NOT NULL,
+  error_code VARCHAR(50) DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_created_at (created_at),
+  INDEX idx_api_key (api_key_id),
+  INDEX idx_path (path(120))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OpenAPI调用审计（最小可用）';
+
+-- ========================================================
+-- 15c. OpenAPI Key 能力开通映射表 (api_key_capabilities)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS api_key_capabilities (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  api_key_id VARCHAR(40) NOT NULL COMMENT '业务主键，对应 api_keys.api_key_id',
+  capability_key VARCHAR(100) NOT NULL COMMENT '能力 key，如 damage.report_share',
+  status TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '0-禁用 1-启用',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_api_key_cap (api_key_id, capability_key),
+  INDEX idx_api_key_id (api_key_id),
+  INDEX idx_capability_key (capability_key),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OpenAPI Key 能力开通映射';
+
+-- ========================================================
+-- 15d. 外部引流报告 token (lead_report_tokens)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS lead_report_tokens (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  token_id VARCHAR(40) NOT NULL UNIQUE COMMENT '业务主键（明文 token 的前缀/标识）',
+  token_hash CHAR(64) NOT NULL UNIQUE COMMENT 'SHA256(token)',
+  report_id VARCHAR(32) NOT NULL COMMENT '关联 damage_reports.report_id',
+  status TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '0-禁用 1-可用 2-已认领 3-已过期',
+  claimed_user_id VARCHAR(32) DEFAULT NULL COMMENT '认领后的 user_id',
+  claimed_at DATETIME DEFAULT NULL,
+  expires_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_report_id (report_id),
+  INDEX idx_status (status),
+  INDEX idx_claimed_user (claimed_user_id),
+  CONSTRAINT fk_lrt_report FOREIGN KEY (report_id) REFERENCES damage_reports(report_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外部引流报告 token';
+
 -- AI 定损调用记录表（用于每日次数限制）
 CREATE TABLE IF NOT EXISTS ai_call_log (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -855,6 +1097,24 @@ CREATE TABLE IF NOT EXISTS ai_call_log (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_user_date (user_id, call_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI定损调用记录';
+
+-- AI 定损异步分析任务队列（用于“跳过等待”与人工审核兜底）
+CREATE TABLE IF NOT EXISTS damage_analysis_tasks (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  task_id VARCHAR(32) NOT NULL UNIQUE COMMENT '任务ID',
+  report_id VARCHAR(32) NOT NULL COMMENT '定损报告ID',
+  status VARCHAR(20) NOT NULL DEFAULT 'queued' COMMENT 'queued/running/done/failed/manual_review',
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
+  last_error VARCHAR(255) DEFAULT NULL COMMENT '最近一次错误（截断）',
+  locked_at DATETIME DEFAULT NULL COMMENT '锁定时间（worker claim）',
+  locked_by VARCHAR(64) DEFAULT NULL COMMENT '锁定者标识',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_report (report_id),
+  INDEX idx_status_locked (status, locked_at),
+  CONSTRAINT fk_dat_report FOREIGN KEY (report_id) REFERENCES damage_reports(report_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI定损异步分析任务';
 
 -- 插入默认配置
 INSERT INTO settings (`key`, `value`, `description`) VALUES

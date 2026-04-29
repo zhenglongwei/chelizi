@@ -329,8 +329,37 @@
   margin-bottom: var(--space-sm);
   color: var(--text-secondary);
 }
-.quoted-value-added-item {
-  padding: var(--space-xs) 0;
+.quoted-va-owner-wrap {
+  margin-top: var(--space-xs);
+}
+.quoted-va-owner-intro {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+.quoted-va-owner-block {
+  margin-bottom: var(--space-lg);
+}
+.quoted-va-owner-headline {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--primary);
+}
+.quoted-va-owner-line {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: 6rpx;
+  padding-left: 4rpx;
+}
+.quoted-va-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+.quoted-va-disclaimer-line {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 6rpx;
 }
 
 .quote-remark-row {

@@ -1,0 +1,31 @@
+<custom-nav-bar title="强制结单" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card proof-card">
+    <text class="fs-body fw-medium">上传取车凭证</text>
+    <text class="text-muted fs-cap proof-hint">适用于：维修商超承诺交车 7 天仍未交付/不配合。请上传能证明您已取车或车辆外观状态的照片（如：车牌+外观同框）。</text>
+
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">备注（选填）</text>
+      <input class="form-input" placeholder="如：取车时间、沟通情况" value="{{note}}" bindinput="onNoteInput" maxlength="200" />
+    </view>
+
+    <view class="form-row form-row--images">
+      <text class="form-label text-muted fs-cap">凭证图片（至少1张）</text>
+      <view class="img-grid">
+        <view class="img-item" wx:for="{{imageUrls}}" wx:key="*this">
+          <image class="img-thumb" src="{{item}}" mode="aspectFill" bindtap="onPreviewImage" data-url="{{item}}" />
+          <view class="img-del" catchtap="onRemoveImage" data-url="{{item}}">×</view>
+        </view>
+        <view class="img-add" wx:if="{{imageUrls.length < 6}}" bindtap="onChooseImages">
+          <text class="img-add-plus">+</text>
+          <text class="text-muted fs-cap">上传</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="btn-primary proof-submit" loading="{{submitting}}" disabled="{{submitting || !imageUrls.length}}" bindtap="onSubmit">
+      {{submitting ? '提交中...' : '提交并结单'}}
+    </button>
+  </view>
+</view>
+

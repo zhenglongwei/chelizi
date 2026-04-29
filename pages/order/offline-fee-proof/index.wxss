@@ -1,0 +1,77 @@
+.page-root {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.proof-card {
+  padding: var(--space-xl);
+}
+
+.proof-hint {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.5;
+}
+
+.form-row {
+  margin-top: var(--space-lg);
+}
+.form-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+.form-input {
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16rpx 20rpx;
+  font-size: var(--fs-body);
+}
+
+.img-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.img-item, .img-add {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-page);
+  border: 1rpx dashed var(--border);
+}
+.img-thumb {
+  width: 100%;
+  height: 100%;
+}
+.img-del {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 20rpx;
+}
+.img-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.img-add-plus {
+  font-size: 52rpx;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.proof-submit {
+  margin-top: var(--space-xl);
+}
+

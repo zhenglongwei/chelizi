@@ -35,7 +35,7 @@ export default function FairPricePage() {
     try {
       const base = apiBase();
       const url = base
-        ? `${base}/api/v1/public/historical-fair-price`
+        ? `${base}/v1/public/historical-fair-price`
         : '/api/v1/public/historical-fair-price';
       const { data } = await axios.get(url, {
         params: { model: model.trim() },

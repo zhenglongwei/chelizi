@@ -45,8 +45,8 @@
               <view class="rep-shop-info">
                 <text class="rep-shop-name text-primary fs-body fw-bold">{{item.name}}</text>
                 <view class="rep-shop-rating">
-                  <text class="rep-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
-                  <text class="rep-rating-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+                  <text wx:if="{{item.showPublicScore}}" class="rep-star {{item.scoreNum >= 90 ? 'star-gold' : (item.scoreNum < 60 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                  <text class="rep-rating-txt text-muted fs-cap">{{item.ratingLine}}</text>
                 </view>
                 <text class="rep-shop-review-summary {{item.latestReviewNegative ? 'text-warning' : 'text-muted'}} fs-cap" wx:if="{{item.latestReviewSummary}}">最新评论：{{item.latestReviewSummary}}</text>
                 <text class="rep-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
@@ -159,14 +159,13 @@
             <view class="feed-like text-weak fs-cap" wx:else>
               <text>{{item.like_count || 0}} 点赞</text>
             </view>
-            <view class="feed-dislike {{item.disliked ? 'disliked' : ''}}" wx:if="{{!item.is_my_review && !item.liked}}" bindtap="onDislikeReview" data-index="{{rIdx}}" data-review-id="{{item.review_id}}">
-              <text class="feed-dislike-icon">👎</text>
-              <text class="text-muted fs-cap">{{item.dislike_count || 0}} 踩</text>
-            </view>
-            <view class="feed-dislike disliked" wx:elif="{{!item.is_my_review && item.disliked}}">
-              <text class="feed-dislike-icon">👎</text>
-              <text class="text-weak fs-cap">{{item.dislike_count || 0}} 踩</text>
-            </view>
+            <button
+              class="feed-referral-share-btn fs-cap"
+              open-type="share"
+              hover-class="none"
+              data-review-id="{{item.review_id}}"
+              data-shop-id="{{item.shop.shop_id}}"
+            >分享评价</button>
           </view>
         </view>
       </view>

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>配件验真助手</title>
+  <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f7f8fa; color: #111; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.04); margin-bottom: 12px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: #666; font-size: 14px; line-height: 1.6; }
+    label { font-size: 13px; color: #444; display: block; margin: 8px 0 6px; }
+    input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 10px; font-size: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { border: 0; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .btn-primary { background: #1677ff; color: #fff; }
+    .btn-ghost { background: #f2f4f8; color: #333; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .tag { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    .tag-ok { background: #eaf9f0; color: #1a7f37; }
+    .tag-mid { background: #fff6e6; color: #ad6800; }
+    .tag-low { background: #fff1f0; color: #cf1322; }
+    .muted { color: #888; font-size: 12px; }
+    ul { padding-left: 18px; }
+    li { margin: 6px 0; }
+    .hidden { display: none; }
+    .share-line { display:flex; gap:8px; margin-top:10px; }
+    .share-line input { flex:1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <p class="muted" style="margin-bottom:10px;color:#cf1322;">当前为预研页面：因缺少稳定公开的官方直验渠道，功能暂缓对外上线。</p>
+      <h1>配件验真助手</h1>
+      <p>该页面仅用于内部预研演示，不作为正式用户验真工具。</p>
+      <div class="row">
+        <div>
+          <label>品牌</label>
+          <input id="brand" placeholder="如：丰田 / BMW / 奔驰" />
+        </div>
+        <div>
+          <label>VIN（可选）</label>
+          <input id="vin" placeholder="用于适配辅助校验" />
+        </div>
+      </div>
+      <label>配件编号</label>
+      <input id="partCode" placeholder="请输入配件编号/OE号" />
+      <label>图片链接（可选，换行或英文逗号分隔）</label>
+      <textarea id="imageUrls" rows="3" placeholder="https://.../1.jpg, https://.../2.jpg"></textarea>
+      <div class="actions">
+        <button class="btn btn-primary" id="btnQuery">开始验真</button>
+        <button class="btn btn-ghost" id="btnQueryImage">图片验真</button>
+      </div>
+      <p class="muted">说明：无官方回执时，仅给出风险评估，不代表“100%正品”。如条件不足，会提示你去官方网页手动核验。</p>
+    </div>
+
+    <div class="card hidden" id="resultCard">
+      <div id="resultHead"></div>
+      <div id="channels"></div>
+      <div id="evidence"></div>
+      <div id="notes"></div>
+      <div class="share-line">
+        <input id="shareLink" readonly placeholder="验真页分享链接会显示在这里" />
+        <button class="btn btn-ghost" id="btnCopyShare">复制链接</button>
+      </div>
+      <div id="ctaBox" class="actions hidden">
+        <div id="wxLaunchWrap" class="hidden">
+          <wx-open-launch-weapp id="wxLaunch" username="__WEAPP_ORIGINAL_ID__" path="/pages/damage/upload/index">
+            <script type="text/wxtag-template">
+              <style>
+                .wxbtn { display:flex; align-items:center; justify-content:center; height:44px; border-radius:10px; background:#1677ff; color:#fff; font-weight:700; }
+              </style>
+              <div class="wxbtn">获取维修商报价（打开小程序）</div>
+            </script>
+          </wx-open-launch-weapp>
+        </div>
+        <button class="btn btn-primary" id="openWeapp">获取维修商报价（打开小程序）</button>
+      </div>
+      <p class="muted" id="disclaimer"></p>
+    </div>
+
+    <div class="card" id="manualCheckCard">
+      <h3>手动核验回填（用于复核）</h3>
+      <p class="muted">若你已在官方页面完成核验，请回填结果并生成复核记录。</p>
+      <div class="row">
+        <div>
+          <label>核验渠道名称</label>
+          <input id="manualChannelName" placeholder="如：丰田官方渠道 / BMW官方入口" />
+        </div>
+        <div>
+          <label>核验结果</label>
+          <input id="manualResultCode" placeholder="如：verified / pass / fail" />
+        </div>
+      </div>
+      <label>核验渠道链接（可选）</label>
+      <input id="manualChannelUrl" placeholder="https://..." />
+      <label>截图/凭证链接（可选）</label>
+      <input id="manualReceiptUrl" placeholder="https://..." />
+      <label>备注（可选）</label>
+      <textarea id="manualNotes" rows="2" placeholder="例如：根据编号核验通过，页面显示原厂配件"></textarea>
+      <div class="actions">
+        <button class="btn btn-ghost" id="btnManualRescore">按回填结果复算</button>
+        <button class="btn btn-ghost" id="btnGenerateManualRecord">生成复核记录</button>
+        <button class="btn btn-ghost" id="btnDownloadManualRecord">下载复核记录JSON</button>
+      </div>
+      <p class="muted" id="manualRecordHint"></p>
+    </div>
+  </div>
+
+  <script>
+    const FEATURE_PAUSED = true;
+    const state = { latest: null, manualRecord: null };
+    const isWechat = /MicroMessenger/i.test(navigator.userAgent || '');
+    const sourceChannel = (new URLSearchParams(location.search).get('src') || 'direct').trim() || 'direct';
+    const weappPath = '/pages/damage/upload/index?from=h5_parts_auth&src=' + encodeURIComponent(sourceChannel);
+
+    (function setupLaunchPath() {
+      const launch = document.getElementById('wxLaunch');
+      if (launch) launch.setAttribute('path', weappPath);
+    })();
+
+    async function track(action, extra) {
+      try {
+        await fetch('/api/v1/public/h5/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'parts-auth',
+            source: sourceChannel,
+            action: String(action || ''),
+            extra: extra && typeof extra === 'object' ? extra : {},
+          }),
+        });
+      } catch (_) {}
+    }
+
+    async function setupWxOpenTag() {
+      if (!isWechat || !window.wx) return false;
+      try {
+        const curUrl = location.href.split('#')[0];
+        const r = await fetch('/api/v1/public/wechat/jssdk-config?url=' + encodeURIComponent(curUrl));
+        const body = await r.json();
+        if (!body || body.code !== 200 || !body.data) return false;
+        const cfg = body.data;
+        return await new Promise((resolve) => {
+          window.wx.config({
+            debug: false,
+            appId: cfg.appId,
+            timestamp: cfg.timestamp,
+            nonceStr: cfg.nonceStr,
+            signature: cfg.signature,
+            jsApiList: [],
+            openTagList: ['wx-open-launch-weapp']
+          });
+          window.wx.ready(() => resolve(true));
+          window.wx.error(() => resolve(false));
+        });
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function levelTag(level) {
+      if (level === 'official_verified' || level === 'high') return '<span class="tag tag-ok">' + level + '</span>';
+      if (level === 'medium') return '<span class="tag tag-mid">' + level + '</span>';
+      return '<span class="tag tag-low">' + level + '</span>';
+    }
+
+    async function callPublic(path, body) {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const json = await r.json().catch(() => ({}));
+      if (!r.ok || (json && json.code && json.code !== 200)) {
+        throw new Error((json && json.message) || '请求失败');
+      }
+      return json.data || {};
+    }
+
+    function splitImageUrls(raw) {
+      return String(raw || '')
+        .split(/[\n,]/g)
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    function render(data) {
+      state.latest = data;
+      const resultCard = document.getElementById('resultCard');
+      resultCard.classList.remove('hidden');
+      document.getElementById('resultHead').innerHTML =
+        '<p>验真等级：' + levelTag(data.auth_level) + '，可信度：' + Math.round((data.confidence_score || 0) * 100) + '%</p>';
+
+      const channels = (data.verification_channels || []).map((c) =>
+        '<li>' + c.channel_name + '：<a href="' + c.launch_url + '" target="_blank" rel="noreferrer">打开验真入口</a></li>'
+      ).join('');
+      document.getElementById('channels').innerHTML =
+        '<h3>推荐验真渠道</h3>' + (channels ? '<ul>' + channels + '</ul>' : '<p class="muted">暂无可用渠道，请联系商家获取官方验真入口。</p>');
+
+      const summary = data.verification_summary || {};
+      const brandLabel = summary.auto_check_brand || '';
+      const modeText = summary.auto_check_supported
+        ? ((summary.auto_check_status === 'verified' || summary.auto_check_status === 'unverified')
+          ? ((brandLabel ? '已执行' + brandLabel + '官方自动核验。' : '已执行官方自动核验。') + (summary.auto_check_detail ? ' 结果说明：' + summary.auto_check_detail : ''))
+          : ((brandLabel ? brandLabel + '已匹配自动核验能力。' : '已匹配自动核验能力。') + (summary.auto_check_detail ? ' ' + summary.auto_check_detail : '')))
+        : '暂未匹配到可自动核验渠道，请按建议手动到官方渠道核验。';
+      const evidence = (data.evidence || []).map((e) => '<li>' + e.detail + '</li>').join('');
+      document.getElementById('evidence').innerHTML = '<h3>核验说明</h3><p>' + modeText + '</p><ul>' + evidence + '</ul>';
+
+      const notes = (data.risk_notes || []).concat(data.next_actions || []).map((n) => '<li>' + n + '</li>').join('');
+      document.getElementById('notes').innerHTML = '<h3>建议</h3><ul>' + notes + '</ul>';
+      document.getElementById('disclaimer').textContent = data.disclaimer || '';
+      const shareUrl = new URL(location.href);
+      shareUrl.searchParams.set('src', sourceChannel);
+      document.getElementById('shareLink').value = shareUrl.toString();
+      document.getElementById('ctaBox').classList.remove('hidden');
+      const wrap = document.getElementById('wxLaunchWrap');
+      const btn = document.getElementById('openWeapp');
+      if (isWechat && wrap && !wrap.classList.contains('hidden')) {
+        btn.style.display = 'none';
+      } else {
+        btn.style.display = 'inline-flex';
+      }
+      track('result_rendered', {
+        auth_level: data.auth_level || '',
+        confidence_score: Number(data.confidence_score || 0),
+      });
+    }
+
+    document.getElementById('btnQuery').addEventListener('click', async () => {
+      if (FEATURE_PAUSED) {
+        alert('配件验真功能当前暂缓对外上线。');
+        return;
+      }
+      try {
+        const brand = (document.getElementById('brand').value || '').trim();
+        const partCode = (document.getElementById('partCode').value || '').trim();
+        const vin = (document.getElementById('vin').value || '').trim();
+        if (!partCode) throw new Error('请先输入配件编号');
+        const data = await callPublic('/api/v1/public/parts/auth/query-by-code', {
+          brand,
+          part_code: partCode,
+          vin,
+          source_channel: sourceChannel,
+        });
+        render(data);
+        track('submit_query_by_code', { has_vin: Boolean(vin) });
+      } catch (e) {
+        alert(e.message || '查询失败');
+      }
+    });
+
+    document.getElementById('btnQueryImage').addEventListener('click', async () => {
+      if (FEATURE_PAUSED) {
+        alert('配件验真功能当前暂缓对外上线。');
+        return;
+      }
+      try {
+        const brand = (document.getElementById('brand').value || '').trim();
+        const partCode = (document.getElementById('partCode').value || '').trim();
+        const imageUrls = splitImageUrls(document.getElementById('imageUrls').value);
+        if (!imageUrls.length) throw new Error('请先输入至少1个图片链接');
+        const data = await callPublic('/api/v1/public/parts/auth/query-by-image', {
+          brand,
+          part_code: partCode,
+          image_urls: imageUrls,
+          source_channel: sourceChannel,
+        });
+        render(data);
+        track('submit_query_by_image', { image_count: imageUrls.length });
+      } catch (e) {
+        alert(e.message || '图片验真失败');
+      }
+    });
+
+    function collectManualReceipt() {
+      const channelName = (document.getElementById('manualChannelName').value || '').trim();
+      const resultCode = (document.getElementById('manualResultCode').value || '').trim();
+      const channelUrl = (document.getElementById('manualChannelUrl').value || '').trim();
+      const receiptUrl = (document.getElementById('manualReceiptUrl').value || '').trim();
+      const notes = (document.getElementById('manualNotes').value || '').trim();
+      const officialVerified = /^(verified|pass|official_ok|authentic)$/i.test(resultCode);
+      const receipts = (channelName || resultCode || receiptUrl)
+        ? [{
+          channel_name: channelName,
+          result_code: resultCode,
+          receipt_url: receiptUrl,
+          queried_at: new Date().toISOString(),
+          result_text: notes || resultCode,
+        }]
+        : [];
+      return { channelName, resultCode, channelUrl, receiptUrl, notes, officialVerified, receipts };
+    }
+
+    document.getElementById('btnManualRescore').addEventListener('click', async () => {
+      if (FEATURE_PAUSED) {
+        alert('配件验真功能当前暂缓对外上线。');
+        return;
+      }
+      try {
+        const brand = (document.getElementById('brand').value || '').trim();
+        const partCode = (document.getElementById('partCode').value || '').trim();
+        const vin = (document.getElementById('vin').value || '').trim();
+        const imageUrls = splitImageUrls(document.getElementById('imageUrls').value);
+        const manual = collectManualReceipt();
+        if (!partCode && !imageUrls.length) throw new Error('请先输入配件编号或图片后再复算');
+        const data = await callPublic('/api/v1/public/parts/auth/risk-scoring', {
+          brand,
+          part_code: partCode,
+          vin,
+          image_urls: imageUrls,
+          official_verified: manual.officialVerified,
+          user_receipts: manual.receipts,
+          source_channel: sourceChannel,
+        });
+        render(Object.assign({}, state.latest || {}, data));
+        track('manual_rescore', { official_verified: manual.officialVerified, receipt_count: manual.receipts.length });
+      } catch (e) {
+        alert(e.message || '复算失败');
+      }
+    });
+
+    document.getElementById('btnGenerateManualRecord').addEventListener('click', async () => {
+      if (FEATURE_PAUSED) {
+        alert('配件验真功能当前暂缓对外上线。');
+        return;
+      }
+      try {
+        const brand = (document.getElementById('brand').value || '').trim();
+        const partCode = (document.getElementById('partCode').value || '').trim();
+        const vin = (document.getElementById('vin').value || '').trim();
+        const manual = collectManualReceipt();
+        if (!partCode) throw new Error('请先输入配件编号');
+        const rec = await callPublic('/api/v1/public/parts/auth/manual-check-record', {
+          brand,
+          part_code: partCode,
+          vin,
+          channel_name: manual.channelName,
+          channel_url: manual.channelUrl,
+          result_code: manual.resultCode,
+          result_text: manual.notes || manual.resultCode,
+          receipt_url: manual.receiptUrl,
+          notes: manual.notes,
+        });
+        state.manualRecord = rec;
+        const hint = document.getElementById('manualRecordHint');
+        hint.textContent = '复核记录已生成：' + rec.record_id + '（可下载保存）';
+        track('manual_record_generated', { record_id: rec.record_id || '' });
+      } catch (e) {
+        alert(e.message || '生成复核记录失败');
+      }
+    });
+
+    document.getElementById('btnDownloadManualRecord').addEventListener('click', () => {
+      if (FEATURE_PAUSED) {
+        alert('配件验真功能当前暂缓对外上线。');
+        return;
+      }
+      const rec = state.manualRecord;
+      if (!rec) {
+        alert('请先点击“生成复核记录”');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(rec, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'parts-manual-check-record-' + rec.record_id + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      track('manual_record_downloaded', { record_id: rec.record_id || '' });
+    });
+
+    document.getElementById('openWeapp').addEventListener('click', () => {
+      const appId = '__WEAPP_APPID__';
+      const path = weappPath;
+      track('cta_open_miniapp_click', { is_wechat: isWechat });
+      if (isWechat) {
+        alert('若未自动拉起，请使用上方微信按钮打开小程序。');
+      } else {
+        alert('请在微信内打开此页后，再拉起小程序。\nAppID=' + appId + '\npath=' + path);
+      }
+    });
+
+    document.getElementById('btnCopyShare').addEventListener('click', async () => {
+      const input = document.getElementById('shareLink');
+      const value = String(input.value || '').trim();
+      if (!value) {
+        alert('请先完成一次验真，再复制分享链接');
+        return;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          input.focus();
+          input.select();
+          document.execCommand('copy');
+        }
+        alert('分享链接已复制');
+        track('copy_share_link', { link_length: value.length });
+      } catch (_) {
+        alert('复制失败，请手动长按复制');
+      }
+    });
+
+    setupWxOpenTag().then((ok) => {
+      if (ok) {
+        const wrap = document.getElementById('wxLaunchWrap');
+        if (wrap) wrap.classList.remove('hidden');
+      }
+    });
+
+    track('page_view', { is_wechat: isWechat, path: location.pathname });
+  </script>
+</body>
+</html>

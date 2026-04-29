@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "等待配件延期",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}
+

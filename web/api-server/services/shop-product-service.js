@@ -328,14 +328,15 @@ async function listPendingForAdmin(pool, query) {
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const offset = (Math.max(parseInt(page) || 1, 1) - 1) * limitNum;
 
+  const lim = Math.trunc(limitNum);
+  const off = Math.trunc(offset);
   const [rows] = await pool.execute(
     `SELECT p.product_id, p.shop_id, p.name, p.category, p.price, p.description, p.images, p.status, p.audit_reason, p.created_at, s.name as shop_name
      FROM shop_products p
      JOIN shops s ON s.shop_id = p.shop_id
      WHERE p.status = 'pending'
      ORDER BY p.created_at ASC
-     LIMIT ? OFFSET ?`,
-    [limitNum, offset]
+     LIMIT ${lim} OFFSET ${off}`
   );
 
   const [countRows] = await pool.execute(

@@ -88,11 +88,22 @@ function repairLinesForVehicle(repairSuggestions, vehicleId) {
   const list = Array.isArray(repairSuggestions) ? repairSuggestions : [];
   const out = [];
   for (const row of list) {
-    const item = row && row.item != null ? String(row.item) : '';
+    let item = row && row.item != null ? String(row.item) : '';
+    const partField = String((row && (row.damage_part || row.part)) || '').trim();
+    const method = String((row && (row.repair_method || row.repair_type)) || '').trim();
+    if (vid && item && !item.startsWith(vid + '-') && !item.startsWith(vid + '：')) {
+      if (partField) item = `${vid}-${partField}`;
+      else continue;
+    }
     if (!item.trim()) continue;
     if (vid && !item.startsWith(vid + '-') && !item.startsWith(vid + '：')) continue;
-    const line = stripVehiclePrefix(item, vid);
-    if (line) out.push(line);
+    const line = stripVehiclePrefix(item, vid) || partField;
+    if (!line) continue;
+    const methodLabel = method === '换' ? '更换' : method === '修' ? '修复' : '';
+    const note = String((row && row.process_note) || '').trim();
+    let display = methodLabel ? `${line}（${methodLabel}）` : line;
+    if (note) display = `${display}：${note}`;
+    out.push(display);
   }
   return out;
 }

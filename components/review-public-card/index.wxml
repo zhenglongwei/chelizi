@@ -7,12 +7,30 @@
           <view class="pub-review-v3-title-accent" aria-hidden="true"></view>
           <text class="pub-review-v3-title fs-body fw-bold">评价内容</text>
         </view>
-        <text class="text-weak fs-sm pub-review-v3-intro">与提交页一致的五项结构；前 3 项下图示是否出现取决于车主分项公开授权。</text>
+        <text class="text-weak fs-sm pub-review-v3-intro">与提交页一致的多维星级结构（含流程透明度时为六项）；报价/维修/配件项下图示是否出现取决于车主分项公开授权。</text>
+      </view>
+
+      <view class="review-v3-linear-block" wx:if="{{review.hasProcessTransparencyStar}}">
+        <view class="review-v3-star-head">
+          <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.process}}. 流程透明度</text>
+          <view class="review-stars review-stars-lg">
+            <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
+              <text class="review-star {{s <= review.pubProcessStar ? 'filled' : ''}}">{{s <= review.pubProcessStar ? '★' : '☆'}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="review-expand-hint" bindtap="onTogglePub" data-key="process">
+          <text class="review-expand-hint-chevron">{{review.pubExpand.process ? '▲' : '▼'}}</text>
+          <text class="review-expand-hint-text fs-sm">{{review.pubExpand.process ? '收起' : '查看'}}说明</text>
+        </view>
+        <view wx:if="{{review.pubExpand.process}}" class="review-expand-body">
+          <text class="text-weak fs-sm">表示车主认为本单维修全流程（进度、节点留痕、关键动作是否可查）是否透明；非平台鉴定结论。可与下方报价节点、维修前后对照、配件留痕等公示内容综合理解。</text>
+        </view>
       </view>
 
       <view class="review-v3-linear-block">
         <view class="review-v3-star-head">
-          <text class="review-v3-linear-q fs-body fw-medium">1. 报价透明度</text>
+          <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.quote}}. 报价透明度</text>
           <view class="review-stars review-stars-lg">
             <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
               <text class="review-star {{s <= review.pubQuoteStar ? 'filled' : ''}}">{{s <= review.pubQuoteStar ? '★' : '☆'}}</text>
@@ -57,7 +75,7 @@
 
       <view class="review-v3-linear-block">
         <view class="review-v3-star-head">
-          <text class="review-v3-linear-q fs-body fw-medium">2. 故障整体修复程度</text>
+          <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.repair}}. 故障整体修复程度</text>
           <view class="review-stars review-stars-lg">
             <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
               <text class="review-star {{s <= review.pubRepairStar ? 'filled' : ''}}">{{s <= review.pubRepairStar ? '★' : '☆'}}</text>
@@ -84,7 +102,7 @@
 
       <view class="review-v3-linear-block">
         <view class="review-v3-star-head">
-          <text class="review-v3-linear-q fs-body fw-medium">3. 配件与材料可溯源度</text>
+          <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.parts}}. 配件与材料可溯源度</text>
           <view class="review-stars review-stars-lg">
             <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
               <text class="review-star {{s <= review.pubPartsStar ? 'filled' : ''}}">{{s <= review.pubPartsStar ? '★' : '☆'}}</text>
@@ -107,7 +125,7 @@
 
       <view class="review-v3-linear-block">
         <view class="review-v3-star-head">
-          <text class="review-v3-linear-q fs-body fw-medium">4. 服务态度</text>
+          <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.service}}. 服务态度</text>
           <view class="review-stars review-stars-lg">
             <block wx:for="{{[1,2,3,4,5]}}" wx:for-item="s" wx:key="*this">
               <text class="review-star {{s <= review.pubServiceStar ? 'filled' : ''}}">{{s <= review.pubServiceStar ? '★' : '☆'}}</text>
@@ -117,7 +135,7 @@
       </view>
 
       <view class="review-v3-linear-block pub-review-v3-supplement">
-        <text class="review-v3-linear-q fs-body fw-medium">5. 补充说明</text>
+        <text class="review-v3-linear-q fs-body fw-medium">{{review.v3num.supplement}}. 补充说明</text>
        
         <view class="rv-linear-row" wx:if="{{review.content}}">
           <view class="rv-linear-a">

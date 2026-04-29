@@ -2,8 +2,8 @@
  * 奖励金计算服务
  * 按《全链路激励驱动体系》实现
  * 公式：用户奖励金 = 复杂度基础固定奖励 × 车价校准系数 + 优质内容浮动奖励
- * 双重约束：单订单封顶、70% 佣金红线
- * 注：维修复杂度校准系数已并入基础固定奖励（方案A）
+ * 约束：奖励不超过平台实收佣金的 complianceRedLine%（默认 70% 等，以 reward_rules 为准）。
+ * 已简化：不再使用表格内单项目封顶、订单分级封顶参与 min、配件数破格升级；复杂度表仅用于关键词匹配 L1–L4。
  */
 
 // 基础固定奖励（元）：L3/L4 已并入原 1.5 倍，保险事故车单独档位
@@ -18,13 +18,6 @@ const VEHICLE_COEFF = [
   { max: 50, coeff: 2.0 },
   { max: Infinity, coeff: 3.0 },
 ];
-
-// 全指标 4.6 按复杂度单订单封顶（元）
-const ORDER_CAP = { L1: 50, L2: 200, L3: 800, L4: 2000 };
-const INSURANCE_ACCIDENT_CAP = 3000;
-
-// 03-全链路激励 按订单分级封顶（元）：一级≤1000/二级150/三级800/四级2000
-const ORDER_TIER_CAP = { 1: 30, 2: 150, 3: 800, 4: 2000 };
 
 // 全指标 4.5 优质内容浮动奖励：优质评价 = 基础奖励的 50%，爆款标杆 = 100%
 const PREMIUM_FLOAT_RATIO = 0.5;
@@ -101,6 +94,17 @@ async function loadQuoteItemsByQuoteId(pool, quoteId) {
 /**
  * 单笔订单平台佣金金额（维修单；标品不走此函数）
  */
+/**
+ * 转化池 + 事后验证共帽：占单笔订单实收佣金比例（默认 0.1）
+ */
+async function getConversionPoolShare(pool) {
+  const rules = await getRewardRules(pool);
+  const s = rules.platformIncentiveV1?.conversionPoolShare;
+  const n = parseFloat(s);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.1;
+}
+
 async function computeOrderCommissionAmount(pool, order) {
   const rules = await getRewardRules(pool);
   let items = [];
@@ -128,40 +132,6 @@ async function getRewardRules(pool) {
   }
   if (config.baseRewardInsurance && typeof config.baseRewardInsurance === 'object') {
     rules.baseRewardInsurance = config.baseRewardInsurance;
-  }
-
-  // 从 complexityLevels 聚合 orderCap（按 level 取首条）；baseReward 缺失时从 complexityLevels 兜底
-  const levels = config.complexityLevels;
-  if (Array.isArray(levels) && levels.length > 0) {
-    const byLevel = {};
-    for (const r of levels) {
-      const L = (r.level || '').toUpperCase();
-      if (!L || !['L1', 'L2', 'L3', 'L4'].includes(L)) continue;
-      if (!byLevel[L]) {
-        byLevel[L] = {
-          fixed_reward: parseFloat(r.fixed_reward) || 0,
-          cap_amount: parseFloat(r.cap_amount) || 0,
-        };
-      }
-    }
-    rules.orderCap = {};
-    for (const L of ['L1', 'L2', 'L3', 'L4']) {
-      if (byLevel[L]) {
-        rules.orderCap[L] = byLevel[L].cap_amount;
-      }
-    }
-    if (!config.baseReward || typeof config.baseReward !== 'object') {
-      rules.baseReward = {};
-      for (const L of ['L1', 'L2', 'L3', 'L4']) {
-        if (byLevel[L]) rules.baseReward[L] = byLevel[L].fixed_reward;
-      }
-    }
-    if (!config.baseRewardInsurance || typeof config.baseRewardInsurance !== 'object') {
-      rules.baseRewardInsurance = {};
-      for (const L of ['L1', 'L2', 'L3', 'L4']) {
-        if (byLevel[L]) rules.baseRewardInsurance[L] = (byLevel[L].fixed_reward || 0) * 2;
-      }
-    }
   }
 
   rules.commissionRepair = mergeCommissionRepair(config.commissionRepair);
@@ -199,18 +169,8 @@ function getVehicleCoeff(vehiclePrice, rules = {}, vehiclePriceTier = null, bran
   return 1.0;
 }
 
-/**
- * 配件数量升级：L1/L2 项目数 > 3 时升级 1 级（L2→L3, L1→L2）
- * @param {string} L - 当前复杂度 L1|L2|L3|L4
- * @param {Array} items - 维修项目 [{ name, repair_type }]
- */
-function applyComplexityUpgrade(L, items = []) {
-  if (!['L1', 'L2'].includes(L)) return L;
-  const count = (items || []).filter((i) => {
-    const n = String(i.name || i.damage_part || i.item || '').trim();
-    return n.length > 0;
-  }).length;
-  if (count > 3) return L === 'L1' ? 'L2' : 'L3';
+/** 历史：配件数>3 时 L1/L2 升一级。已关闭，恒返回原等级。 */
+function applyComplexityUpgrade(L) {
   return L;
 }
 
@@ -248,14 +208,14 @@ async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], s
   const brand = vehicleInfo?.brand || null;
   const orderTier = order.order_tier ?? getOrderTier(M_order, rules);
 
-  // 复杂度：优先用订单已有值，否则从 repair_complexity_levels 匹配维修项目，未匹配时默认 L2；配件数>3 时升级 1 级
+  // 复杂度：优先用订单已有值，否则从 complexityLevels 关键词匹配，未匹配时默认 L2（不再做配件数破格升级）
   let L = (order.complexity_level || '').toUpperCase();
   if (!L || !['L1', 'L2', 'L3', 'L4'].includes(L)) {
     const complexityService = require('./services/complexity-service');
     const { level } = await complexityService.resolveComplexityFromItems(pool, quoteItems);
     L = level;
   }
-  L = applyComplexityUpgrade(L, quoteItems);
+  L = applyComplexityUpgrade(L);
   const isInsuranceAccident = !!(order.is_insurance_accident);
   const vehicleCoeff = getVehicleCoeff(vehiclePrice, rules, vehiclePriceTier, brand);
 
@@ -264,25 +224,12 @@ async function calculateReward(pool, order, vehicleInfo = {}, quoteItems = [], s
     : (rules.baseReward?.[L] ?? BASE_REWARD[L] ?? BASE_REWARD.L2);
   const baseReward = baseFixed * vehicleCoeff;
 
-  const capBase = isInsuranceAccident ? INSURANCE_ACCIDENT_CAP : (ORDER_CAP[L] ?? ORDER_CAP.L2);
-  const capFromRules = rules.orderCap?.[L] ?? rules[`orderCap${L}`];
-  let capByComplexity = capFromRules ?? capBase;
-  const lowMax = rules.vehicleTierLowMax ?? 100000;
-  const isLowEndVehicle = vehiclePrice != null && vehiclePrice <= lowMax;
-  const lowCapUp = rules.vehicleTierLowCapUp ?? 20;
-  const lowEndCapBoost = rules.lowEndCapBoost ?? (1 + lowCapUp / 100);
-  if (isLowEndVehicle) capByComplexity *= lowEndCapBoost;
-
-  const capByOrderTier = rules[`orderTier${orderTier}Cap`] ?? ORDER_TIER_CAP[orderTier] ?? ORDER_TIER_CAP[2];
-
   const repairCategory = resolveRepairCommissionCategory(quoteItems);
   const commissionRate = calcRepairCommissionRate(rules, { isInsuranceAccident, repairCategory });
   const commission = M_order * commissionRate;
-  const maxByCommission = commission * ((rules.complianceRedLine ?? 70) / 100);
+  const maxByCommission = commission * ((rules.complianceRedLine ?? 60) / 100);
 
-  // 双重约束：min(按订单分级封顶, 按复杂度封顶, 实收佣金×70%)
-  const effectiveCap = Math.min(capByComplexity, capByOrderTier);
-  let rewardPre = Math.min(baseReward, effectiveCap, maxByCommission);
+  let rewardPre = Math.min(baseReward, maxByCommission);
   rewardPre = Math.max(0, Math.round(rewardPre * 100) / 100);
 
   const tierFromPrice =
@@ -419,6 +366,7 @@ module.exports = {
   calcRepairCommissionRate,
   mergeCommissionRepair,
   computeOrderCommissionAmount,
+  getConversionPoolShare,
   loadQuoteItemsByQuoteId,
   calculateReward,
   resolveRepairItemsAndQuotedAmount,
@@ -427,7 +375,5 @@ module.exports = {
   getReleaseStages,
   BASE_REWARD,
   BASE_REWARD_INSURANCE,
-  ORDER_CAP,
-  ORDER_TIER_CAP,
   PREMIUM_FLOAT_RATIO,
 };

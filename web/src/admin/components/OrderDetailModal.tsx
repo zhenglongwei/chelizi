@@ -1,4 +1,4 @@
-import { Modal, Descriptions, Tabs, Table, Tag, Image, Timeline, Space, Button, message } from 'antd';
+import { Modal, Descriptions, Tabs, Table, Tag, Image, Timeline, Space, Button, message, Alert, Divider } from 'antd';
 import { EyeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useState, useEffect } from 'react';
@@ -63,8 +63,50 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
     );
   }
 
-  const { order, ownerInfo, quotes, repairOrder, selectedMerchantInfo, refunds, complaints, review, reviewList, settlementProofs } = orderDetail;
+  const {
+    order,
+    ownerInfo,
+    quotes,
+    repairOrder,
+    selectedMerchantInfo,
+    refunds,
+    complaints,
+    review,
+    reviewList,
+    settlementProofs,
+    offline_fee_proofs,
+    cancel_disposal,
+  } = orderDetail;
   const vi = order.vehicleInfo || {};
+  const proofs: any[] = Array.isArray(offline_fee_proofs) ? offline_fee_proofs : [];
+  const hasProofs = proofs.length > 0;
+  const disposalClosed = !!cancel_disposal;
+
+  const handleCloseCancelDisposal = async () => {
+    Modal.confirm({
+      title: '取消交易处置结案',
+      content: '确认已完成线下拆检费/纠纷处置，并对该订单做结案留痕？',
+      okText: '确认结案',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const result = await callCloudFunction('closeCancelDisposal', {
+            orderNo,
+            result: 'closed',
+            note: '',
+          });
+          if (result.success) {
+            message.success(result.message || '已结案');
+            loadOrderDetail();
+          } else {
+            message.error(result.message || '结案失败');
+          }
+        } catch (e: any) {
+          message.error('结案失败: ' + (e?.message || '操作失败'));
+        }
+      },
+    });
+  };
 
   // 报价表格列
   const quoteColumns = [
@@ -349,6 +391,12 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
                  order.status === 4 ? '已取消' : String(order.status)}
               </Tag>
             </Descriptions.Item>
+            <Descriptions.Item label="生命周期(主)">
+              {order.lifecycle_main || '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="生命周期(子)">
+              {order.lifecycle_sub || '-'}
+            </Descriptions.Item>
             <Descriptions.Item label="发起时间">
               {(order.createTime || order.createdAt) ? dayjs(order.createTime || order.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
             </Descriptions.Item>
@@ -383,6 +431,72 @@ export default function OrderDetailModal({ visible, orderNo, onClose }: OrderDet
                 <div>型号: {vi.model || '-'}</div>
                 <div>车牌: {vi.plate_number || vi.plateNumber || '-'}</div>
               </div>
+            </Descriptions.Item>
+          </Descriptions>
+
+          <Divider style={{ margin: '16px 0' }} />
+
+          <Descriptions column={1} bordered>
+            <Descriptions.Item label="取消交易处置（拆检留痕）">
+              {!hasProofs && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="未发现拆检费/拆检收据等线下留痕"
+                  description="无留痕时，车主端可直接取消交易；有留痕时，车主端禁止直接取消，需要后台/客服处置。"
+                />
+              )}
+
+              {hasProofs && (
+                <div>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={`已存在线下留痕（${proofs.length}条）`}
+                    description="车主端将被禁止直接取消交易。请核对凭证并完成处置后再结案留痕。"
+                    style={{ marginBottom: 12 }}
+                  />
+
+                  <div style={{ marginBottom: 12 }}>
+                    {proofs.map((p: any) => (
+                      <div key={p.proof_id} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                        <div>
+                          <strong>凭证ID：</strong>{p.proof_id}
+                          {p.created_at ? <span style={{ marginLeft: 12, color: '#888' }}>{dayjs(p.created_at).format('YYYY-MM-DD HH:mm')}</span> : null}
+                        </div>
+                        <div style={{ color: '#666', marginTop: 4 }}>
+                          {p.proof_kind ? <span>类型：{p.proof_kind}</span> : null}
+                          {p.amount != null ? <span style={{ marginLeft: 12 }}>金额：¥{p.amount}</span> : null}
+                          {p.uploader_type ? <span style={{ marginLeft: 12 }}>上传方：{p.uploader_type}</span> : null}
+                        </div>
+                        {p.note ? <div style={{ marginTop: 4 }}>备注：{p.note}</div> : null}
+                        {(Array.isArray(p.image_urls) && p.image_urls.length > 0) ? (
+                          <div style={{ marginTop: 8 }}>
+                            <Image.PreviewGroup>
+                              {p.image_urls.map((url: string, i: number) => (
+                                <Image key={i} width={80} height={80} src={url} style={{ marginRight: 8, marginTop: 4 }} />
+                              ))}
+                            </Image.PreviewGroup>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  {disposalClosed ? (
+                    <Alert
+                      type="success"
+                      showIcon
+                      message="已结案留痕"
+                      description={cancel_disposal?.created_at ? `结案时间：${dayjs(cancel_disposal.created_at).format('YYYY-MM-DD HH:mm:ss')}` : undefined}
+                    />
+                  ) : (
+                    <Button type="primary" onClick={handleCloseCancelDisposal}>
+                      取消交易处置结案
+                    </Button>
+                  )}
+                </div>
+              )}
             </Descriptions.Item>
           </Descriptions>
         </TabPane>

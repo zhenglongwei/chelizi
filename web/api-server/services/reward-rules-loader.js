@@ -4,6 +4,25 @@
  */
 
 const CONFIG_KEY = 'rewardRules';
+const PLATFORM_DEFAULTS = require('../constants/platform-reward-v1');
+
+function isPlainObject(x) {
+  return x != null && typeof x === 'object' && !Array.isArray(x);
+}
+
+/** 浅合并 a 被 b 覆盖；嵌套 plain object 递归一层（供 platformIncentiveV1） */
+function mergeRewardConfig(base, patch) {
+  if (!isPlainObject(base)) return patch;
+  if (!isPlainObject(patch)) return base;
+  const out = { ...base, ...patch };
+  if (isPlainObject(base.platformIncentiveV1) || isPlainObject(patch.platformIncentiveV1)) {
+    out.platformIncentiveV1 = {
+      ...(isPlainObject(base.platformIncentiveV1) ? base.platformIncentiveV1 : {}),
+      ...(isPlainObject(patch.platformIncentiveV1) ? patch.platformIncentiveV1 : {}),
+    };
+  }
+  return out;
+}
 
 /**
  * 从 reward_rules 表读取完整奖励金配置
@@ -29,7 +48,7 @@ async function getRewardRulesConfig(pool) {
   if (!config || typeof config !== 'object') {
     throw new Error('奖励金规则配置无效');
   }
-  return config;
+  return mergeRewardConfig(PLATFORM_DEFAULTS, config);
 }
 
 /**

@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: Zhejian Capability Network API
+  version: v1
+  description: |
+    AI 时代汽修能力网络（分发优先）对外 API。
+    - 用户端：Bearer JWT（小程序登录后）
+    - OpenAPI：X-API-Key（第三方/Agent/合作方）
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /public/capabilities/catalog:
+    get:
+      summary: Capability Catalog v1
+      description: 公共能力目录（不含敏感配置）
+      responses:
+        "200":
+          description: OK
+  /open/capabilities:
+    get:
+      summary: Enabled capabilities for OpenAPI key
+      security:
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: OK
+  /damage/analyze:
+    post:
+      summary: AI damage assessment (sync)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+                images:
+                  type: array
+                  items: { type: string }
+                user_description: { type: string }
+                vehicle_info: { type: object }
+              required: [user_id, images]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /damage/report/{id}/share-token:
+    post:
+      summary: Mint share token for report (owner)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_in_sec: { type: integer }
+      responses:
+        "200": { description: OK }
+  /public/damage/report/share/{token}:
+    get:
+      summary: Get shared damage report summary by token
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /open/diagnosis/image-analyze:
+    post:
+      summary: Diagnostic assistant - image analyze
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  items: { type: string }
+                user_description: { type: string }
+              required: [images]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/diagnosis/dtc-interpret:
+    post:
+      summary: Diagnostic assistant - DTC interpretation
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dtc_code: { type: string }
+              required: [dtc_code]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/diagnosis/symptom-analyze:
+    post:
+      summary: Diagnostic assistant - symptom analysis
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symptom_text: { type: string }
+              required: [symptom_text]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/quote/ocr-import/by-image:
+    post:
+      summary: Quote OCR import by image (OpenAPI)
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_url: { type: string }
+              required: [image_url]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/repair/timeline/public:
+    post:
+      summary: Public repair timeline query by order
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order_id: { type: string }
+              required: [order_id]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+        "404": { description: Order not found }
+  /public/diagnosis/image-analyze:
+    post:
+      summary: Public H5 diagnosis - image analyze
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  items: { type: string }
+                user_description: { type: string }
+              required: [images]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /public/diagnosis/dtc-interpret:
+    post:
+      summary: Public H5 diagnosis - DTC interpretation
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dtc_code: { type: string }
+              required: [dtc_code]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /public/diagnosis/symptom-analyze:
+    post:
+      summary: Public H5 diagnosis - symptom analyze
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symptom_text: { type: string }
+              required: [symptom_text]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /open/parts/auth/query-by-code:
+    post:
+      summary: Parts authenticity aggregation by part code
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_code: { type: string }
+                brand: { type: string }
+                official_channel_url: { type: string }
+                callback_signature: { type: string }
+              required: [part_code]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /public/parts/auth/query-by-code:
+    post:
+      summary: Public H5 parts auth by part code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_code: { type: string }
+                brand: { type: string }
+                vin: { type: string }
+              required: [part_code]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /open/parts/auth/query-by-image:
+    post:
+      summary: Parts authenticity aggregation by image
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_urls:
+                  type: array
+                  items: { type: string }
+                brand: { type: string }
+                official_channel_url: { type: string }
+                callback_signature: { type: string }
+              required: [image_urls]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /public/parts/auth/query-by-image:
+    post:
+      summary: Public H5 parts auth by image
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_urls:
+                  type: array
+                  items: { type: string }
+                brand: { type: string }
+                part_code: { type: string }
+                vin: { type: string }
+              required: [image_urls]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /public/parts/auth/risk-scoring:
+    post:
+      summary: Public H5 parts auth risk scoring (manual callback)
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_code: { type: string }
+                brand: { type: string }
+                vin: { type: string }
+                image_urls:
+                  type: array
+                  items: { type: string }
+                official_verified: { type: boolean }
+                user_receipts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      channel_name: { type: string }
+                      receipt_url: { type: string }
+                      queried_at: { type: string }
+                      result_code: { type: string }
+                      result_text: { type: string }
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /public/parts/auth/manual-check-record:
+    post:
+      summary: Public H5 generate manual check review record
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                brand: { type: string }
+                part_code: { type: string }
+                vin: { type: string }
+                channel_name: { type: string }
+                channel_url: { type: string }
+                result_code: { type: string }
+                result_text: { type: string }
+                receipt_url: { type: string }
+                notes: { type: string }
+              required: [part_code]
+      responses:
+        "200": { description: OK }
+        "429": { description: Too many requests }
+  /open/parts/auth/fitment-check-by-vin:
+    post:
+      summary: Parts fitment/auth helper by VIN
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vin: { type: string }
+                part_code: { type: string }
+                brand: { type: string }
+                callback_signature: { type: string }
+              required: [vin]
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/parts/auth/risk-scoring:
+    post:
+      summary: Parts auth risk scoring (with callback evidence)
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_code: { type: string }
+                brand: { type: string }
+                vin: { type: string }
+                image_urls:
+                  type: array
+                  items: { type: string }
+                official_channel_url: { type: string }
+                official_verified: { type: boolean }
+                callback_signature: { type: string }
+                channel_reliability_delta: { type: number }
+                user_receipts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      channel_name: { type: string }
+                      receipt_url: { type: string }
+                      queried_at: { type: string }
+                      result_code: { type: string }
+                      result_text: { type: string }
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+  /open/parts/auth/signing-payload:
+    post:
+      summary: Build canonical payload for callback signature
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_code: { type: string }
+                brand: { type: string }
+                vin: { type: string }
+                official_verified: { type: boolean }
+                user_receipts:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "200": { description: OK }
+        "403": { description: Capability disabled }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+

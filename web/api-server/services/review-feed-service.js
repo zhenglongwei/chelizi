@@ -9,6 +9,7 @@ const { parseCompletionEvidence, parseRepairPlanEnrichment } = require('../utils
 const quoteProposalPublic = require('../utils/quote-proposal-public-list');
 const { sanitizeQuoteProposalHistoryForPublicList } = require('../utils/quote-proposal-public-sanitize');
 const { applyGranularPublicImages, sanitizeSystemChecksForUserFacing } = require('../utils/review-public-system-sanitize');
+const { hasColumn } = require('../utils/db-utils');
 
 const LEVEL_NAMES = { 0: '风险受限', 1: '基础注册', 2: '普通可信', 3: '活跃可信', 4: '核心标杆' };
 
@@ -135,6 +136,11 @@ async function getReviewFeed(pool, query) {
     hasFeedViewsTable,
   });
 
+  let hasDiscoveryBoost = false;
+  try {
+    hasDiscoveryBoost = await hasColumn(pool, 'reviews', 'review_discovery_boost');
+  } catch (_) {}
+
   let orderBy;
   if (sort === 'time') {
     orderBy = 'r.created_at DESC';
@@ -147,7 +153,9 @@ async function getReviewFeed(pool, query) {
       + SIN(RADIANS(${lat})) * SIN(RADIANS(s.latitude))
     )))) ASC, r.content_quality_level DESC, r.created_at DESC`;
   } else {
-    orderBy = 'r.content_quality_level DESC, r.created_at DESC';
+    orderBy = hasDiscoveryBoost
+      ? 'COALESCE(r.review_discovery_boost, 1) DESC, r.content_quality_level DESC, r.created_at DESC'
+      : 'r.content_quality_level DESC, r.created_at DESC';
   }
 
   const paramsForQuery = [minLevel, ...params, limitNum, offset];
@@ -178,7 +186,6 @@ async function getReviewFeed(pool, query) {
 
   const reviewIds = reviews.map(r => r.review_id);
   let likeStats = {};
-  let userDislikedIds = new Set();
   let userLikedIds = new Set();
 
   try {
@@ -188,11 +195,6 @@ async function getReviewFeed(pool, query) {
   if (currentUserId && reviewIds.length > 0) {
     try {
       const placeholders = reviewIds.map(() => '?').join(',');
-      const [dislikeRows] = await pool.execute(
-        `SELECT review_id FROM review_dislikes WHERE review_id IN (${placeholders}) AND user_id = ?`,
-        [...reviewIds, currentUserId]
-      );
-      userDislikedIds = new Set((dislikeRows || []).map(d => d.review_id));
       const [likeRows] = await pool.execute(
         `SELECT review_id FROM review_likes WHERE review_id IN (${placeholders}) AND user_id = ?`,
         [...reviewIds, currentUserId]
@@ -325,7 +327,7 @@ async function getReviewFeed(pool, query) {
           like_count: r.like_count ?? stats.like_count ?? 0,
           dislike_count: r.dislike_count ?? 0,
           is_liked: userLikedIds.has(r.review_id),
-          is_disliked: userDislikedIds.has(r.review_id),
+          is_disliked: false,
           post_verify_count: stats.post_verify_count ?? 0,
           has_owner_verify_badge: !!stats.has_owner_verify_badge,
           created_at: r.created_at,

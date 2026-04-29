@@ -1,0 +1,35 @@
+.page-root {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.pd-card {
+  padding: var(--space-xl);
+}
+
+.pd-hint {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.5;
+}
+
+.form-row {
+  margin-top: var(--space-lg);
+}
+.form-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+.form-picker {
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16rpx 20rpx;
+  font-size: var(--fs-body);
+}
+
+.pd-submit {
+  margin-top: var(--space-xl);
+}
+

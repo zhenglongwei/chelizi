@@ -30,7 +30,7 @@
           <text class="text-muted fs-cap">说明</text>
           <text class="fs-cap text-muted">竞价截止后已报价仍有效，可随时选择</text>
         </view>
-        <view class="bid-status-row" wx:if="{{bidding.invited_count > 0}}">
+        <view class="bid-status-row" wx:if="{{!isDistributionPending && bidding.invited_count > 0}}">
           <text class="text-muted fs-cap">已通知</text>
           <text class="fs-body">{{notifiedCount}}家服务商报价</text>
         </view>
@@ -45,49 +45,14 @@
         </view>
       </view>
 
-      <!-- AI 分析报告（与定损页一致：明显/可能/维修建议，仅供参考） -->
+      <!-- 预报价参考（与预报价页一致：明显/可能/维修建议，仅供参考） -->
       <view class="bid-report card" wx:if="{{bidding && reportHasAnalysisSection}}">
         <view class="bid-report-head" bindtap="toggleReport">
-          <text class="fs-body fw-bold">AI 分析报告</text>
+          <text class="fs-body fw-bold">预报价参考</text>
           <image class="bid-report-arrow" src="/images/icon/zhedie.png" mode="aspectFit" style="transform: rotate({{reportExpanded ? 180 : 0}}deg);"/>
         </view>
         <view class="bid-report-body" wx:if="{{reportExpanded}}">
-          <view class="bid-report-human" wx:if="{{reportHasHumanLines}}">
-            <view class="bid-report-human-block">
-              <text class="fs-cap fw-bold bid-report-human-title">明显损伤</text>
-              <block wx:if="{{reportHumanDisplay.obvious_damage && reportHumanDisplay.obvious_damage.length}}">
-                <view class="bid-damage-item" wx:for="{{reportHumanDisplay.obvious_damage}}" wx:key="index">
-                  <text class="fs-cap">· {{item}}</text>
-                </view>
-              </block>
-              <text class="text-muted fs-cap bid-report-human-empty" wx:else>暂无明显可见损伤</text>
-            </view>
-            <view class="bid-report-human-block">
-              <text class="fs-cap fw-bold bid-report-human-title">可能损伤</text>
-              <block wx:if="{{reportHumanDisplay.possible_damage && reportHumanDisplay.possible_damage.length}}">
-                <view class="bid-damage-item" wx:for="{{reportHumanDisplay.possible_damage}}" wx:key="index">
-                  <text class="fs-cap">· {{item}}</text>
-                </view>
-              </block>
-              <text class="text-muted fs-cap bid-report-human-empty" wx:else>暂无待进一步确认项</text>
-            </view>
-            <view class="bid-report-human-block">
-              <text class="fs-cap fw-bold bid-report-human-title">维修建议</text>
-              <block wx:if="{{reportHumanDisplay.repair_advice && reportHumanDisplay.repair_advice.length}}">
-                <view class="bid-damage-item" wx:for="{{reportHumanDisplay.repair_advice}}" wx:key="index">
-                  <text class="fs-cap">· {{item}}</text>
-                </view>
-              </block>
-              <text class="text-muted fs-cap bid-report-human-empty" wx:else>暂无专项建议</text>
-            </view>
-          </view>
-          <view class="bid-report-damages" wx:if="{{!reportHasHumanLines && reportDamagesDisplay.length}}">
-            <text class="fs-cap fw-bold">损伤明细</text>
-            <view class="bid-damage-item" wx:for="{{reportDamagesDisplay}}" wx:key="index">
-              <text class="fs-cap">{{item.part}}：{{item.type}}</text>
-            </view>
-          </view>
-          <view class="bid-report-disclaimer text-muted fs-cap">本分析结果仅供参考，具体请以实车检测与正规维修厂意见为准。</view>
+          <accident-report-view vm="{{reportVm}}" />
         </view>
       </view>
 
@@ -159,7 +124,8 @@
               <view class="bid-quote-amount-row">
                 <text class="bid-quote-amount fs-h3 fw-bold text-gold">¥{{item.amountText}}</text>
                 <view class="bid-quote-rating-wrap">
-                  <text class="bid-quote-stars {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                  <text wx:if="{{item.showPublicScore}}" class="bid-quote-stars {{item.scoreNum >= 90 ? 'star-gold' : (item.scoreNum < 60 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+                  <text wx:if="{{!item.showPublicScore}}" class="bid-quote-rating-fallback text-muted fs-cap">{{item.rating}}</text>
                   <text class="bid-quote-good-rate text-success fs-cap" wx:if="{{item.goodRateText}}">{{item.goodRateText}}</text>
                 </view>
               </view>
@@ -189,10 +155,12 @@
 
       <!-- 无报价 -->
       <view class="bid-empty card" wx:elif="{{!loading && quotes.length === 0}}">
-        <text class="text-muted fs-body" wx:if="{{bidding.invited_count > 0}}">已通知 {{notifiedCount}} 家服务商报价，请等待</text>
+        <text class="text-muted fs-body" wx:if="{{isDistributionRejected}}">图片与修车无关，竞价未分发，请返回重新上传事故照片</text>
+        <text class="text-muted fs-body" wx:elif="{{isDistributionPending}}">正在为你匹配服务商，请稍候</text>
+        <text class="text-muted fs-body" wx:elif="{{bidding.invited_count > 0}}">已通知 {{notifiedCount}} 家服务商报价，请等待</text>
         <text class="text-muted fs-body" wx:elif="{{bidding.range_km > 0 && bidding.range_km < 100}}">您选择的范围内暂无服务商，建议扩大搜索范围（如选择全市）后重新发起竞价</text>
         <text class="text-muted fs-body" wx:else>暂无报价，请等待维修厂报价</text>
-        <text class="text-muted fs-cap bid-expand-hint" wx:if="{{bidding.invited_count > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">选定范围内服务商较少，建议扩大搜索范围后重新发起以获得更多报价</text>
+        <text class="text-muted fs-cap bid-expand-hint" wx:if="{{!isDistributionPending && bidding.invited_count > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">选定范围内服务商较少，建议扩大搜索范围后重新发起以获得更多报价</text>
         
       </view>
 
@@ -235,10 +203,17 @@
             </view>
           </view>
         </view>
-        <view class="bid-quote-sheet-section" wx:if="{{sheetQuote.value_added_services && sheetQuote.value_added_services.length}}">
+        <view class="bid-quote-sheet-section" wx:if="{{sheetQuote.ownerVaDisplay && sheetQuote.ownerVaDisplay.show}}">
           <text class="bid-quote-sheet-sec-title fs-cap fw-medium">增值服务</text>
-          <view class="bid-quote-value-added-tags">
-            <text class="bid-quote-va-tag fs-cap" wx:for="{{sheetQuote.value_added_services}}" wx:for-item="va" wx:key="index">{{va.name || va}}</text>
+          <view class="bid-va-owner-wrap">
+            <text class="bid-va-owner-intro fs-body fw-bold">{{sheetQuote.ownerVaDisplay.intro}}</text>
+            <view class="bid-va-owner-block" wx:for="{{sheetQuote.ownerVaDisplay.blocks}}" wx:for-item="blk" wx:key="headline">
+              <text class="bid-va-owner-headline fs-body fw-medium">{{blk.headline}}</text>
+              <text class="bid-va-owner-line fs-cap text-muted" wx:for="{{blk.lines}}" wx:for-item="ln" wx:for-index="li" wx:key="li">· {{ln}}</text>
+            </view>
+            <view class="bid-va-disclaimer">
+              <text class="bid-va-disclaimer-line text-weak fs-cap" wx:for="{{sheetQuote.ownerVaDisplay.disclaimerLines}}" wx:for-item="dln" wx:for-index="di" wx:key="di">{{dln}}</text>
+            </view>
           </view>
         </view>
         <text class="bid-quote-sheet-footnote fs-cap text-muted">本明细为{{quoteNm.biddingPrequoteShort}}；到店后可能调整，以订单内{{quoteNm.finalLockedFull}}为准。点换件旁的配件类型可查看说明。</text>
@@ -292,10 +267,17 @@
             </view>
           </view>
         </view>
-        <view class="bid-modal-items" wx:if="{{confirmQuote.value_added_services && confirmQuote.value_added_services.length}}">
+        <view class="bid-modal-items" wx:if="{{confirmQuote.ownerVaDisplay && confirmQuote.ownerVaDisplay.show}}">
           <text class="fs-cap fw-bold">增值服务</text>
-          <view class="bid-modal-item" wx:for="{{confirmQuote.value_added_services}}" wx:key="index">
-            <text class="fs-sm">{{item.name || item}}</text>
+          <view class="bid-va-owner-wrap bid-va-owner-wrap--compact">
+            <text class="bid-va-owner-intro fs-body fw-bold">{{confirmQuote.ownerVaDisplay.intro}}</text>
+            <view class="bid-va-owner-block" wx:for="{{confirmQuote.ownerVaDisplay.blocks}}" wx:for-item="blk" wx:key="headline">
+              <text class="bid-va-owner-headline fs-body fw-medium">{{blk.headline}}</text>
+              <text class="bid-va-owner-line fs-cap text-muted" wx:for="{{blk.lines}}" wx:for-item="ln" wx:for-index="li" wx:key="li">· {{ln}}</text>
+            </view>
+            <view class="bid-va-disclaimer">
+              <text class="bid-va-disclaimer-line text-weak fs-cap" wx:for="{{confirmQuote.ownerVaDisplay.disclaimerLines}}" wx:for-item="dln" wx:for-index="di" wx:key="di">{{dln}}</text>
+            </view>
           </view>
         </view>
         <view class="bid-modal-prequote-block">
@@ -303,11 +285,24 @@
           <text class="fs-cap text-muted bid-modal-prequote-line">· 当前为{{quoteNm.biddingPrequoteShort}}：到店后将有二次报价及{{quoteNm.finalPendingConfirm}}环节。</text>
           <text class="fs-cap text-muted bid-modal-prequote-line">· 配件类型含义见「报价与配件说明」页（竞价页顶部入口或明细中点击配件类型）。</text>
         </view>
+        <view class="bid-modal-confirm-block">
+          <view class="bid-modal-dwell text-muted fs-cap" wx:if="{{confirmDwellLeft > 0}}">请阅读并停留 {{confirmDwellLeft}} 秒后方可确认</view>
+          <view class="bid-modal-dwell text-muted fs-cap" wx:else>请勾选以下条款后确认</view>
+          <view class="bid-modal-clause" wx:for="{{confirmClauses}}" wx:key="id" data-id="{{item.id}}" bindtap="onToggleConfirmClause">
+            <text class="bid-modal-check {{confirmChecks[item.id] ? 'on' : ''}}">{{confirmChecks[item.id] ? '☑' : '☐'}}</text>
+            <text class="fs-cap text-muted">{{item.text}}</text>
+          </view>
+        </view>
         <text class="bid-modal-subscribe-hint text-muted fs-cap">确认后将申请订阅消息，以便接收维修方案更新等通知</text>
       </view>
       <view class="bid-modal-actions">
         <view class="btn-secondary bid-modal-cancel" bindtap="onCloseConfirm">取消</view>
-        <button class="btn-primary bid-modal-ok" loading="{{selecting}}" bindtap="onConfirmSelect">确认</button>
+        <button
+          class="btn-primary bid-modal-ok"
+          disabled="{{selecting || confirmDwellLeft > 0 || !confirmChecks.prequote_only_visual || !confirmChecks.final_may_change || !confirmChecks.can_refuse_if_unexpected}}"
+          loading="{{selecting}}"
+          bindtap="onConfirmSelect"
+        >确认</button>
       </view>
     </view>
   </block>

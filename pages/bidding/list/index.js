@@ -1,28 +1,12 @@
 // 我的竞价列表 - 09-我的竞价列表页
-const { getToken, getUserBiddings, endBidding } = require('../../../utils/api');
+const { getToken, getUserBiddings } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
-const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-
-const STATUS_MAP = { 0: '询价中', 1: '已关闭', 2: '已取消' };
 
 function formatDate(str) {
   if (!str) return '';
   const d = new Date(str);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function formatCountdown(expireAt) {
-  if (!expireAt) return '--';
-  const end = new Date(expireAt).getTime();
-  const now = Date.now();
-  const diff = end - now;
-  if (diff <= 0) return '窗口已截止';
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  if (h > 0) return `${h}小时${m}分`;
-  if (m > 0) return `${m}分钟`;
-  return '即将结束';
 }
 
 /** 截止时间已到（与 status 是否已落库无关，用于列表展示一致） */
@@ -80,17 +64,15 @@ Page({
         const vi = item.vehicle_info || {};
         const title = vi.plate_number || vi.model || vi.brand || '车辆';
         const timeExpired = isExpireAtPassed(item.expire_at);
-        const isOngoing = item.status === 0 && !timeExpired;
-        const isSelectingPhase = item.status === 0 && timeExpired && !item.selected_shop_id;
-        let statusText = STATUS_MAP[item.status] || '未知';
-        if (item.status === 0 && timeExpired) statusText = '待选厂';
-        let badgeVariant = 'ended';
-        if (isOngoing) badgeVariant = 'ongoing';
-        else if (isSelectingPhase) badgeVariant = 'selecting';
-        const metaTimeLabel = isOngoing ? '剩余' : isSelectingPhase ? '询价截止' : '结束';
-        let metaTimeValue = isOngoing ? formatCountdown(item.expire_at) : formatDate(item.expire_at);
-        if (isSelectingPhase) metaTimeValue = '窗口已截止';
-        const showEndRound = item.status === 0 && !item.selected_shop_id;
+        const selectedShop = !!item.selected_shop_id;
+        /** 报价窗口已结束：时间到、已选厂、或单据已关闭/取消 */
+        const quoteWindowClosed =
+          item.status !== 0 || timeExpired || selectedShop;
+        const isQuoteOngoing = item.status === 0 && !timeExpired && !selectedShop;
+        const statusText = isQuoteOngoing ? '报价进行中' : '报价截止';
+        const badgeVariant = isQuoteOngoing ? 'quote-ongoing' : 'quote-ended';
+        const quoteCount = parseInt(item.quote_count, 10);
+        const hasQuotes = !Number.isNaN(quoteCount) && quoteCount > 0;
         const canRecreate =
           (item.status === 1 || (item.status === 0 && timeExpired)) && !item.selected_shop_id;
         return {
@@ -99,12 +81,9 @@ Page({
           title,
           created_at: formatDate(item.created_at),
           expire_at_fmt: formatDate(item.expire_at),
-          metaTimeLabel,
-          metaTimeValue,
-          isOngoing,
-          isSelectingPhase,
           badgeVariant,
-          showEndRound,
+          hasQuotes,
+          recreateBtnClass: hasQuotes ? 'bidding-btn-secondary' : 'bidding-btn-primary',
           canRecreate
         };
       });
@@ -148,25 +127,6 @@ Page({
     if (id) wx.navigateTo({ url: '/pages/bidding/detail/index?id=' + id });
   },
 
-  onEndBiddingTap(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    wx.showModal({
-      title: '结束本轮比价',
-      content: '确定结束吗？结束后不能再选厂，当前所有报价将作废。',
-      success: async (res) => {
-        if (!res.confirm) return;
-        try {
-          await endBidding(id);
-          ui.showSuccess('已结束本轮');
-          this.loadList(true);
-        } catch (err) {
-          ui.showError(err.message || '操作失败');
-        }
-      }
-    });
-  },
-
   onRecreateTap(e) {
     const reportId = e.currentTarget.dataset.reportId;
     if (!reportId) return;
@@ -178,7 +138,9 @@ Page({
       cancelText: '取消',
       success: (res) => {
         if (!res.confirm) return;
+        // 重新竞价：允许补充照片/信息，可能需要重新 AI 分析
         wx.setStorageSync('pendingReportId', reportId);
+        wx.setStorageSync('pendingRecreateMode', 1);
         navigation.switchTab('/pages/damage/upload/index');
       }
     });

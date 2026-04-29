@@ -1,10 +1,11 @@
-// AI定损页 - 02-AI定损页
+// 预报价页（原 AI定损）- 02-AI定损页
 const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
-const { getToken, getUserId, uploadImage, analyzeDamage, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota, getUserVehicles } = require('../../../utils/api');
+const { getToken, getUserId, uploadImage, analyzeDamage, createDamageReport, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota, getUserVehicles, createDamageReportShareToken, getLeadDamageReport, claimDamageReportByToken } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const { fetchAndApplyUnreadBadge } = require('../../../utils/message-badge');
+const { buildAccidentReportViewModel } = require('../../../utils/accident-report-presenter');
 
 const logger = getLogger('DamageUpload');
 
@@ -23,6 +24,14 @@ const ACCIDENT_TYPES = [
   { value: 'single', label: '单方事故', hint: '选自家的保险公司', needSelf: true, needOther: false },
   { value: 'self_fault', label: '己方全责', hint: '选自家的保险公司', needSelf: true, needOther: false },
   { value: 'other_fault', label: '对方全责', hint: '选对家的保险公司', needSelf: false, needOther: true },
+  {
+    value: 'equal_fault',
+    label: '同等责任',
+    hint: '须同时选择己方保险公司与对方保险公司',
+    needSelf: true,
+    needOther: true,
+    mainNote: '同等责任'
+  },
   { value: 'other_main', label: '对方主责', hint: '选对方和自己的保险公司都选上', needSelf: true, needOther: true, mainNote: '对方主责' },
   { value: 'self_main', label: '己方主责', hint: '选对方和自己的保险公司都选上', needSelf: true, needOther: true, mainNote: '己方主责' }
 ];
@@ -60,6 +69,7 @@ Page({
     currentHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
     currentRepairSuggestions: [],
     currentDamageLevel: '',
+    reportVm: null,
     currentTotalEstimate: [0, 0],
     rangeKm: 5,
     isInsurance: false,
@@ -73,7 +83,14 @@ Page({
     locationLat: null,
     locationLng: null,
     pageRootStyle: 'padding-top: 88px',
-    dailyQuota: { remaining: 3, used: 0, limit: 3 }
+    dailyQuota: { remaining: 3, used: 0, limit: 3 },
+    /** 资料中绑定车牌（去重），供聚焦车牌输入时选择填入，非 AI 识别 */
+    boundPlateList: [],
+    verifiedPlateMismatchHint: '',
+    /** 聚焦车牌输入时展示绑定车牌快捷选择 */
+    plateSuggestionVisible: false,
+    shareToken: '',
+    leadToken: ''
   },
 
   onLoad(options) {
@@ -87,6 +104,12 @@ Page({
     this.checkToken();
     if (getToken()) this._loadDailyQuota();
     const reportId = options.id || options.report_id;
+    const leadToken = (options.lead_token || options.leadToken || '').toString().trim();
+    if (leadToken) {
+      try {
+        wx.setStorageSync('pendingLeadToken', leadToken);
+      } catch (_) {}
+    }
     if (reportId && getToken()) {
       this.loadReportAndShowStep2(reportId);
     }
@@ -108,9 +131,127 @@ Page({
     const pendingId = wx.getStorageSync('pendingReportId');
     if (pendingId) {
       wx.removeStorageSync('pendingReportId');
-      this.loadReportAndShowStep2(pendingId);
+      const recreateMode = wx.getStorageSync('pendingRecreateMode');
+      if (recreateMode) {
+        wx.removeStorageSync('pendingRecreateMode');
+        // 重新竞价：回到步骤 1，预填历史材料，允许补充后再次提交（会重新入队 AI + 新竞价）
+        this.loadReportForRecreate(pendingId);
+      } else {
+        // 历史报告：直接进入步骤 2，可直接发起竞价（不重复 AI 分析）
+        this.loadReportAndShowStep2(pendingId);
+      }
     }
     if (this.data.step === 1 && getToken()) this._loadDailyQuota();
+    // 外部引流 token：先展示摘要；发起竞价时需登录后认领，否则引导重新上传
+    const leadToken = wx.getStorageSync('pendingLeadToken');
+    if (leadToken) {
+      wx.removeStorageSync('pendingLeadToken');
+      this.loadLeadReportByTokenAndShowStep2(leadToken);
+    }
+    if (this.data.step === 2 && getToken()) {
+      this._loadBoundPlateList().then((list) => {
+        if (this.data.step !== 2) return;
+        const hint = this._computeVerifiedPlateMismatchHint(this.data.vehiclesList, this.data.selectedVehicleIndex, list);
+        this.setData({ boundPlateList: list, verifiedPlateMismatchHint: hint });
+      });
+    }
+  },
+
+  async loadLeadReportByTokenAndShowStep2(token) {
+    const t = String(token || '').trim();
+    if (!t) return;
+    const loadToken = ++this._reportLoadToken;
+    try {
+      const res = await getLeadDamageReport(t);
+      if (loadToken !== this._reportLoadToken) return;
+      const ar = res.analysis_result || {};
+      const vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      const boundPlateList = getToken() ? await this._loadBoundPlateList() : [];
+      const verifiedPlateMismatchHint = this._computeVerifiedPlateMismatchHint(vehiclesList, 0, boundPlateList);
+      const damages = ar.damages || [];
+      const totalEst = ar.total_estimate || [0, 0];
+      const report = {
+        report_id: res.report_id,
+        damages,
+        damage_level: ar.damage_level,
+        warranty: ar.warranty,
+        total_estimate: totalEst,
+        repair_suggestions: ar.repair_suggestions || []
+      };
+      this.setData({
+        reportId: res.report_id,
+        report,
+        vehiclesList,
+        selectedVehicleIndex: 0,
+        vehicleEdits: {},
+        boundPlateList,
+        verifiedPlateMismatchHint,
+        plateSuggestionVisible: false,
+        images: [],
+        imageUrls: [],
+        step: 2,
+        shareToken: '',
+        leadToken: t,
+      }, () => {
+        this._updateVehicleDisplay(0);
+        this._loadBiddingLocation();
+      });
+    } catch (err) {
+      ui.showError(err.message || '加载失败');
+    }
+  },
+
+  /**
+   * 重新竞价：用历史报告预填「照片/描述/车辆信息」，回到步骤 1 允许补充后重新提交
+   * - 重新提交会创建新 report 并入队 AI，再创建新竞价进入分发
+   */
+  async loadReportForRecreate(reportId) {
+    const token = ++this._reportLoadToken;
+    try {
+      const res = await getDamageReport(reportId);
+      if (token !== this._reportLoadToken) return;
+
+      let images = [];
+      try {
+        images = Array.isArray(res.images) ? res.images : JSON.parse(res.images || '[]');
+      } catch (_) {
+        images = [];
+      }
+      // 历史图为网络 URL：放入 imageUrls 预览；images 也用 URL（onSubmitPreQuote 已支持 isRemoteImageUrl 不再重复上传）
+      const imageUrls = images.filter(Boolean);
+
+      const vi = (res && res.vehicle_info && typeof res.vehicle_info === 'object') ? res.vehicle_info : {};
+      const vehicleInfo = {
+        plate_number: String(vi.plate_number || '').trim(),
+        brand: String(vi.brand || '').trim(),
+        model: String(vi.model || '').trim(),
+      };
+
+      this.setData({
+        step: 1,
+        report: null,
+        reportId: '',
+        vehiclesList: [],
+        selectedVehicleIndex: 0,
+        vehicleEdits: {},
+        plateMatchInput: '',
+        currentDamages: [],
+        currentRepairSuggestions: [],
+        submitting: false,
+        analyzing: false,
+        analyzeProgress: 0,
+        progressStyle: 'width: 0%',
+        images: imageUrls,
+        imageUrls,
+        userDescription: (res.user_description || '').trim(),
+        vehicleInfo,
+      });
+      ui.showSuccess('已带入历史材料，可补充后重新提交');
+      this._loadDailyQuota();
+    } catch (err) {
+      logger.error('加载报告用于重新竞价失败', err);
+      ui.showError(err.message || '加载历史材料失败');
+    }
   },
 
   async _loadDailyQuota() {
@@ -177,79 +318,84 @@ Page({
   },
   
 
-  async onStartAnalyze() {
-    const { images, vehicleInfo, analyzing, hasToken, dailyQuota } = this.data;
-    if (!hasToken) {
+  async onSubmitPreQuote() {
+    const { images, analyzing } = this.data;
+    if (analyzing) return;
+    if (!images || images.length < 1) {
+      ui.showWarning('请至少上传 1 张事故照片');
+      return;
+    }
+    if (!getToken()) {
       ui.showWarning('请先登录');
       return;
     }
-    if ((dailyQuota?.remaining ?? 1) <= 0) {
-      ui.showWarning('今日定损次数已用完，请明日再试');
+    const plate = String(this.data.vehicleInfo?.plate_number || '').trim();
+    if (!plate) {
+      ui.showWarning('请先填写车牌号');
       return;
     }
-    if (!images.length) {
-      ui.showWarning('请上传事故照片');
-      return;
-    }
-    if (images.length < 1) {
-      ui.showWarning('请至少上传 1 张照片');
-      return;
-    }
-    if (analyzing) return;
-
-    // 用户主动重新定损：使进行中的「拉取历史报告」在返回后不再 setData，避免覆盖本次新结果
-    this._reportLoadToken = (this._reportLoadToken || 0) + 1;
-
     this.setData({ analyzing: true, analyzeProgress: 0, progressStyle: 'width: 0%' });
-
     try {
       const progressStep = 60 / images.length;
       const imageUrls = [];
-
       for (let i = 0; i < images.length; i++) {
         const raw = images[i];
         const url = isRemoteImageUrl(raw) ? raw : await uploadImage(raw);
         imageUrls.push(url);
         const p = Math.round(20 + progressStep * (i + 1));
-        this.setData({
-          analyzeProgress: p,
-          progressStyle: 'width: ' + p + '%',
-          imageUrls
-        });
+        this.setData({ analyzeProgress: p, progressStyle: 'width: ' + p + '%', imageUrls });
       }
-
       this.setData({ analyzeProgress: 85, progressStyle: 'width: 85%' });
 
-      const result = await analyzeDamage({
-        user_id: getUserId(),
+      const res = await createDamageReport({
         images: imageUrls,
         user_description: (this.data.userDescription || '').trim() || undefined,
         vehicle_info: {
-          plate_number: vehicleInfo.plate_number || undefined,
-          brand: vehicleInfo.brand || undefined,
-          model: vehicleInfo.model || undefined,
-        }
+          plate_number: plate,
+          brand: String(this.data.vehicleInfo?.brand || '').trim() || undefined,
+          model: String(this.data.vehicleInfo?.model || '').trim() || undefined,
+        },
+      });
+      // 创建竞价：定损异步执行（pending），待 worker 判断 relevant 后自动分发
+      const { locationLat, locationLng } = this.data;
+      let latitude = locationLat;
+      let longitude = locationLng;
+      if (latitude == null || longitude == null) {
+        try {
+          const loc = await new Promise((resolve, reject) => {
+            wx.getLocation({ type: 'gcj02', success: resolve, fail: reject });
+          });
+          if (loc && loc.latitude != null && loc.longitude != null) {
+            latitude = loc.latitude;
+            longitude = loc.longitude;
+          }
+        } catch (_) {}
+      }
+      if (latitude == null || longitude == null) {
+        this.setData({ analyzing: false, analyzeProgress: 0, progressStyle: 'width: 0%' });
+        ui.showWarning('请先选择询价位置，附近服务商才能收到您的询价');
+        return;
+      }
+
+      const biddingRes = await createBidding({
+        report_id: res.report_id,
+        range: 5,
+        insurance_info: { is_insurance: false },
+        vehicle_info: {
+          plate_number: plate,
+          brand: String(this.data.vehicleInfo?.brand || '').trim() || undefined,
+          model: String(this.data.vehicleInfo?.model || '').trim() || undefined,
+        },
+        latitude,
+        longitude,
       });
 
-      const vehiclesList = this._normalizeVehiclesList(result.vehicle_info, result);
-      const quota = { remaining: result.remainingCount ?? 0, used: (result.maxCount ?? 3) - (result.remainingCount ?? 0), limit: result.maxCount ?? 3 };
-      this.setData({
-        analyzeProgress: 100,
-        progressStyle: 'width: 100%',
-        reportId: result.report_id,
-        report: result,
-        vehiclesList,
-        selectedVehicleIndex: 0,
-        vehicleEdits: {},
-        step: 2,
-        analyzing: false,
-        dailyQuota: quota
-      }, () => {
-        this._updateVehicleDisplay(0);
-      });
+      this.setData({ analyzing: false, analyzeProgress: 100, progressStyle: 'width: 100%' });
+      ui.showSuccess('已提交，正在分发');
+      navigation.redirectTo('/pages/bidding/wait/index', { id: biddingRes?.bidding_id });
     } catch (err) {
-      logger.error('AI 分析失败', err);
-      ui.showError(err.message || '分析失败');
+      logger.error('跳过分析失败', err);
+      ui.showError(err.message || '提交失败');
       this.setData({ analyzing: false, analyzeProgress: 0, progressStyle: 'width: 0%' });
     }
   },
@@ -280,9 +426,8 @@ Page({
   },
 
   onVehicleTabTap(e) {
-    const idx = e.currentTarget.dataset.index;
-    this._updateVehicleDisplay(idx);
-    this.setData({ selectedVehicleIndex: idx });
+    const idx = parseInt(e.currentTarget.dataset.index, 10) || 0;
+    this._onSelectVehicleIndex(idx);
   },
 
   /** 根据车牌号、车型、颜色等匹配车辆索引（车牌可能识别错误，综合匹配） */
@@ -292,8 +437,7 @@ Page({
     const { vehiclesList } = this.data;
     const idx = this._matchVehicleByInput(input, vehiclesList);
     if (idx >= 0) {
-      this._updateVehicleDisplay(idx);
-      this.setData({ selectedVehicleIndex: idx, plateMatchInput: input });
+      this._onSelectVehicleIndex(idx, { plateMatchInput: input });
     }
   },
 
@@ -308,6 +452,92 @@ Page({
     } catch (_) {
       return [];
     }
+  },
+
+  /**
+   * 拉取绑定车辆车牌列表（与接口顺序一致，按归一化车牌去重，保留首次出现写法）。
+   */
+  async _loadBoundPlateList() {
+    try {
+      const res = await getUserVehicles();
+      const raw = (res?.list || []).map((r) => String(r.plate_number || '').trim()).filter(Boolean);
+      const seen = new Set();
+      const list = [];
+      for (let i = 0; i < raw.length; i++) {
+        const p = raw[i];
+        const n = this._normalizePlate(p);
+        if (!n || seen.has(n)) continue;
+        seen.add(n);
+        list.push(p);
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  },
+
+  /**
+   * AI 识别到车牌且与任一绑定车牌均不一致时提示；不拦截、不自动改 AI 结果。
+   */
+  _computeVerifiedPlateMismatchHint(vehiclesList, selectedIndex, boundPlateList) {
+    const plates = Array.isArray(boundPlateList) ? boundPlateList.filter((p) => String(p || '').trim()) : [];
+    if (!plates.length || !vehiclesList || !vehiclesList.length) return '';
+    const v = vehiclesList[selectedIndex];
+    if (!v) return '';
+    const aiP = String(v.plateNumber || '').trim();
+    if (!aiP) return '';
+    const aiNorm = this._normalizePlate(aiP);
+    if (plates.some((p) => this._normalizePlate(p) === aiNorm)) return '';
+    const show = plates.length <= 3 ? plates.join('、') : plates.slice(0, 3).join('、') + ' 等';
+    const vid = v.vehicleId ? `（${v.vehicleId}）` : '';
+    return `您资料中绑定车牌含 ${show}，AI 识别${vid}为 ${aiP}，请核对。`;
+  },
+
+  _onSelectVehicleIndex(idx, extra = {}) {
+    if (this._plateBlurTimer) {
+      clearTimeout(this._plateBlurTimer);
+      this._plateBlurTimer = null;
+    }
+    this._updateVehicleDisplay(idx);
+    const hint = this._computeVerifiedPlateMismatchHint(this.data.vehiclesList, idx, this.data.boundPlateList);
+    this.setData({
+      selectedVehicleIndex: idx,
+      verifiedPlateMismatchHint: hint,
+      plateSuggestionVisible: false,
+      ...extra
+    });
+  },
+
+  onReportPlateFocus() {
+    if (this._plateBlurTimer) {
+      clearTimeout(this._plateBlurTimer);
+      this._plateBlurTimer = null;
+    }
+    const { boundPlateList } = this.data;
+    if (!boundPlateList || !boundPlateList.length) return;
+    this.setData({ plateSuggestionVisible: true });
+  },
+
+  onReportPlateBlur() {
+    this._plateBlurTimer = setTimeout(() => {
+      this.setData({ plateSuggestionVisible: false });
+      this._plateBlurTimer = null;
+    }, 280);
+  },
+
+  onPickBoundPlate(e) {
+    if (this._plateBlurTimer) {
+      clearTimeout(this._plateBlurTimer);
+      this._plateBlurTimer = null;
+    }
+    const plate = String(e.currentTarget.dataset.plate || '').trim();
+    const idx = this.data.selectedVehicleIndex;
+    if (!plate || idx == null) return;
+    const key = 'vehicleEdits.' + idx + '.plate_number';
+    this.setData({
+      [key]: plate,
+      plateSuggestionVisible: false
+    });
   },
 
   _matchVehicleByInput(input, vehiclesList) {
@@ -451,7 +681,8 @@ Page({
       currentHumanDisplay,
       currentRepairSuggestions: repairSuggestions,
       currentDamageLevel: damageLevel,
-      currentTotalEstimate
+      currentTotalEstimate,
+      reportVm: buildAccidentReportViewModel({ mode: 'miniapp', human_display: currentHumanDisplay })
     });
   },
 
@@ -569,7 +800,21 @@ Page({
         return;
       }
       const ar = res.analysis_result || {};
-      const vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      // 历史报告：若已写入 analysis_focus_vehicle_id，则仅展示该车（避免出现多车选择）
+      const metaVehicleInfo = (res && res.vehicle_info && typeof res.vehicle_info === 'object') ? res.vehicle_info : {};
+      const focusVehicleId = String(metaVehicleInfo.analysis_focus_vehicle_id || '').trim();
+
+      let vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      let selectedVehicleIndex = 0;
+      if (focusVehicleId && vehiclesList && vehiclesList.length > 1) {
+        const idx = vehiclesList.findIndex((v) => String(v && v.vehicleId ? v.vehicleId : '').trim() === focusVehicleId);
+        if (idx >= 0) {
+          vehiclesList = [vehiclesList[idx]];
+          selectedVehicleIndex = 0;
+        }
+      }
+      const boundPlateList = await this._loadBoundPlateList();
+      const verifiedPlateMismatchHint = this._computeVerifiedPlateMismatchHint(vehiclesList, selectedVehicleIndex, boundPlateList);
       const damages = ar.damages || [];
       const totalEst = ar.total_estimate || [0, 0];
       let damageLevel = ar.damage_level;
@@ -589,14 +834,19 @@ Page({
         reportId: res.report_id,
         report,
         vehiclesList,
-        selectedVehicleIndex: 0,
+        selectedVehicleIndex,
         vehicleEdits: {},
+        boundPlateList,
+        plateSuggestionVisible: false,
+        verifiedPlateMismatchHint,
         images: [],
         imageUrls: [],
-        step: 2
+        step: 2,
+        shareToken: ''
       }, () => {
-        this._updateVehicleDisplay(0);
+        this._updateVehicleDisplay(selectedVehicleIndex);
         this._loadBiddingLocation();
+        this.ensureShareTokenSilent(res.report_id);
       });
     } catch (err) {
       logger.error('加载报告失败', err);
@@ -622,18 +872,85 @@ Page({
       images: [],
       imageUrls: [],
       analyzeProgress: 0,
-      progressStyle: 'width: 0%'
+      progressStyle: 'width: 0%',
+      vehicleInfo: { plate_number: '', brand: '', model: '' },
+      boundPlateList: [],
+      verifiedPlateMismatchHint: '',
+      plateSuggestionVisible: false,
+      leadToken: ''
     });
     this._loadDailyQuota();
   },
 
+  async onPrepareShare() {
+    const reportId = this.data.reportId;
+    if (!reportId) return;
+    try {
+      wx.showLoading({ title: '生成分享链接…' });
+      const res = await createDamageReportShareToken(reportId);
+      const token = res && res.token ? res.token : '';
+      if (!token) throw new Error('分享生成失败');
+      this.setData({ shareToken: token });
+      wx.hideLoading();
+      ui.showSuccess('可点击转发');
+    } catch (err) {
+      wx.hideLoading();
+      ui.showError(err.message || '分享暂不可用');
+    }
+  },
+
+  async ensureShareTokenSilent(reportId) {
+    const rid = String(reportId || this.data.reportId || '').trim();
+    if (!rid || this.data.shareToken) return;
+    try {
+      const res = await createDamageReportShareToken(rid);
+      const token = res && res.token ? res.token : '';
+      if (token) this.setData({ shareToken: token });
+    } catch (_) {}
+  },
+
+  onShareAppMessage() {
+    const token = this.data.shareToken;
+    if (token) {
+      return {
+        title: '损失报告（AI）摘要（仅供参考）',
+        path: '/pages/damage/share/index?token=' + encodeURIComponent(token),
+      };
+    }
+    return {
+      title: '事故车预报价（仅供参考）',
+      path: '/pages/index/index',
+    };
+  },
+
   async onCreateBidding() {
-    const { reportId, report, vehicleInfo, vehiclesList, selectedVehicleIndex, vehicleEdits, rangeKm, isInsurance, accidentTypeIndex, insuranceCompanyIndex, insuranceCompanyOtherIndex, insuranceCompanies, accidentTypes, submitting, locationLat, locationLng } = this.data;
+    const { reportId, report, vehicleInfo, vehiclesList, selectedVehicleIndex, vehicleEdits, rangeKm, isInsurance, accidentTypeIndex, insuranceCompanyIndex, insuranceCompanyOtherIndex, insuranceCompanies, accidentTypes, submitting, locationLat, locationLng, leadToken } = this.data;
     if (!reportId || submitting) return;
 
     if (!getToken()) {
       ui.showWarning('请先登录');
       return;
+    }
+
+    // 外部引流：先认领 token，确保该报告归属到当前用户；若已被他人使用，则引导重新上传
+    if (leadToken) {
+      try {
+        const claimed = await claimDamageReportByToken(leadToken);
+        if (claimed && claimed.report_id) {
+          this.setData({ reportId: claimed.report_id });
+        }
+      } catch (e) {
+        wx.showModal({
+          title: '无法继续',
+          content: e.message || '该报告已被他人使用，请重新上传照片分析',
+          confirmText: '重新上传',
+          showCancel: false,
+          success: () => {
+            this.onCloseReport();
+          }
+        });
+        return;
+      }
     }
 
     if (isInsurance) {
@@ -741,9 +1058,9 @@ Page({
         ...(focusAiVehicleId ? { analysis_focus_vehicle_id: focusAiVehicleId } : {})
       });
 
-      ui.showSuccess(res.duplicate ? '该定损单已发起竞价，正在跳转' : '竞价发起成功');
+      ui.showSuccess(res.duplicate ? '该预报价已发起竞价，正在跳转' : '已提交，正在分发');
       this.setData({ submitting: false });
-      navigation.navigateTo('/pages/bidding/detail/index', { id: res.bidding_id });
+      navigation.navigateTo('/pages/bidding/wait/index', { id: res.bidding_id });
     } catch (err) {
       logger.error('发起竞价失败', err);
       ui.showError(err.message || '发起失败');

@@ -1,0 +1,13 @@
+<view class="ar-root" wx:if="{{vm && vm.sections}}">
+  <view class="ar-section" wx:for="{{vm.sections}}" wx:key="key">
+    <view class="fs-body fw-bold ar-title">{{item.title}}</view>
+    <block wx:if="{{item.items && item.items.length}}">
+      <view class="ar-item" wx:for="{{item.items}}" wx:key="*this">
+        <text class="fs-body">· {{item}}</text>
+      </view>
+    </block>
+    <text class="text-muted fs-body" wx:else>{{item.emptyText}}</text>
+  </view>
+  <view class="ar-disclaimer text-muted fs-sm">{{vm.disclaimer}}</view>
+</view>
+

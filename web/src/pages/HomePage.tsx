@@ -29,6 +29,7 @@ export default function HomePage() {
             <Link to="/about">关于我们</Link>
             <Link to="/contact">联系我们</Link>
             <Link to="/fair-price">历史成交参考价</Link>
+            <a href="/h5/tools" target="_blank" rel="noreferrer">诊断与验真工具</a>
             <Link to="/admin/login">管理后台</Link>
           </nav>
         </div>
@@ -103,6 +104,20 @@ export default function HomePage() {
             </Paragraph>
             <Button type="primary" onClick={() => navigate('/fair-price')}>
               去查询
+            </Button>
+          </Card>
+        </section>
+
+        <section className="intro-section" style={{ paddingTop: 0 }}>
+          <Card style={{ maxWidth: 720, margin: '0 auto' }}>
+            <Title level={4} style={{ marginTop: 0 }}>
+              高频工具入口（AI诊断 + 配件验真）
+            </Title>
+            <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              支持官网、公众号、独立H5直接使用；完成分析后可继续跳转小程序承接报价转化。
+            </Paragraph>
+            <Button type="primary" href="/h5/tools" target="_blank" rel="noreferrer">
+              打开工具中心
             </Button>
           </Card>
         </section>

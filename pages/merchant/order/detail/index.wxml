@@ -1,14 +1,16 @@
-<!-- 服务商订单详情 - M07 -->
+<!-- 服务商订单详情 - M07：概览 → 车况与约定 → 维修过程 -->
 <custom-nav-bar title="订单详情" showBack="{{true}}" />
 <view class="page-root merchant-order-detail" style="{{pageRootStyle}}">
-  <!-- 卡片1：订单状态 + 工期计时器 -->
-  <view class="detail-section card" wx:if="{{order}}">
+  <!-- 阶段1：概览（订单状态 + 工期） -->
+  <view class="detail-section card merchant-phase-card merchant-phase-rail" wx:if="{{order}}">
+    <view class="merchant-phase-header">
+      <text class="merchant-phase-kicker">概览</text>
+    </view>
     <view class="section-head">
       <view class="section-title fs-body fw-medium">订单状态</view>
     </view>
     <view class="status-text">{{order.status_text}}</view>
 
-    <!-- 工期计时器（待接单/维修中时显示） -->
     <view class="duration-timer-wrap" wx:if="{{order.status <= 1 && order.quote && order.quote.duration && order.duration_deadline}}">
       <view class="section-head">
         <view class="section-title fs-body fw-medium">施工期限</view>
@@ -27,98 +29,127 @@
         </view>
       </view>
     </view>
+
+    <view class="duration-timer-wrap" wx:if="{{lifecycleCountdownVisible}}">
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">{{lifecycleCountdownTitle}}</view>
+      </view>
+      <view class="duration-timer {{lifecycleCountdownExpired ? 'expired' : ''}}">
+        <view class="duration-timer-main">
+          <text class="duration-days" wx:if="{{order.lifecycle_sub === 'merchant_not_handled_claimed'}}">车主已发起“维修商未处理”，请在剩余时间内推进否则系统将自动取消</text>
+          <text class="duration-days" wx:else>请在剩余时间内完成当前节点处理</text>
+        </view>
+        <view class="duration-countdown" wx:if="{{!lifecycleCountdownExpired}}">
+          <text class="countdown-label">剩余</text>
+          <text class="countdown-value">{{lifecycleCountdownText}}</text>
+        </view>
+        <view class="duration-countdown expired" wx:else>
+          <text class="countdown-value">已到期</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="duration-timer-wrap" wx:if="{{lifecycleCountdownVisible}}">
+      <view class="section-head">
+        <view class="section-title fs-body fw-medium">{{lifecycleCountdownTitle}}</view>
+      </view>
+      <view class="duration-timer {{lifecycleCountdownExpired ? 'expired' : ''}}">
+        <view class="duration-timer-main">
+          <text class="duration-days" wx:if="{{order.lifecycle_sub === 'merchant_not_handled_claimed'}}">车主已发起“维修商未处理”，请在剩余时间内推进否则系统将自动取消</text>
+          <text class="duration-days" wx:else>请在剩余时间内完成当前节点处理</text>
+        </view>
+        <view class="duration-countdown" wx:if="{{!lifecycleCountdownExpired}}">
+          <text class="countdown-label">剩余</text>
+          <text class="countdown-value">{{lifecycleCountdownText}}</text>
+        </view>
+        <view class="duration-countdown expired" wx:else>
+          <text class="countdown-value">已到期</text>
+        </view>
+      </view>
+    </view>
   </view>
 
-  <!-- 卡片2：车辆信息 + 损伤情况 + 报价 + 维修建议 + 增值服务 + 车主 -->
-  <view class="detail-section card" wx:if="{{order}}">
+  <!-- 自救/延期记录（只读提示与留痕） -->
+  <view class="detail-section card" wx:if="{{(selfHelpRequests && selfHelpRequests.length) || (waitingPartsExtensions && waitingPartsExtensions.length)}}">
     <view class="section-head">
-      <view class="section-title fs-body fw-medium">车辆信息</view>
+      <view class="section-title fs-body fw-medium">留痕记录</view>
     </view>
-    <view class="vehicle-info text-muted fs-body">{{order.vehicle_info.brand || ''}} {{order.vehicle_info.model || ''}} {{order.vehicle_info.plate_number || ''}}</view>
-
-    <!-- 损伤情况（来自定损报告） -->
-    <view class="section-head" wx:if="{{order.analysis_result && order.analysis_result.damages && order.analysis_result.damages.length}}">
-      <view class="section-title fs-body fw-medium">损伤情况</view>
-    </view>
-    <view class="damage-list" wx:if="{{order.analysis_result && order.analysis_result.damages && order.analysis_result.damages.length}}">
-      <view class="damage-item" wx:for="{{order.analysis_result.damages}}" wx:key="index">
-        <view wx:if="{{item.part && item.type}}" class="damage-item-row">
-          <text class="fs-body">{{item.part}}：</text>
-          <text class="text-muted fs-cap">{{item.type}}</text>
-        </view>
-        <block wx:elif="{{item.sub && item.sub.length}}">
-          <view class="damage-sub" wx:for="{{item.sub}}" wx:for-item="sub" wx:key="index">
-            <text class="fs-body">{{sub.damage_part || sub.name || sub.item}}</text>
-            <text class="text-muted fs-cap">{{sub.repair_type || '维修'}}{{sub.repair_type === '换' && sub.parts_type ? ' · ' + sub.parts_type : ''}}</text>
+    <view wx:if="{{selfHelpRequests && selfHelpRequests.length}}">
+      <text class="text-muted fs-cap" style="display:block;line-height:1.55;">车主侧自救请求记录（用于核对与规则执行）。</text>
+      <view class="waiting-parts-item" wx:for="{{selfHelpRequests}}" wx:key="request_id">
+        <text class="fs-body fw-medium">
+          {{item.request_type === 'merchant_not_handled' ? '维修商未处理' : (item.request_type === 'force_close' ? '强制结单' : '自救请求')}}
+          <text class="text-muted fs-cap" wx:if="{{item.status}}"> · {{item.status}}</text>
+        </text>
+        <text class="text-muted fs-cap" style="display:block;margin-top:4rpx;" wx:if="{{item.note}}">说明：{{item.note}}</text>
+        <text class="text-weak fs-cap" style="display:block;margin-top:4rpx;">{{item.created_at}}</text>
+        <view class="evidence-grid evidence-grid--spaced" wx:if="{{item.image_urls && item.image_urls.length}}">
+          <view class="evidence-thumb" wx:for="{{item.image_urls}}" wx:for-item="iu" wx:key="*this" bindtap="onPreviewEvidence" data-urls="{{item.image_urls}}" data-current="{{iu}}">
+            <image src="{{iu}}" mode="aspectFill"/>
           </view>
-        </block>
-        <view wx:else class="damage-item-row">
-          <text class="fs-body">{{item.damage_part || item.name || item.part || item.item}}：</text>
-          <text class="text-muted fs-cap">{{item.repair_type || item.type || '维修'}}</text>
         </view>
       </view>
     </view>
 
-    <view class="section-head">
-      <view class="section-title fs-body fw-medium">报价</view>
-    </view>
-    <view class="quote-info">
-      <text class="text-gold fs-body fw-medium">¥{{order.displayAmount || order.quoted_amount}}</text>
-      <text class="text-muted fs-cap" wx:if="{{order.displayDuration || order.quote}}">，工期{{order.displayDuration || order.quote.duration}}天</text>
-    </view>
-
-    <!-- 维修方案（接单后为正式方案，来自 repair_plan 或 quote） -->
-    <view class="section-head section-head-with-action" wx:if="{{planItems.length}}">
-      <view class="section-title fs-body fw-medium">{{order.status >= 1 ? '维修方案' : '维修建议'}}</view>
-      <view class="section-actions">
-        <view class="section-more" wx:if="{{canEditPlan}}" bindtap="onEditPlan">修改方案</view>
-        <view class="section-more" wx:if="{{canSubmitFinalQuote}}" bindtap="onSubmitFinalQuote">{{finalQuoteLocked ? '继续修改报价单' : '修改报价单'}}</view>
+    <view wx:if="{{waitingPartsExtensions && waitingPartsExtensions.length}}" style="margin-top:var(--space-md);">
+      <text class="text-muted fs-cap" style="display:block;line-height:1.55;">等待配件延期记录（服务商提交采购/到货凭证）。</text>
+      <view class="waiting-parts-item" wx:for="{{waitingPartsExtensions}}" wx:key="extension_id">
+        <text class="fs-body fw-medium">延长 {{item.extend_days}} 天</text>
+        <text class="text-muted fs-cap" style="display:block;margin-top:4rpx;">{{item.note || '—'}}</text>
+        <text class="text-weak fs-cap" style="display:block;margin-top:4rpx;">{{item.created_at}}</text>
+        <view class="evidence-grid evidence-grid--spaced" wx:if="{{item.proof_urls && item.proof_urls.length}}">
+          <view class="evidence-thumb" wx:for="{{item.proof_urls}}" wx:for-item="pu" wx:key="*this" bindtap="onPreviewEvidence" data-urls="{{item.proof_urls}}" data-current="{{pu}}">
+            <image src="{{pu}}" mode="aspectFill"/>
+          </view>
+        </view>
       </view>
-    </view>
-    <view class="repair-items" wx:if="{{planItems.length}}">
-      <view class="repair-item" wx:for="{{planItems}}" wx:key="index">
-        <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
-        <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}{{item.price != null ? ' · ¥' + item.price : ''}}{{item.warranty_months != null ? ' · 质保' + item.warranty_months + '月' : ''}}</text>
-      </view>
-    </view>
-
-    <!-- 增值服务 -->
-    <view class="section-head" wx:if="{{planValueAdded.length}}">
-      <view class="section-title fs-body fw-medium">增值服务</view>
-    </view>
-    <view class="value-added-list" wx:if="{{planValueAdded.length}}">
-      <view class="value-added-item fs-body" wx:for="{{planValueAdded}}" wx:key="index">{{item.name || item}}</view>
-    </view>
-
-    <view class="order-tier-info text-muted fs-cap" wx:if="{{order.complexity_level || order.commission_rate}}">
-      <text wx:if="{{order.complexity_level}}">复杂度 {{order.complexity_level}}</text>
-      <text wx:if="{{order.commission_rate}}"> · 佣金 {{order.commission_rate}}</text>
-    </view>
-    <view class="section-head">
-      <view class="section-title fs-body fw-medium">车主</view>
-    </view>
-    <view class="owner-info fs-body">{{order.owner_nickname || '车主'}} <text class="link" bindtap="onCallOwner" wx:if="{{order.owner_phone}}">拨打电话</text></view>
-  </view>
-  <!-- 撤单申请（服务商响应） -->
-  <view class="detail-section card" wx:if="{{order && order.pending_cancel_request}}">
-    <view class="section-head">
-      <view class="section-title fs-body fw-medium">撤单申请</view>
-    </view>
-    <view class="cancel-reason text-muted fs-body">{{order.pending_cancel_request.reason}}</view>
-    <view class="action-btns action-btns-row">
-      <button class="btn-primary" bindtap="onRespondCancel" data-approve="{{true}}">同意撤单</button>
-      <button class="btn-secondary" bindtap="onRespondCancel" data-approve="{{false}}">拒绝</button>
     </view>
   </view>
 
-  <!-- 已转后台人工审核（勿重复提交） -->
+  <!-- 自救/延期记录（只读提示与留痕） -->
+  <view class="detail-section card" wx:if="{{(selfHelpRequests && selfHelpRequests.length) || (waitingPartsExtensions && waitingPartsExtensions.length)}}">
+    <view class="section-head">
+      <view class="section-title fs-body fw-medium">留痕记录</view>
+    </view>
+    <view wx:if="{{selfHelpRequests && selfHelpRequests.length}}">
+      <text class="text-muted fs-cap" style="display:block;line-height:1.55;">车主侧自救请求记录（用于核对与规则执行）。</text>
+      <view class="waiting-parts-item" wx:for="{{selfHelpRequests}}" wx:key="request_id">
+        <text class="fs-body fw-medium">
+          {{item.request_type === 'merchant_not_handled' ? '维修商未处理' : (item.request_type === 'force_close' ? '强制结单' : '自救请求')}}
+          <text class="text-muted fs-cap" wx:if="{{item.status}}"> · {{item.status}}</text>
+        </text>
+        <text class="text-muted fs-cap" style="display:block;margin-top:4rpx;" wx:if="{{item.note}}">说明：{{item.note}}</text>
+        <text class="text-weak fs-cap" style="display:block;margin-top:4rpx;">{{item.created_at}}</text>
+        <view class="evidence-grid evidence-grid--spaced" wx:if="{{item.image_urls && item.image_urls.length}}">
+          <view class="evidence-thumb" wx:for="{{item.image_urls}}" wx:for-item="iu" wx:key="*this" bindtap="onPreviewEvidence" data-urls="{{item.image_urls}}" data-current="{{iu}}">
+            <image src="{{iu}}" mode="aspectFill"/>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{waitingPartsExtensions && waitingPartsExtensions.length}}" style="margin-top:var(--space-md);">
+      <text class="text-muted fs-cap" style="display:block;line-height:1.55;">等待配件延期记录（服务商提交采购/到货凭证）。</text>
+      <view class="waiting-parts-item" wx:for="{{waitingPartsExtensions}}" wx:key="extension_id">
+        <text class="fs-body fw-medium">延长 {{item.extend_days}} 天</text>
+        <text class="text-muted fs-cap" style="display:block;margin-top:4rpx;">{{item.note || '—'}}</text>
+        <text class="text-weak fs-cap" style="display:block;margin-top:4rpx;">{{item.created_at}}</text>
+        <view class="evidence-grid evidence-grid--spaced" wx:if="{{item.proof_urls && item.proof_urls.length}}">
+          <view class="evidence-thumb" wx:for="{{item.proof_urls}}" wx:for-item="pu" wx:key="*this" bindtap="onPreviewEvidence" data-urls="{{item.proof_urls}}" data-current="{{pu}}">
+            <image src="{{pu}}" mode="aspectFill"/>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 材料质检（不阻塞完工；仅提示） -->
   <view class="detail-section card material-audit-manual" wx:if="{{order && order.status === 1 && materialAuditManualReview}}">
-    <text class="fs-body fw-medium">材料人工审核中</text>
-    <text class="text-muted fs-cap" style="display:block;margin-top:12rpx;">自动审核未通过或暂不可用，已转后台人工处理。请耐心等待，无需重复点击「维修完成」。</text>
-    <text class="text-weak fs-sm" wx:if="{{materialAuditRejectReason}}" style="display:block;margin-top:12rpx;">系统参考：{{materialAuditRejectReason}}</text>
+    <text class="fs-body fw-medium">材料人工复核中</text>
+    <text class="text-muted fs-cap material-audit-block-text">自动审核未通过或暂不可用，已转后台人工处理；若订单已进入待验收，此处仅作质检结论跟进。</text>
+    <text class="text-weak fs-sm material-audit-block-text" wx:if="{{materialAuditRejectReason}}">系统参考：{{materialAuditRejectReason}}</text>
   </view>
 
-  <!-- 审核未通过提示（从订阅消息进入时避免误解为提交失败） -->
   <view class="detail-section card material-audit-rejected" wx:if="{{order && order.status === 1 && materialAuditRejected}}">
     <view class="reject-banner">
       <text class="reject-title fs-body fw-bold">材料审核未通过</text>
@@ -127,83 +158,126 @@
     </view>
   </view>
 
-  <!-- 维修完成凭证（status=1 时必填；审核中时只读） -->
-  <view class="detail-section card" wx:if="{{order && order.status === 1}}">
-    <view class="section-head" wx:if="{{needLeadTech}}">
-      <view class="section-title fs-body fw-medium">负责技师/负责人<text class="text-error">*</text></view>
-    </view>
-    <view class="edit-row" wx:if="{{needLeadTech}}" style="margin-bottom: var(--space-md);">
-      <input class="edit-row-input" placeholder="姓名或称呼" value="{{leadTechName}}" bindinput="onLeadTechInput"/>
+  <!-- 阶段2：车况与约定（只读上下文；改方案/改价入口在「关键节点更新」） -->
+  <view class="detail-section card merchant-phase-card merchant-phase-rail" wx:if="{{order}}">
+    <view class="merchant-phase-header">
+      <text class="merchant-phase-kicker">车况与约定</text>
     </view>
     <view class="section-head">
-      <view class="section-title fs-body fw-medium">维修完成凭证<text class="text-error" wx:if="{{!materialAuditing}}">*</text></view>
+      <view class="section-title fs-body fw-medium">车辆信息</view>
     </view>
-    <view class="evidence-upload">
-      <view class="evidence-item">
-        <text class="evidence-label fs-body">修复后照片（至少1张）</text>
-        <view class="evidence-grid">
-          <view class="evidence-thumb" wx:for="{{repairPhotoUrls}}" wx:key="index">
-            <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="repair" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
-          </view>
-          <view class="evidence-add" wx:if="{{!materialAuditing && repairPhotoUrls.length < 6}}" bindtap="onChooseRepairPhoto">+</view>
+    <view class="vehicle-info text-muted fs-body">{{order.vehicle_info.brand || ''}} {{order.vehicle_info.model || ''}} {{order.vehicle_info.plate_number || ''}}</view>
+
+    <view class="section-head">
+      <view class="section-title fs-body fw-medium">车辆照片</view>
+    </view>
+    <text class="text-weak fs-sm merchant-owner-photo-hint">以下为车主在报案/预报价环节上传的照片；预报价参考结果不在此展示。</text>
+    <view class="merchant-owner-photo-grid" wx:if="{{damageReportImages.length}}">
+      <image
+        wx:for="{{damageReportImages}}"
+        wx:for-item="imgUrl"
+        wx:for-index="imgIdx"
+        wx:key="imgIdx"
+        class="merchant-owner-photo-thumb"
+        src="{{imgUrl}}"
+        mode="aspectFill"
+        data-index="{{imgIdx}}"
+        bindtap="onPreviewOwnerPhotos"
+      />
+    </view>
+    <text wx:else class="text-muted fs-cap merchant-owner-photo-empty">本单暂无上传的车辆照片</text>
+
+    <view class="merchant-context-subcard">
+      <view class="merchant-subcard-kicker">报价与{{order.status >= 1 ? '方案' : '建议'}}</view>
+      <view class="quote-info merchant-quote-summary">
+        <text class="text-gold fs-body fw-medium">¥{{order.displayAmount || order.quoted_amount}}</text>
+        <text class="text-muted fs-cap" wx:if="{{order.displayDuration || order.quote}}">，工期{{order.displayDuration || order.quote.duration}}天</text>
+      </view>
+      <view class="repair-items merchant-repair-items--inset" wx:if="{{planItems.length}}">
+        <view class="repair-item" wx:for="{{planItems}}" wx:key="index">
+          <text class="fs-body">{{item.damage_part || item.name || item.item}}</text>
+          <text class="text-muted fs-cap">{{item.repair_type || '维修'}}{{item.repair_type === '换' && item.parts_type ? ' · ' + item.parts_type : ''}}{{item.price != null ? ' · ¥' + item.price : ''}}{{item.warranty_months != null ? ' · 质保' + item.warranty_months + '月' : ''}}</text>
         </view>
       </view>
-      <view class="evidence-item">
-        <text class="evidence-label fs-body">定损单/结算单（至少1张）</text>
-        <view class="evidence-grid">
-          <view class="evidence-thumb" wx:for="{{settlementPhotoUrls}}" wx:key="index">
-            <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="settlement" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
-          </view>
-          <view class="evidence-add" wx:if="{{!materialAuditing && settlementPhotoUrls.length < 4}}" bindtap="onChooseSettlementPhoto">+</view>
+      <text wx:if="{{!planItems.length}}" class="text-muted fs-cap merchant-subcard-empty">暂无明细项</text>
+    </view>
+
+    <view class="merchant-context-subcard" wx:if="{{planValueAddedDisplay && planValueAddedDisplay.show}}">
+      <view class="merchant-subcard-kicker">增值服务</view>
+      <view class="order-va-owner-wrap order-va-owner-wrap--inset">
+        <text class="order-va-owner-intro fs-body fw-bold">{{planValueAddedDisplay.intro}}</text>
+        <view class="order-va-owner-block" wx:for="{{planValueAddedDisplay.blocks}}" wx:for-item="blk" wx:key="headline">
+          <text class="order-va-owner-headline fs-body fw-medium">{{blk.headline}}</text>
+          <text class="order-va-owner-line fs-cap text-muted" wx:for="{{blk.lines}}" wx:for-item="ln" wx:for-index="li" wx:key="li">· {{ln}}</text>
         </view>
-      </view>
-      <view class="evidence-item">
-        <text class="evidence-label fs-body">物料照片（至少1张）</text>
-        <view class="evidence-grid">
-          <view class="evidence-thumb" wx:for="{{materialPhotoUrls}}" wx:key="index">
-            <image src="{{item}}" mode="aspectFill"/>
-            <view class="evidence-del" wx:if="{{!materialAuditing}}" data-type="material" data-index="{{index}}" bindtap="onDelEvidencePhoto">×</view>
-          </view>
-          <view class="evidence-add" wx:if="{{!materialAuditing && materialPhotoUrls.length < 4}}" bindtap="onChooseMaterialPhoto">+</view>
-        </view>
-      </view>
-      <view class="evidence-item" wx:if="{{needLeadTech && !materialAuditing}}">
-        <text class="evidence-label fs-body">配件验真方式<text class="text-error">*</text></text>
-        <text class="text-weak fs-sm" style="display:block;margin-bottom:12rpx;">便于车主按您提供的方式自行验真；至少选一种，或勾选下方「暂不填写」。</text>
-        <view class="parts-verify-chips">
-          <view
-            class="parts-verify-chip {{partsVerifyPicks[item.key] ? 'on' : ''}}"
-            wx:for="{{partsVerificationMethods}}"
-            wx:key="key"
-            data-key="{{item.key}}"
-            bindtap="onTogglePartsVerifyMethod"
-          >{{item.label}}</view>
-        </view>
-        <view class="review-anonymous" style="margin-top: 16rpx;">
-          <text class="fs-body">暂不填写验真说明</text>
-          <switch checked="{{partsVerifyNotProvided}}" bindchange="onPartsVerifyNotProvidedChange" color="var(--primary)"/>
-        </view>
-        <view wx:if="{{partsVerifyPicks.other}}" style="margin-top: 12rpx;">
-          <input class="edit-row-input" placeholder="请说明其他验真方式" value="{{partsVerifyNote}}" bindinput="onPartsVerifyNoteInput"/>
+        <view class="order-va-disclaimer">
+          <text class="order-va-disclaimer-line text-weak fs-cap" wx:for="{{planValueAddedDisplay.disclaimerLines}}" wx:for-item="dln" wx:for-index="di" wx:key="di">{{dln}}</text>
         </view>
       </view>
     </view>
-    <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-sm);">建议 JPG 格式；PNG 将自动转为 JPG 后上传，单张不超过 5MB</text>
-    <text class="text-weak fs-sm" style="display: block; margin-top: var(--space-xs);">材料通过不代表平台认可配件合规，车主可自行查询配件编号</text>
+
+    <view class="merchant-context-subcard" wx:if="{{order.complexity_level || order.commission_rate}}">
+      <view class="merchant-subcard-kicker">订单规则</view>
+      <view class="order-tier-info fs-body text-muted">
+        <text wx:if="{{order.complexity_level}}">复杂度 {{order.complexity_level}}</text>
+        <text wx:if="{{order.complexity_level && order.commission_rate}}"> · </text>
+        <text wx:if="{{order.commission_rate}}">佣金 {{order.commission_rate}}</text>
+      </view>
+    </view>
+
+    <view class="merchant-context-subcard merchant-context-subcard--owner">
+      <view class="merchant-subcard-kicker">车主</view>
+      <view class="owner-info fs-body">{{order.owner_nickname || '车主'}} <text class="link" bindtap="onCallOwner" wx:if="{{order.owner_phone}}">拨打电话</text></view>
+    </view>
   </view>
 
-  <view class="detail-section card" wx:if="{{order && order.status >= 2 && order.status <= 3}}">
+  <!-- 维修过程：三阶段进度 + 关键节点留痕 + 完工凭证（原「关键节点更新」「完工交付」合并） -->
+  <view class="detail-section card merchant-phase-card merchant-phase-rail" wx:if="{{order && showRepairPhase}}">
+    <view class="merchant-phase-header">
+      <text class="merchant-phase-kicker">维修过程</text>
+    </view>
+    <repair-phase-bar
+      before-done="{{repairPhaseBeforeDone}}"
+      during-done="{{repairPhaseDuringDone}}"
+      after-done="{{repairPhaseAfterDone}}"
+    />
+    <text class="text-weak fs-sm merchant-flow-hint merchant-phase-progress-hint">过程留痕与完工材料均在「更新关键节点」页填写；上方为三格进度（维修前、维修过程、完工），中间格认「维修过程」或「零配件验真」任一节点有照即点亮；完工段亦认「修复后+结算单」类完工材料（引导非强制）。</text>
+    <text class="text-weak fs-sm merchant-flow-hint" wx:if="{{showMilestoneFlowHint}}">请按维修前（洗车验车等）、维修过程（拆装工序等）、零配件验真（包装编号防伪等）、完工（修复外观与结算单等）按需留痕；零配件验真请单独选节点上传。拆检若发现与预报价不一致的增项或减项，请先点「更新关键节点」选「维修过程」留痕，再使用「修改报价单」与车主确认。仅调整施工范围不涉及金额时可用「修改方案」。材料质检在后台进行时亦不影响本入口。</text>
+
+    <block>
+      <view class="section-head section-head-with-action">
+        <view class="section-title fs-body fw-medium">过程与完工</view>
+        <view class="section-more" bindtap="onRecordMilestone">更新关键节点</view>
+      </view>
+      <text class="text-weak fs-sm">点此进入同一页：维修前、维修过程、零配件验真、完工过程照片、完工可选凭证材料与「提交并完工」。车主在订单内可查看时间线。</text>
+    </block>
+
+    <view class="merchant-phase-actions" wx:if="{{canEditPlan || canSubmitFinalQuote || order.status === 1}}">
+      <button class="btn-secondary merchant-phase-btn" wx:if="{{canEditPlan}}" bindtap="onEditPlan">修改方案</button>
+      <button class="btn-secondary merchant-phase-btn" wx:if="{{canSubmitFinalQuote}}" bindtap="onSubmitFinalQuote">{{finalQuoteLocked ? '继续修改报价单' : '修改报价单'}}</button>
+      <button class="btn-secondary merchant-phase-btn" wx:if="{{order.status === 1}}" bindtap="onSetPromisedDelivery">承诺交车时间</button>
+      <button class="btn-secondary merchant-phase-btn" wx:if="{{order.status === 1}}" bindtap="onWaitingParts">等待配件延期</button>
+    </view>
+  </view>
+
+  <!-- 售后说明（分项质保） -->
+  <view class="detail-section card merchant-phase-card merchant-phase-rail" wx:if="{{order && order.status >= 2 && order.status <= 3}}">
+    <view class="merchant-phase-header">
+      <text class="merchant-phase-kicker">说明</text>
+    </view>
     <view class="section-head">
       <view class="section-title fs-body fw-medium">分项质保</view>
     </view>
-    <text class="text-muted fs-cap" style="display:block;line-height:1.55;">分项质保以本单维修方案/报价明细中各项目「质保 X 月」为准，由您向车主作出；辙见不提供独立电子质保卡。</text>
+    <text class="text-muted fs-cap warranty-desc">分项质保以本单维修方案/报价明细中各项目「质保 X 月」为准，由您向车主作出；辙见不提供独立电子质保卡。</text>
   </view>
 
-  <!-- 底部固定操作区 -->
   <view class="action-btns action-btns-fixed safe-area-bottom" wx:if="{{order && (order.status === 0 || order.status === 1)}}">
     <button class="btn-primary" wx:if="{{order.status === 0}}" disabled="{{accepting}}" bindtap="onAccept">{{accepting ? '处理中...' : '接单'}}</button>
-    <button class="btn-primary" wx:if="{{order.status === 1}}" disabled="{{updating || completeDisabled || materialAuditing}}" bindtap="onMarkComplete">{{updating ? '处理中...' : completeBtnText}}</button>
+    <button
+      class="btn-primary"
+      wx:if="{{order.status === 1}}"
+      disabled="{{completeDisabled}}"
+      bindtap="onRecordMilestone"
+    >{{completeDisabled ? completeBtnText : '填写过程与完工信息'}}</button>
   </view>
 </view>

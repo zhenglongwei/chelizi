@@ -29,7 +29,8 @@ Page({
     submitted: false,
     rewardAmount: '0.00',
     submittedRewardReceived: false,
-    minContentLen: 10
+    minContentLen: 10,
+    engagementHint: '',
   },
 
   onLoad(options) {
@@ -80,11 +81,18 @@ Page({
       const rewardHint = this.getRewardHint(orderTier);
       const st = stageOpt || this.data.stage || '1m';
       const rewardAmount = st === '3m' ? (info.followup_reward_3m || '0') : (info.followup_reward_1m || info.followup_reward || '0');
+      const eg = info.engagement || {};
+      const readSec = parseInt(eg.total_effective_read_seconds, 10) || 0;
+      const readMin = Math.floor(readSec / 60);
+      const readRem = readSec % 60;
+      const engagementHint =
+        `累计有效阅读约 ${readMin} 分 ${readRem} 秒 · 点赞 ${parseInt(eg.like_count, 10) || 0} · 列表触达用户 ${parseInt(eg.feed_unique_viewers, 10) || 0}（用于互动月结参考，非承诺到账）`;
       this.setData({
         info: { ...info, created_at: createdText },
         orderTier,
         rewardHint,
         rewardAmount,
+        engagementHint,
         loading: false
       });
     } catch (err) {

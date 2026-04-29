@@ -17,8 +17,8 @@
       <view class="rank-info">
         <text class="rank-name text-primary fs-body fw-bold">{{item.name}}</text>
         <view class="rank-rating">
-          <text class="rank-star {{item.scoreNum >= 4.5 ? 'star-gold' : (item.scoreNum < 3 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
-          <text class="rank-txt text-muted fs-cap">{{item.rating}} | {{item.orderCount}}单</text>
+          <text wx:if="{{item.showPublicScore}}" class="rank-star {{item.scoreNum >= 90 ? 'star-gold' : (item.scoreNum < 60 ? 'star-orange' : '')}}">{{item.starsDisplay}}</text>
+          <text class="rank-txt text-muted fs-cap">{{item.ratingLine}}</text>
         </view>
         <text class="rank-product-snippet text-primary fs-cap" wx:if="{{item.productSnippetText}}">服务：{{item.productSnippetText}}</text>
       </view>

@@ -99,7 +99,12 @@ const TEMPLATE_CONFIG = {
       thing2: { value: (payload.content || '请前往订单详情确认').slice(0, REMINDER_MAX) },
       date1: { value: payload.date || formatDateForTemplate() },
     }),
-    page: (payload) => `pages/order/detail/index?id=${payload.relatedId || ''}`,
+    page: (payload) => {
+      const id = payload.relatedId || '';
+      let path = `pages/order/detail/index?id=${id}`;
+      if (payload.anchor) path += `&anchor=${encodeURIComponent(String(payload.anchor))}`;
+      return path;
+    },
   },
   user_bidding_quote: {
     envKey: 'SUBSCRIBE_TEMPLATE_BIDDING_QUOTE',

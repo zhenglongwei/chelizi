@@ -1,0 +1,79 @@
+{
+  "moduleId": "AccidentAssistant_v1",
+  "version": "1.0.0",
+  "capabilities": [
+    "damage.report_share",
+    "accident.evidence_checklist",
+    "accident.claim_guide",
+    "accident.price_estimate"
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/damage/report/:id/share-token",
+      "auth": "user_jwt",
+      "requiredCapabilities": ["damage.report_share"]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/damage/report/share/:token",
+      "auth": "public",
+      "requiredCapabilities": ["damage.report_share"]
+    },
+    {
+      "method": "GET",
+      "path": "/r/:token",
+      "auth": "public",
+      "requiredCapabilities": ["damage.report_share"]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/wechat/jssdk-config",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/accident/evidence-checklist",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["accident.evidence_checklist"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/accident/claim-guide",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["accident.claim_guide"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/accident/price-estimate",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["accident.price_estimate"]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/lead/damage/report/:token",
+      "auth": "public",
+      "requiredCapabilities": ["damage.report_share"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/damage/report/claim-by-token",
+      "auth": "user_jwt",
+      "requiredCapabilities": ["damage.report_share"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/lead/damage-reports/create",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["damage.ai_analyze"]
+    }
+  ],
+  "publicAssets": [
+    "web/api-server/public-h5/report-share.html"
+  ],
+  "workers": [],
+  "dependsOnModules": [],
+  "dbMigrations": []
+}
+

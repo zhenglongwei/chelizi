@@ -62,37 +62,45 @@
     </view>
   </navigator>
 
-  <!-- 我的订单 -->
+  
+
+  <!-- 我的订单：标题行=进订单列表；下方为可点的状态筛选 -->
   <view class="user-section card" wx:if="{{hasToken}}">
     <view class="user-section-header user-order-header">
-      <navigator class="user-order-header-left" url="/pages/order/hub/index?tab=repair">
+      <navigator class="user-section-title-row" url="/pages/order/hub/index?tab=repair">
         <text class="fs-body fw-bold">我的订单</text>
-        <view class="user-section-more">全部</view>
+        <view class="user-section-title-row-right">
+          <text class="user-section-title-cta fs-cap">查看列表</text>
+          <image class="user-section-title-arrow" src="/images/icon/right.png" mode="aspectFit" />
+        </view>
       </navigator>
       <text class="user-order-book-btn text-primary fs-cap" catchtap="onUserBookTap">预约</text>
     </view>
-    <view class="user-section-tabs">
-      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair">全部</navigator>
-      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair&status=to_review">待评价</navigator>
-      <navigator class="user-tab" url="/pages/order/hub/index?tab=repair&status=completed">已完成</navigator>
+    <view class="user-section-tabs user-section-tabs--chips">
+      <navigator class="user-tab user-tab-chip" url="/pages/order/hub/index?tab=repair">全部</navigator>
+      <navigator class="user-tab user-tab-chip" url="/pages/order/hub/index?tab=repair&status=to_review">待评价</navigator>
+      <navigator class="user-tab user-tab-chip" url="/pages/order/hub/index?tab=repair&status=completed">已完成</navigator>
     </view>
   </view>
 
-  <!-- 我的竞价 -->
-  <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/bidding/list/index">
-    <view class="user-section-header">
+  <!-- 我的竞价：与订单区一致，避免整块 navigator 嵌套子 navigator -->
+  <view class="user-section card" wx:if="{{hasToken}}">
+    <navigator class="user-section-header user-section-title-row" url="/pages/bidding/list/index">
       <text class="fs-body fw-bold">我的竞价</text>
-      <view class="user-section-more" >全部</view>
+      <view class="user-section-title-row-right">
+        <text class="user-section-title-cta fs-cap">查看列表</text>
+        <image class="user-section-title-arrow" src="/images/icon/right.png" mode="aspectFit" />
+      </view>
+    </navigator>
+    <view class="user-section-tabs user-section-tabs--chips">
+      <navigator class="user-tab user-tab-chip" url="/pages/bidding/list/index?status=0">未完成</navigator>
+      <navigator class="user-tab user-tab-chip" url="/pages/bidding/list/index?status=1">已关闭</navigator>
     </view>
-    <view class="user-section-tabs">
-      <navigator class="user-tab" url="/pages/bidding/list/index?status=0">未完成</navigator>
-      <navigator class="user-tab" url="/pages/bidding/list/index?status=1">已关闭</navigator>
-    </view>
-  </navigator>
+  </view>
 
   <navigator class="user-section card" wx:if="{{hasToken}}" url="/pages/damage/history/index">
     <view class="user-section-header">
-      <text class="fs-body fw-bold">定损历史</text>
+      <text class="fs-body fw-bold">AI分析报告</text>
       <view class="user-section-more" >全部</view>
     </view>    
   </navigator>

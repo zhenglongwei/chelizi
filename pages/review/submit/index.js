@@ -1,4 +1,4 @@
-// 主评价页 · 极简 v3（review_form_version=3）：四维星级 + 折叠系统/AI 说明 + 选填说明与素材 + 分项公开授权
+// 主评价页 · 极简 v3（review_form_version=3）：五项星级 + 折叠留痕 + 选填与素材 + 分项公开授权
 const { getToken, getOrderForReview, getRewardPreview, submitReview, uploadImage } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
@@ -6,6 +6,20 @@ const { formatMethodsSummary } = require('../../../utils/parts-verification-labe
 const { buildQuoteDisplayNodes } = require('../../../utils/review-v3-public-display');
 
 const STORAGE_REVIEW_DRAFT = 'review_draft_v3_';
+
+/** 多节点且各节点金额一致（用于低星时提示是否线下加价） */
+function computeQuotePriceStable(quoteFlowNodes) {
+  const nodes = Array.isArray(quoteFlowNodes) ? quoteFlowNodes : [];
+  if (nodes.length < 2) return false;
+  const amounts = nodes.map((n) => {
+    if (n.amount == null || n.amount === '') return null;
+    const x = Number(n.amount);
+    return Number.isNaN(x) ? null : x;
+  });
+  if (amounts.some((a) => a == null)) return false;
+  const base = amounts[0];
+  return amounts.every((a) => Math.abs(a - base) < 0.005);
+}
 const MAX_V3_TEXT = 200;
 
 function buildAiPreviewFingerprint(orderId, sc, quoteFlowNodes) {
@@ -50,6 +64,7 @@ Page({
       settlement_docs: false,
     },
     v3: {
+      process_transparency_star: 0,
       quote_transparency_star: 0,
       parts_traceability_star: 0,
       repair_effect_star: 0,
@@ -57,9 +72,14 @@ Page({
       parts_authenticity_check: '',
       owner_verify_result: '',
     },
+    expandProcess: false,
     expandQuote: false,
-    expandRepair: false,
     expandParts: false,
+    /** 各报价节点金额一致，低星时提示线下加价补充说明 */
+    quotePriceStable: false,
+    repairMilestoneTrace: { count: 0, items: [] },
+    /** 第4题单独展示：milestone_code = parts_verify_process */
+    partsVerifyMilestoneItems: [],
     quoteEvidenceImages: [],
     /** 维修前：竞价/定损上报（damage_reports，与 for-review before_images 一致） */
     beforeEvidenceImages: [],
@@ -89,6 +109,7 @@ Page({
     progressText: '',
     canSubmit: false,
     contentLength: 0,
+    validReviewCount: 0,
   },
 
   onLoad(options) {
@@ -172,14 +193,40 @@ Page({
 
       const module3 = { ...this.data.module3, content: restored || this.data.module3.content || '' };
 
+      const rmtRaw = info.repair_milestone_trace && typeof info.repair_milestone_trace === 'object'
+        ? info.repair_milestone_trace
+        : { count: 0, items: [] };
+      const rmtItems = (rmtRaw.items || []).map((it) => {
+        const photo_urls = Array.isArray(it.photo_urls) ? it.photo_urls : [];
+        const parts_photo_urls = Array.isArray(it.parts_photo_urls) ? it.parts_photo_urls : [];
+        const all_milestone_photos = photo_urls.concat(parts_photo_urls);
+        const n = all_milestone_photos.length;
+        return {
+          ...it,
+          photo_urls,
+          parts_photo_urls,
+          all_milestone_photos,
+          photo_count: n,
+          parts_photo_count: parts_photo_urls.length,
+        };
+      });
+      const PARTS_VERIFY = 'parts_verify_process';
+      const processItems = rmtItems.filter((it) => (it.milestone_code || '') !== PARTS_VERIFY);
+      const partsVerifyMilestoneItems = rmtItems.filter((it) => (it.milestone_code || '') === PARTS_VERIFY);
+      const rmt = { count: processItems.length, items: processItems };
+
+      const validReviewCount = Math.max(0, parseInt(info.valid_review_count, 10) || 0);
+
       this.setData({
         info,
         rewardPreview,
         orderTier,
+        validReviewCount,
         reviewScene,
         systemChecksPreview: sc,
         quoteFlowNodes: qfn,
         quoteDisplayNodes,
+        quotePriceStable: computeQuotePriceStable(qfn),
         objectiveHintsList: hints,
         aiPreviewFingerprint: fp,
         merchantVerifyLine,
@@ -187,6 +234,8 @@ Page({
         beforeEvidenceImages,
         repairEvidenceImages,
         partsEvidenceImages,
+        repairMilestoneTrace: rmt,
+        partsVerifyMilestoneItems,
         module3,
         contentLength: (module3.content || '').length,
         loading: false,
@@ -200,6 +249,7 @@ Page({
   rebuildSubmitTags() {
     const v3 = this.data.v3 || {};
     const tags = [];
+    const proc = parseInt(v3.process_transparency_star, 10);
     const qt = parseInt(v3.quote_transparency_star, 10);
     const pt = parseInt(v3.parts_traceability_star, 10);
     const re = parseInt(v3.repair_effect_star, 10);
@@ -212,6 +262,11 @@ Page({
     tags.push({
       kind: 'user',
       text: !Number.isNaN(re) && re >= 1 ? '修复 ' + re + '★' : '修复 ?★',
+      sub: '车主',
+    });
+    tags.push({
+      kind: 'user',
+      text: !Number.isNaN(proc) && proc >= 1 ? '流程 ' + proc + '★' : '流程 ?★',
       sub: '车主',
     });
     tags.push({
@@ -229,18 +284,22 @@ Page({
 
   onToggleExpand(e) {
     const key = e.currentTarget.dataset.key;
-    if (key === 'quote') this.setData({ expandQuote: !this.data.expandQuote });
-    else if (key === 'repair') this.setData({ expandRepair: !this.data.expandRepair });
+    if (key === 'process') this.setData({ expandProcess: !this.data.expandProcess });
+    else if (key === 'quote') this.setData({ expandQuote: !this.data.expandQuote });
     else if (key === 'parts') this.setData({ expandParts: !this.data.expandParts });
   },
 
   updateProgress() {
     const { v3, module3 } = this.data;
+    const proc = parseInt(v3.process_transparency_star, 10);
     const qt = parseInt(v3.quote_transparency_star, 10);
     const pt = parseInt(v3.parts_traceability_star, 10);
     const re = parseInt(v3.repair_effect_star, 10);
     const sv = parseInt(v3.service_experience_star, 10);
     const starsOk =
+      !Number.isNaN(proc) &&
+      proc >= 1 &&
+      proc <= 5 &&
       !Number.isNaN(qt) &&
       qt >= 1 &&
       qt <= 5 &&
@@ -260,7 +319,10 @@ Page({
       return;
     }
     let progressText = '可提交';
-    if (!starsOk) progressText = '请完成四项星级（报价透明度、整体修复、配件溯源、服务态度）';
+    if (!starsOk) {
+      progressText =
+        '请完成五项星级（报价、修复、流程、配件、服务）';
+    }
     this.setData(
       {
         canSubmit: ok,
@@ -274,7 +336,34 @@ Page({
     const field = e.currentTarget.dataset.field;
     const s = parseInt(e.currentTarget.dataset.s, 10);
     if (!field || Number.isNaN(s)) return;
-    this.setData({ [`v3.${field}`]: s }, () => this.updateProgress());
+    this.setData({ [`v3.${field}`]: s }, () => {
+      this.updateProgress();
+      if (field === 'quote_transparency_star' && this.data.quotePriceStable && s >= 1 && s <= 2) {
+        wx.showModal({
+          title: '补充说明',
+          content:
+            '本单各报价节点金额一致。若您仍认为不合理，请说明是否存在线下加价等情况，可在本页最下方「补充说明与图片」中填写。',
+          showCancel: false,
+          confirmText: '知道了',
+        });
+      }
+    });
+  },
+
+  onPreviewMilestonePhoto(e) {
+    const mii = parseInt(e.currentTarget.dataset.milestone, 10);
+    const url = (e.currentTarget.dataset.url || '').trim();
+    const fromPartsVerify = (e.currentTarget.dataset.from || '') === 'partsverify';
+    const items = fromPartsVerify
+      ? this.data.partsVerifyMilestoneItems || []
+      : (this.data.repairMilestoneTrace && this.data.repairMilestoneTrace.items) || [];
+    const mi = items[mii];
+    if (!mi) return;
+    const merged = Array.isArray(mi.all_milestone_photos) ? mi.all_milestone_photos : null;
+    const main = Array.isArray(mi.photo_urls) ? mi.photo_urls : [];
+    const parts = Array.isArray(mi.parts_photo_urls) ? mi.parts_photo_urls : [];
+    const urls = (merged && merged.length ? merged : [...main, ...parts]).filter(Boolean);
+    if (urls.length) wx.previewImage({ urls, current: url || urls[0] });
   },
 
   onOwnerVerifyTap() {
@@ -369,6 +458,7 @@ Page({
       const owner_always_public_urls = completionUrls.map((u) => String(u || '').trim()).filter(Boolean);
 
       const module3Payload = {
+        process_transparency_star: v3.process_transparency_star,
         quote_transparency_star: v3.quote_transparency_star,
         parts_traceability_star: v3.parts_traceability_star,
         repair_effect_star: v3.repair_effect_star,
@@ -414,8 +504,8 @@ Page({
         const reward = (rewardPreview && rewardPreview.total_reward) || '—';
         wx.showModal({
           title: '提示',
-          content: `${errMsg}\n\n改进后预计奖励约 ¥${reward}。若您认为系统判断有误可尝试「提交人工复核」。`,
-          confirmText: '去改进',
+          content: `${errMsg}\n\n请按提示修改后重试（若涉及照片/表述与订单留档是否一致，请核对后再提交）。\n\n改进后基础奖励预估值约 ¥${reward}。若认为系统判断有误，可试「提交人工复核」。`,
+          confirmText: '去修改',
           cancelText: '提交人工复核',
           success: (r) => {
             if (r.cancel) this.onSubmit(true);

@@ -1,6 +1,6 @@
 /**
  * 系统核验违规记录服务
- * 依据《评价内容设置规范》二、系统自动核验模块
+ * 依据 docs/已归档/评价内容设置规范.md 二、系统自动核验模块（历史稿；现行见 docs/体系/05）
  * 违规类型：no_quote_confirm(10)、extra_project(20)、settlement_deviation(20)、service_mismatch(50)、parts_non_compliant(20)
  */
 

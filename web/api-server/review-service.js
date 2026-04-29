@@ -11,6 +11,8 @@ const shopScore = require('./shop-score');
 const objectiveSchema = require('./utils/review-objective-schema');
 const { normalizeReviewPublicMedia } = require('./utils/review-public-media');
 const { insertMainReviewRow } = require('./utils/reviews-main-insert');
+const orderRewardCap = require('./services/order-reward-cap-service');
+const { preWithholdLaborRemunerationEachPayment } = require('./utils/labor-remuneration-withhold');
 
 /**
  * 强行提交无效评价：生成入库 ai_analysis 与前端改进指引
@@ -498,6 +500,8 @@ async function submitReview(pool, req, opts = {}) {
   // 评价奖励金取消用户等级系数：满足领取条件即全额，佣金封顶按 70% 红线（reward-calculator 已算）
   const eligibility = await antifraud.getRewardEligibility(pool, userId);
   const level = eligibility.level;
+  const rewardRulesSnapshot = await rewardCalculator.getRewardRules(pool);
+  const pv1Global = rewardRulesSnapshot.platformIncentiveV1 || {};
   const commissionCapRatio = 1.0;
   const maxByCommission = (rewardResult.commission_amount || 0) * commissionCapRatio;
   if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
@@ -547,19 +551,21 @@ async function submitReview(pool, req, opts = {}) {
       (completionArr || []).slice(0, 5).forEach((url) => {
         if (url && String(url).trim()) aiInput.images.push({ type: 'completion', url: toAbsolute(url) });
       });
-      const { analyzeReviewWithQwen } = require('./qwen-analyzer');
-      aiResult = await analyzeReviewWithQwen({ ...aiInput, apiKey });
-      usedAiAudit = true;
-      if (!aiResult.pass && !force_submit) {
-        return { success: false, error: aiResult.rejectReason || '评价未通过 AI 审核', statusCode: 400 };
-      }
-      if (!aiResult.pass && force_submit) {
-        return await storeAiRejectedPendingHumanReview(pool, req, {
-          order_id, order, m3, module2, module3, rating, ratings, content, after_images, is_anonymous,
-          completionImages, completionArr, settlementImage, faultEvidenceImages, rewardResult, orderTier, complexityLevel,
-          vehicleModelKey, repairProjectKey, quoteItems,
-          aiResult,
-        });
+      if (aiInput.images.length > 0) {
+        const { analyzeReviewEvidenceContradictionWithQwen } = require('./qwen-analyzer');
+        aiResult = await analyzeReviewEvidenceContradictionWithQwen({ ...aiInput, apiKey });
+        if (!aiResult?.details?.skipped) usedAiAudit = true;
+        if (!aiResult.pass && !force_submit) {
+          return { success: false, error: aiResult.rejectReason || '评价与服务商留档材料存在明显不一致，请核对后重试', statusCode: 400 };
+        }
+        if (!aiResult.pass && force_submit) {
+          return await storeAiRejectedPendingHumanReview(pool, req, {
+            order_id, order, m3, module2, module3, rating, ratings, content, after_images, is_anonymous,
+            completionImages, completionArr, settlementImage, faultEvidenceImages, rewardResult, orderTier, complexityLevel,
+            vehicleModelKey, repairProjectKey, quoteItems,
+            aiResult,
+          });
+        }
       }
     } catch (err) {
       console.error('[review-service] 千问 AI 审核异常，回退规则校验:', err.message);
@@ -583,13 +589,11 @@ async function submitReview(pool, req, opts = {}) {
     }
   }
 
-  // 内容质量与优质奖励：AI 优先，否则用规则。1-3 级对应 content_quality_level
+  // 内容质量标签：仅用于入库/展示/无效判定；**不再**据「优质程度」叠加首评现金（premiumFloat 恒为 0）
   const aiQuality = usedAiAudit && aiResult?.details?.contentQuality?.quality;
   let contentQuality;
   let contentQualityLevel;
-  let isPremium;
   if (usedAiAudit && aiQuality) {
-    // AI 返回：invalid|basic|quality|benchmark|维权参考（与 02 文档一致）
     if (aiQuality === 'benchmark') {
       contentQuality = '标杆';
       contentQualityLevel = 3;
@@ -609,13 +613,11 @@ async function submitReview(pool, req, opts = {}) {
       contentQuality = 'valid';
       contentQualityLevel = 1;
     }
-    isPremium = contentQuality !== 'invalid' && contentQualityLevel >= 2;
   } else {
-    contentQuality = validation.premium ? 'premium' : 'valid';
-    contentQualityLevel = validation.premium ? 2 : 1;
-    isPremium = validation.premium;
+    contentQuality = 'valid';
+    contentQualityLevel = 1;
   }
-  // 用户举证提升内容等级（商户合规与申诉 阶段4）：故障未解决选否且上传故障凭证 → 1级提升为维权参考2级
+  // 用户举证提升内容等级（商户合规与申诉 阶段4）：故障未解决选否且上传故障凭证 → 1级提升为维权参考2级（展示/权重叙事，不加现金）
   if (
     contentQuality !== 'invalid' &&
     m3Merged.q_fault_resolved === false &&
@@ -624,23 +626,17 @@ async function submitReview(pool, req, opts = {}) {
   ) {
     contentQuality = '维权参考';
     contentQualityLevel = 2;
-    isPremium = true;
   }
-  // 首评入库：content_quality_level 最高 2（标杆/3 级留待追评后整体性重评）
   if (contentQualityLevel > 2) {
     contentQualityLevel = 2;
     if (contentQuality === '标杆') contentQuality = 'premium';
-    isPremium = true;
   }
-  // AI 判定有效但内容质量 invalid：不发奖励（02 无效评价）
-  let premiumFloat = 0;
+  const isPremium = false;
+  const premiumFloat = 0;
   if (contentQuality === 'invalid') {
-    isPremium = false;
     totalReward = 0;
-  } else {
-    premiumFloat = isPremium ? rewardCalculator.calcPremiumFloatReward(rewardResult.reward_pre, true) : 0;
-    totalReward += premiumFloat;
-    if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
+  } else if (maxByCommission > 0) {
+    totalReward = Math.min(totalReward, maxByCommission);
   }
 
   const immediatePercent = 1;
@@ -682,10 +678,28 @@ async function submitReview(pool, req, opts = {}) {
     }
   }
 
-  const taxDeducted = rewardAmount > 800 ? Math.round((rewardAmount - 800) * 0.2 * 100) / 100 : 0;
-  let userReceives = rewardAmount - taxDeducted;
-
   const reviewId = 'REV' + Date.now();
+
+  const withholdPack = preWithholdLaborRemunerationEachPayment(rewardAmount);
+  let taxDeducted = withholdPack.taxDeducted;
+  let userReceives = withholdPack.afterTax;
+  const userReceivesPreHardCap = userReceives;
+  const taxDeductedPreHardCap = taxDeducted;
+  if (userReceives > 0) {
+    const capped = await orderRewardCap.clampPayoutToOrderHardCap(
+      pool,
+      order_id,
+      order,
+      {
+        afterTax: userReceives,
+        taxDeducted,
+      },
+      null,
+      { review_id: reviewId, payout_kind: 'rebate_first_review' }
+    );
+    userReceives = capped.afterTax;
+    taxDeducted = capped.taxDeducted;
+  }
 
   // 0级因未实名/车辆暂扣：记录待回溯奖励，完成认证后可补发（违规降级的不补发）。L1 订单不发奖励，不参与暂扣。
   let shouldWithhold = false;
@@ -712,8 +726,9 @@ async function submitReview(pool, req, opts = {}) {
       withholdAmount = currentMonthL1 >= cap ? 0 : Math.min(withholdAmount, cap - currentMonthL1);
     }
     withholdAmount = Math.round(withholdAmount * 100) / 100; // 满足条件即全额
-    const withholdTax = withholdAmount > 800 ? Math.round((withholdAmount - 800) * 0.2 * 100) / 100 : 0;
-    const withholdReceives = Math.round((withholdAmount - withholdTax) * 100) / 100;
+    const wWh = preWithholdLaborRemunerationEachPayment(withholdAmount);
+    const withholdTax = wWh.taxDeducted;
+    const withholdReceives = wWh.afterTax;
     if (withholdReceives > 0) {
       try {
         await pool.execute(
@@ -843,11 +858,20 @@ async function submitReview(pool, req, opts = {}) {
       'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
       [userReceives, userReceives, userId]
     );
-    await pool.execute(
-      `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
-       VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
-      ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
-    );
+    const hasSrc = await orderRewardCap.hasRewardSourceOrderColumn(pool);
+    if (hasSrc) {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, order_id, orderTier ?? null, taxDeducted ?? null]
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金', ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
+      );
+    }
   }
 
   try {
@@ -886,6 +910,7 @@ async function submitReview(pool, req, opts = {}) {
       commission_rate: rewardResult.commission_rate,
       commission_amount: rewardResult.commission_amount,
       vehicle_price_tier: rewardResult.vehicle_price_tier,
+      vehicle_coeff: rewardResult.vehicle_coeff,
       content_quality: contentQuality,
       content_quality_level: contentQualityLevel,
       is_premium: isPremium,
@@ -901,6 +926,24 @@ async function submitReview(pool, req, opts = {}) {
       reward_amount_before_tax: rewardAmount,
       tax_deducted: taxDeducted,
       user_receives: userReceives,
+      user_receives_pre_hard_cap: userReceivesPreHardCap,
+      tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+      compliance_red_line_pct: rewardRulesSnapshot.complianceRedLine,
+      platform_incentive_v1: auditLogger.pickPv1ForAudit(pv1Global),
+      tracks: {
+        base: {
+          reward_pre: rewardResult.reward_pre,
+          premium_float: premiumFloat,
+          total_reward_pre_tax: totalReward,
+          reward_amount_pre_tax: rewardAmount,
+          user_receives: userReceives,
+          tax_deducted: taxDeducted,
+          user_receives_pre_hard_cap: userReceivesPreHardCap,
+          tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+        },
+        interaction: { settled: false, pipeline: 'monthly_like_bonus' },
+        conversion: { settled: false, pipeline: 'monthly_conversion_or_post_verify' },
+      },
     });
   } catch (_) {}
 
@@ -1139,7 +1182,9 @@ async function recomputeHolisticContentQuality(pool, orderId, opts = {}) {
       content_quality_level: contentQualityLevel,
     });
 
-    if (contentQualityLevel > oldLevel) {
+    const holisticRules = await require('./reward-calculator').getRewardRules(pool);
+    const allowUpgradeDiff = holisticRules.platformIncentiveV1?.settleUpgradeDiffEnabled === true;
+    if (allowUpgradeDiff && contentQualityLevel > oldLevel) {
       try {
         const settlementService = require('./services/settlement-service');
         const [txnRows] = await pool.execute(
@@ -1167,8 +1212,9 @@ async function recomputeHolisticContentQuality(pool, orderId, opts = {}) {
         const shouldGet = rewardResult.reward_pre * (1 + floatRatio);
         const diff = Math.round((shouldGet - paid) * 100) / 100;
         if (diff > 0) {
-          const taxDeducted = diff > 800 ? Math.round((diff - 800) * 0.2 * 100) / 100 : 0;
-          const afterTax = Math.round((diff - taxDeducted) * 100) / 100;
+          const wDiff = preWithholdLaborRemunerationEachPayment(diff);
+          const taxDeducted = wDiff.taxDeducted;
+          const afterTax = wDiff.afterTax;
           const now = new Date();
           const triggerMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
           const calcReason = `${oldLevel}级→${contentQualityLevel}级，补发${diff.toFixed(2)}元`;

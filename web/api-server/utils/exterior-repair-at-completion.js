@@ -21,18 +21,36 @@ function toAbsUrl(u, baseUrl) {
  */
 async function getBeforeImageUrlsForOrder(pool, orderId) {
   const [orders] = await pool.execute(
-    'SELECT bidding_id, before_images FROM orders WHERE order_id = ? LIMIT 1',
+    'SELECT bidding_id FROM orders WHERE order_id = ? LIMIT 1',
     [orderId]
   );
   if (!orders.length) return [];
   const o = orders[0];
   const out = [];
-  if (o.before_images) {
-    try {
-      const arr = typeof o.before_images === 'string' ? JSON.parse(o.before_images) : o.before_images;
-      if (Array.isArray(arr)) out.push(...arr);
-    } catch (_) {}
+
+  // 优先：商户“维修前”验车留痕（order_repair_milestones.before_process；兼容历史旧 code）
+  try {
+    const [rows] = await pool.execute(
+      `SELECT milestone_code, photo_urls
+       FROM order_repair_milestones
+       WHERE order_id = ?
+         AND milestone_code IN ('before_process','pre_clean_inspect')
+       ORDER BY created_at DESC
+       LIMIT 3`,
+      [orderId]
+    );
+    for (const r of rows || []) {
+      if (!r || !r.photo_urls) continue;
+      try {
+        const arr = typeof r.photo_urls === 'string' ? JSON.parse(r.photo_urls || '[]') : r.photo_urls;
+        if (Array.isArray(arr)) out.push(...arr);
+      } catch (_) {}
+    }
+  } catch (_) {
+    // 旧库可能未启用 order_repair_milestones，忽略即可
   }
+
+  // 兜底：车主预报价/报案上传（damage_reports.images）
   if (o.bidding_id) {
     try {
       const [biddings] = await pool.execute('SELECT report_id FROM biddings WHERE bidding_id = ?', [o.bidding_id]);

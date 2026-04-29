@@ -70,7 +70,7 @@ function setMerchantUser(user) {
 }
 
 function request(options) {
-  const { url, method = 'GET', data, header = {} } = options;
+  const { url, method = 'GET', data, header = {}, timeout } = options;
   const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ function request(options) {
   if (token) {
     headers['Authorization'] = 'Bearer ' + token;
   }
-  return requestWithHeaders({ url, method, data, headers }).catch((err) => {
+  return requestWithHeaders({ url, method, data, headers, timeout }).catch((err) => {
     if (err && err.statusCode === 401) {
       handleUserUnauthorized();
     }
@@ -143,11 +143,11 @@ function handleMerchantUnauthorized() {
 }
 
 function merchantRequest(options) {
-  const { url, method = 'GET', data, header = {} } = options;
+  const { url, method = 'GET', data, header = {}, timeout } = options;
   const token = getMerchantToken();
   const headers = { 'Content-Type': 'application/json', ...header };
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  return requestWithHeaders({ url, method, data, headers }).catch((err) => {
+  return requestWithHeaders({ url, method, data, headers, timeout }).catch((err) => {
     if (err && err.statusCode === 401) {
       handleMerchantUnauthorized();
     }
@@ -156,9 +156,9 @@ function merchantRequest(options) {
 }
 
 function requestWithHeaders(options) {
-  const { url, method = 'GET', data, headers = {} } = options;
+  const { url, method = 'GET', data, headers = {}, timeout } = options;
   return new Promise((resolve, reject) => {
-    wx.request({
+    const wxOpts = {
       url: (url || '').startsWith('http') ? url : BASE_URL + url,
       method,
       data,
@@ -178,7 +178,9 @@ function requestWithHeaders(options) {
         }
       },
       fail: (err) => reject(attachWechatDomainHint(err))
-    });
+    };
+    if (timeout != null && timeout > 0) wxOpts.timeout = timeout;
+    wx.request(wxOpts);
   });
 }
 
@@ -290,6 +292,7 @@ module.exports = {
         filePath: toUpload,
         name: 'image',
         header: token ? { Authorization: 'Bearer ' + token } : {},
+        timeout: 120000,
         success: (res) => {
           let body = {};
           try {
@@ -298,24 +301,57 @@ module.exports = {
           if (res.statusCode >= 200 && res.statusCode < 300 && body.code === 200 && body.data && body.data.url) {
             resolve(body.data.url);
           } else {
-            const msg = body.message || (res.statusCode === 401 ? '请先登录服务商端' : res.statusCode === 503 ? '图片上传功能暂不可用' : '上传失败');
-            reject(new Error(msg));
+            const hint413 = res.statusCode === 413 ? '（请求体过大，请缩小图片或调高网关 client_max_body_size）' : '';
+            const rawPreview =
+              typeof res.data === 'string' && res.data.length > 0 && body.code == null
+                ? ' ' + res.data.slice(0, 80).replace(/\s+/g, ' ')
+                : '';
+            const msg =
+              body.message ||
+              (res.statusCode === 401
+                ? '请先登录服务商端'
+                : res.statusCode === 503
+                  ? '图片上传功能暂不可用'
+                  : res.statusCode >= 400
+                    ? `上传失败（HTTP ${res.statusCode}）`
+                    : '上传失败');
+            reject(new Error(String(msg) + hint413 + rawPreview));
           }
         },
-        fail: (err) => reject(new Error(err.errMsg || err.message || '网络异常，请检查网络后重试'))
+        fail: (err) => {
+          attachWechatDomainHint(err);
+          const extra = err && err.userHint ? ' ' + err.userHint : '';
+          reject(new Error((err.errMsg || err.message || '网络异常，请检查网络后重试') + extra));
+        }
       });
     });
   },
-  analyzeDamage: (data) => api.post('/api/v1/damage/analyze', data),
+  /** 定损 AI 走服务端再调 DashScope，大图/新模型易超 60s，单独放宽小程序等待 */
+  analyzeDamage: (data) => request({ url: '/api/v1/damage/analyze', method: 'POST', data, timeout: 180000 }),
+  /** 跳过等待：创建定损报告并异步分析（后台完成后才会分发竞价） */
+  createDamageReport: (data) => api.post('/api/v1/damage/reports/create', data),
   getDamageDailyQuota: () => api.get('/api/v1/damage/daily-quota'),
   getDamageReports: (params) => api.get('/api/v1/damage/reports', params),
   getDamageReport: (id) => api.get('/api/v1/damage/report/' + id),
+  /** 当前用户能力开关（Phase1：全局 settings） */
+  getCapabilities: () => api.get('/api/v1/capabilities'),
+  /** 生成报告分享 token（本人） */
+  createDamageReportShareToken: (reportId, expiresInSec) =>
+    api.post('/api/v1/damage/report/' + reportId + '/share-token', expiresInSec ? { expires_in_sec: expiresInSec } : {}),
+  /** 公共：通过 token 获取分享摘要（无需登录） */
+  getSharedDamageReport: (token) => api.get('/api/v1/public/damage/report/share/' + encodeURIComponent(token)),
+  /** Lead：外部引流 token 获取报告摘要（无需登录） */
+  getLeadDamageReport: (token) => api.get('/api/v1/public/lead/damage/report/' + encodeURIComponent(token)),
+  /** Lead：登录后认领 token（首次使用）并将报告归属到本人 */
+  claimDamageReportByToken: (token) => api.post('/api/v1/damage/report/claim-by-token', { token }),
   createBidding: (data) => api.post('/api/v1/bidding/create', data),
   authLogin: (code) => api.post('/api/v1/auth/login', { code }),
   authPhoneByCode: (code) => api.post('/api/v1/auth/phone', { code }),
   authPhoneBySms: (phone, smsCode) => api.post('/api/v1/auth/phone/verify-sms', { phone, sms_code: smsCode }),
   updateUserProfile: (data) => api.put('/api/v1/user/profile', data),
   getUserProfile: () => api.get('/api/v1/user/profile'),
+  /** 绑定一级推荐人（仅首次、成功后标记分销买家；需登录） */
+  bindReferrer: (referrer_user_id) => api.post('/api/v1/user/referral/bind', { referrer_user_id }),
   getUserTrustLevel: () => api.get('/api/v1/user/trust-level'),
   getUserLevelDetail: () => api.get('/api/v1/user/level-detail'),
   getUserVehicles: () => api.get('/api/v1/user/vehicles'),
@@ -329,13 +365,16 @@ module.exports = {
   seedDevQuotes: (biddingId) => api.post('/api/v1/dev/seed-quotes', { bidding_id: biddingId }),
   getUserOrders: (params) => api.get('/api/v1/user/orders', params),
   getUserOrder: (id) => api.get('/api/v1/user/orders/' + id),
+  markUserOrderArrived: (id) => api.post('/api/v1/user/orders/' + id + '/arrived'),
+  claimMerchantNotHandled: (id, data) => api.post('/api/v1/user/orders/' + id + '/merchant-not-handled', data || {}),
+  forceCloseOrder: (id, data) => api.post('/api/v1/user/orders/' + id + '/force-close', data || {}),
+  submitUserOfflineFeeProof: (id, data) => api.post('/api/v1/user/orders/' + id + '/offline-fee-proof', data),
   /** 历史接口：小程序已下线质保卡页，保留以防旧版或其它端调用 */
   getUserOrderWarrantyCard: (id) => api.get('/api/v1/user/orders/' + id + '/warranty-card'),
   /** 历史公开核验接口 */
   verifyWarrantyCard: (data) => api.post('/api/v1/public/warranty-card/verify', data),
   getRewardPreview: (id) => api.get('/api/v1/user/orders/' + id + '/reward-preview'),
-  cancelOrder: (id, reason) => api.post('/api/v1/user/orders/' + id + '/cancel', { reason: reason || '' }),
-  escalateCancelRequest: (orderId, requestId) => api.post('/api/v1/user/orders/' + orderId + '/cancel-request/' + requestId + '/escalate'),
+  cancelOrder: (id) => api.post('/api/v1/user/orders/' + id + '/cancel', {}),
   confirmOrder: (id) => api.post('/api/v1/user/orders/' + id + '/confirm'),
   approveRepairPlan: (id, approved) => api.post('/api/v1/user/orders/' + id + '/repair-plan/approve', { approved }),
   /** 车主确认/拒绝最终报价（双阶段报价锁价） */
@@ -351,9 +390,11 @@ module.exports = {
   recordReviewViewed: (reviewId) => api.post('/api/v1/reviews/' + reviewId + '/viewed'),
   /** 上报有效阅读会话（点赞追加奖金） */
   reportReviewReading: (reviewId, data) => api.post('/api/v1/reviews/' + reviewId + '/reading', data),
+  /** 列表行曝光（日去重），表未迁移时接口仍 200 且 recorded:false */
+  reportReviewListImpression: (reviewId) => api.post('/api/v1/reviews/' + reviewId + '/impression', {}),
   /** 点赞评价 */
   likeReview: (reviewId) => api.post('/api/v1/reviews/' + reviewId + '/like'),
-  /** 踩评价 */
+  /** 踩评价（已废止，服务端返回错误；保留仅防旧代码调用） */
   dislikeReview: (reviewId) => api.post('/api/v1/reviews/' + reviewId + '/dislike'),
   submitFollowup: (id, data) => api.post('/api/v1/reviews/' + id + '/followup', data),
   submitReturnReview: (data) => api.post('/api/v1/reviews/return', data),
@@ -452,10 +493,16 @@ module.exports = {
     merchantRequest({ url: '/api/v1/merchant/warranty-card/templates', method: 'GET' }),
   acceptOrder: (id) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/accept', method: 'POST' }),
   updateOrderStatus: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/status', method: 'PUT', data }),
+  /** 维修中记录关键节点进展（照片+说明），并通知车主 */
+  postMerchantRepairMilestone: (id, data) =>
+    merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/repair-milestones', method: 'POST', data }),
   updateRepairPlan: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/repair-plan', method: 'PUT', data }),
   /** 服务商提交到店最终报价 */
   submitMerchantFinalQuote: (id, data) => merchantRequest({ url: '/api/v1/merchant/orders/' + id + '/final-quote', method: 'PUT', data }),
-  respondCancelRequest: (orderId, requestId, approve) => merchantRequest({ url: '/api/v1/merchant/orders/' + orderId + '/cancel-request/' + requestId + '/respond', method: 'POST', data: { approve } }),
+  merchantWaitingPartsExtension: (orderId, data) =>
+    merchantRequest({ url: '/api/v1/merchant/orders/' + orderId + '/waiting-parts-extension', method: 'POST', data }),
+  setMerchantPromisedDelivery: (orderId, data) =>
+    merchantRequest({ url: '/api/v1/merchant/orders/' + orderId + '/promised-delivery', method: 'PUT', data }),
   getMerchantProducts: () => merchantRequest({ url: '/api/v1/merchant/products', method: 'GET' }),
   createMerchantProduct: (data) => merchantRequest({ url: '/api/v1/merchant/products', method: 'POST', data }),
   updateMerchantProduct: (productId, data) => merchantRequest({ url: '/api/v1/merchant/products/' + productId, method: 'PUT', data }),

@@ -1,11 +1,11 @@
-<!-- 修改维修方案 / 修改报价单（多轮）- M07；车主定损与 AI 分析与 M05 首次报价对齐 -->
+<!-- 修改维修方案 / 修改报价单（多轮）- M07；车主预报价与预报价参考与 M05 首次报价对齐 -->
 <custom-nav-bar title="{{navTitle}}" showBack="{{true}}" />
 <view class="page-root repair-plan-edit" style="{{pageRootStyle}}">
   <scroll-view class="edit-scroll" scroll-y style="{{scrollStyle}}" wx:if="{{order}}">
-    <!-- 车主定损依据（与 M05 一致） -->
+    <!-- 车主预报价依据（与 M05 一致） -->
     <view class="merchant-owner-evidence card">
       <view class="merchant-evidence-head">
-        <text class="merchant-evidence-title fs-h3 fw-bold">车主定损依据</text>
+        <text class="merchant-evidence-title fs-h3 fw-bold">车主预报价依据</text>
         <text class="merchant-evidence-priority fs-cap">请优先根据下列照片与说明核损、填写报价</text>
       </view>
       <view class="merchant-evidence-photos-block" wx:if="{{order.images && order.images.length}}">
@@ -59,11 +59,11 @@
       </view>
     </view>
 
-    <!-- AI 分析报告（与 M05 一致，默认折叠） -->
+    <!-- 预报价参考（与 M05 一致，默认折叠） -->
     <view class="merchant-ai-report card" wx:if="{{reportHasAnalysisSection}}">
       <view class="merchant-ai-report-head" bindtap="toggleAiReport">
         <view class="merchant-ai-report-head-text">
-          <text class="fs-body fw-bold">AI 分析报告</text>
+          <text class="fs-body fw-bold">预报价参考</text>
           <text class="merchant-ai-report-hint text-muted fs-cap">仅供参考 · 点击展开</text>
         </view>
         <view class="merchant-ai-report-head-right">
@@ -116,7 +116,7 @@
       <text class="text-muted fs-cap">与首次报价字段一致；每轮须填<text class="fw-medium">分项金额</text>且与总报价一致。每轮报价须上传证明材料，提交后需车主确认，并留痕公示。</text>
     </view>
     <view class="edit-tip card insurance-risk" wx:if="{{isFinalMode && isInsurance}}">
-      <text class="fs-body">保险车：最终报价须与保司定损一致；虚增、伪造定损材料涉嫌违法。平台仅做材料留存，不视为认可理赔结论。</text>
+      <text class="fs-body">保险车：最终报价须与保司定损一致；虚增、伪造保司定损材料涉嫌违法。平台仅做材料留存，不视为认可理赔结论。</text>
     </view>
 
     <view class="edit-card card bidding-quote-card">
@@ -185,18 +185,15 @@
         </view>
       </view>
 
-      <view class="mqf-section mqf-value-added">
-        <text class="mqf-section-title fs-body fw-bold">增值服务</text>
-        <text class="mqf-section-hint text-weak fs-sm">如代步车、上门接送等，每项一行</text>
-        <view class="mqf-va-list">
-          <view class="mqf-va-row" wx:for="{{valueAdded}}" wx:key="id">
-            <input class="mqf-va-input" placeholder="如：代步车、上门接送" value="{{item.name}}" data-id="{{item.id}}" bindinput="onVaInput"/>
-            <view class="mqf-va-del" data-id="{{item.id}}" bindtap="onDelVa">删除</view>
-          </view>
-          <view class="mqf-va-add" bindtap="onAddVa">
-            <text class="text-primary fs-body">+ 添加增值服务</text>
-          </view>
+      <view class="mqf-section mqf-value-added-compact">
+        <view class="mqf-value-added-compact-head">
+          <text class="mqf-section-title fs-body fw-bold">增值服务</text>
+          <view class="mqf-value-added-go-btn fs-body" bindtap="onOpenQuoteValueAdded">去选择</view>
         </view>
+        <view class="mqf-va-chosen-wrap" wx:if="{{vaChosenLabels.length}}">
+          <text class="mqf-va-chosen-chip fs-cap" wx:for="{{vaChosenLabels}}" wx:for-item="vlab" wx:for-index="vix" wx:key="vix">{{vlab}}</text>
+        </view>
+        <text wx:else class="text-muted fs-cap mqf-va-chosen-empty">尚未选择；点「去选择」勾选模板或补充说明</text>
       </view>
 
       <view class="mqf-summary-section">
@@ -230,8 +227,8 @@
         </view>
       </view>
       <view class="edit-section" wx:if="{{isFinalMode && isInsurance}}">
-        <text class="edit-section-title fs-body fw-bold">定损单照片（至少1张）</text>
-        <text class="text-muted fs-cap rp-evidence-hint">若定损单列项不足以覆盖本单维修明细，请在下方补充说明。</text>
+        <text class="edit-section-title fs-body fw-bold">保司定损单照片（至少1张）</text>
+        <text class="text-muted fs-cap rp-evidence-hint">若保司定损单列项不足以覆盖本单维修明细，请在下方补充说明。</text>
         <view class="rp-evidence-grid">
           <view class="rp-evidence-thumb" wx:for="{{lossAssessmentUrls}}" wx:key="index">
             <image src="{{item}}" mode="aspectFill" class="rp-evidence-img"/>
@@ -240,7 +237,7 @@
           <view class="evidence-add" wx:if="{{lossAssessmentUrls.length < 6}}" bindtap="onChooseLossPhoto">+</view>
         </view>
         <text class="edit-section-title fs-body fw-bold rp-loss-note-title">补充说明（选填）</text>
-        <textarea class="edit-textarea" placeholder="定损单未列明的项目、辅料或工时等" value="{{lossSupplementNote}}" maxlength="500" bindinput="onLossSupplementInput"/>
+        <textarea class="edit-textarea" placeholder="保司定损单未列明的项目、辅料或工时等" value="{{lossSupplementNote}}" maxlength="500" bindinput="onLossSupplementInput"/>
       </view>
     </view>
     <view class="edit-bottom-pad"></view>

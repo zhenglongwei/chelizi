@@ -10,11 +10,13 @@ const {
   uploadImage,
   merchantCheckOpenid,
   merchantWechatLogin,
-  getUserBookingOptionsAll
+  getUserBookingOptionsAll,
+  bindReferrer
 } = require('../../../utils/api');
 const { runUserBookingFlow } = require('../../../utils/user-booking-flow');
 const { fetchAndApplyUnreadBadge, applyUnreadToTabBar } = require('../../../utils/message-badge');
 const { getNavBarHeight } = require('../../../utils/util');
+const { showWechatShareMenu } = require('../../../utils/show-share-menu');
 
 function formatMoney(v) {
   if (v == null || v === '' || isNaN(v)) return '0.00';
@@ -46,6 +48,7 @@ Page({
   },
 
   onShow() {
+    showWechatShareMenu();
     this.checkToken();
     const hasToken = !!getToken();
     /** 由未登录变为已登录（含冷启动首次展示且本地已有 token） */
@@ -61,6 +64,7 @@ Page({
     }
 
     if (this.data.hasToken) {
+      this.tryBindPendingReferrer();
       this.loadProfile();
       this.refreshUnreadTabBadge();
     }
@@ -111,6 +115,25 @@ Page({
       applyUnreadToTabBar(0);
     }
     this.setData(patch);
+  },
+
+  /** 分享落地参数 ?ref= 推荐人 user_id，登录后自动绑定一次 */
+  async tryBindPendingReferrer() {
+    let rid = '';
+    try {
+      rid = wx.getStorageSync('pending_referrer_user_id') || '';
+    } catch (_) {}
+    rid = String(rid).trim();
+    if (!rid || !getToken()) return;
+    try {
+      await bindReferrer(rid);
+      wx.removeStorageSync('pending_referrer_user_id');
+    } catch (err) {
+      const msg = (err && err.message) || '';
+      if (msg.includes('已绑定')) {
+        wx.removeStorageSync('pending_referrer_user_id');
+      }
+    }
   },
 
   async loadProfile() {
@@ -217,5 +240,14 @@ Page({
       ui.showError((err && err.message) || '登录失败');
       this.setData({ merchantWechatLoading: false });
     }
+  },
+
+  /** 代理人分销：从「我的」分享小程序，好友打开后带 ref 可绑定推荐人 */
+  onShareAppMessage() {
+    const { buildReferralSharePath, SHARE_TITLES } = require('../../../utils/referral-share');
+    return {
+      title: SHARE_TITLES.invite,
+      path: buildReferralSharePath('/pages/index/index')
+    };
   }
 });

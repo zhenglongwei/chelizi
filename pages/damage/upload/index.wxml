@@ -1,9 +1,9 @@
-<!-- AI定损页 - 02-AI定损页 -->
-<custom-nav-bar title="AI定损" />
+<!-- 预报价页（原 AI定损） - 02-AI定损页 -->
+<custom-nav-bar title="预报价" />
 <view class="page-root damage-page" style="{{pageRootStyle}}">
   <block wx:if="{{!hasToken}}">
     <view class="damage-empty card">
-      <text class="text-muted fs-body">请先登录后再使用 AI 定损</text>
+      <text class="text-muted fs-body">请先登录后再使用预报价</text>
       <navigator class="damage-login-link" url="/pages/auth/login/index?redirect=%2Fpages%2Fdamage%2Fupload%2Findex">去登录</navigator>
     </view>
   </block>
@@ -48,7 +48,7 @@
         <textarea class="damage-desc-input" placeholder="如：地库泡水、车内进水约10cm；或发动机异响、故障灯亮等无法通过照片体现的问题" value="{{userDescription}}" bindinput="onDescInput" maxlength="-1"/>
       </view>
 
-      <!-- 车辆信息 -->
+      <!-- 车辆信息（提交前预填，用于锁定车辆；避免多车选择） -->
       <view class="damage-section card">
         <view class="damage-section-title fs-body fw-bold">车辆信息</view>
         <view class="damage-field-row-inline">
@@ -57,11 +57,11 @@
         </view>
         <view class="damage-field-row-inline">
           <text class="damage-label-inline fs-body">品牌</text>
-          <input class="damage-input-inline" placeholder="如：宝马" value="{{vehicleInfo.brand}}" bindinput="onBrandInput"/>
+          <input class="damage-input-inline" placeholder="如：宝马（可选）" value="{{vehicleInfo.brand}}" bindinput="onBrandInput"/>
         </view>
         <view class="damage-field-row-inline">
           <text class="damage-label-inline fs-body">车型</text>
-          <input class="damage-input-inline" placeholder="如：3系、Model Y（勿填 SUV 等通用类型）" value="{{vehicleInfo.model}}" bindinput="onModelInput"/>
+          <input class="damage-input-inline" placeholder="如：3系、Model Y（可选）" value="{{vehicleInfo.model}}" bindinput="onModelInput"/>
         </view>
       </view>
 
@@ -70,28 +70,33 @@
 
     <view class="damage-footer">
       <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
-      <view class="damage-btn btn-primary {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onStartAnalyze">
-        <text class="fs-body fw-bold">{{analyzing ? '分析中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '开始 AI 分析')}}</text>
+      <view class="damage-btn btn-primary {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onSubmitPreQuote">
+        <text class="fs-body fw-bold">{{analyzing ? '提交中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '提交预报价（后台分析，不用等待）')}}</text>
       </view>
     </view>
   </block>
 
   <block wx:elif="{{step === 2}}">
     <scroll-view class="damage-scroll" scroll-y style="{{scrollStyle}}">
-      <!-- 分析进度 -->
+      <!-- 预报价分析进度（可选） -->
       <view class="damage-progress card" wx:if="{{analyzing}}">
         <view class="damage-progress-bar">
           <view class="damage-progress-fill" style="{{progressStyle}}"></view>
         </view>
-        <text class="text-muted fs-cap">AI 正在分析中，请稍候...</text>
+        <text class="text-muted fs-cap">正在生成预报价参考，请稍候...</text>
       </view>
 
-      <!-- 分析结果 -->
-      <view class="damage-report card" wx:elif="{{report}}">
+      <!-- 分析结果 / 跳过分析的表单 -->
+      <view class="damage-report card" wx:elif="{{reportId}}">
         <view class="damage-report-header">
-          <text class="damage-report-title fs-h3 fw-bold">定损报告</text>
-          <view class="damage-report-close" bindtap="onCloseReport">
-            <text class="damage-report-close-text">关闭</text>
+          <text class="damage-report-title fs-h3 fw-bold">{{report ? '损失报告（AI）' : '发起竞价'}}</text>
+          <view class="damage-report-actions-inline">
+            <button class="damage-report-share-btn" open-type="share" bindtap="onPrepareShare">
+              <text class="fs-body">分享报告</text>
+            </button>
+            <view class="damage-report-close" bindtap="onCloseReport">
+              <text class="damage-report-close-text">关闭</text>
+            </view>
           </view>
         </view>
 
@@ -116,13 +121,21 @@
           </view>
         </view>
 
-        <!-- 车辆信息（可编辑） -->
+        <!-- 车辆信息（AI 完成后展示，识别结果预填，可改） -->
         <view class="damage-vehicle-info" wx:if="{{vehiclesList.length}}">
           <view class="damage-section-title fs-body fw-bold">车辆信息</view>
+          <text class="text-muted fs-sm" style="display:block;margin-bottom:12rpx;">品牌、车型等为 AI 识别结果，请核对；缺项请手工填写（发起竞价前须填车牌号）。车牌可手输；若已在资料中绑定车辆，点击车牌输入框时可在下方选择绑定车牌填入（与 AI 识别区分）。</text>
+          <view class="damage-plate-mismatch-hint text-warning fs-sm" wx:if="{{verifiedPlateMismatchHint}}">{{verifiedPlateMismatchHint}}</view>
           <view wx:for="{{vehiclesList}}" wx:key="index" wx:if="{{selectedVehicleIndex === index}}">
             <view class="damage-field-row-inline">
               <text class="damage-label-inline fs-body">车牌号<text class="text-error">*</text></text>
-              <input class="damage-input-inline" placeholder="如：京A12345（必填）" value="{{vehicleEdits[index] && vehicleEdits[index].plate_number !== undefined ? vehicleEdits[index].plate_number : item.plateNumber}}" data-index="{{index}}" bindinput="onReportPlateInput"/>
+              <input class="damage-input-inline" placeholder="如：京A12345（必填）" value="{{vehicleEdits[index] && vehicleEdits[index].plate_number !== undefined ? vehicleEdits[index].plate_number : item.plateNumber}}" data-index="{{index}}" bindinput="onReportPlateInput" bindfocus="onReportPlateFocus" bindblur="onReportPlateBlur"/>
+            </view>
+            <view class="damage-bound-plate-suggest" wx:if="{{plateSuggestionVisible && boundPlateList.length}}">
+              <text class="text-muted fs-cap damage-bound-plate-suggest-label">以下为资料中绑定车牌（非 AI 识别），点击填入</text>
+              <view class="damage-bound-plate-chips">
+                <view class="damage-bound-plate-chip fs-body" wx:for="{{boundPlateList}}" wx:for-item="bp" wx:key="*this" data-plate="{{bp}}" catchtap="onPickBoundPlate">{{bp}}</view>
+              </view>
             </view>
             <view class="damage-field-row-inline">
               <text class="damage-label-inline fs-body">品牌</text>
@@ -135,36 +148,7 @@
           </view>
         </view>
 
-        <view class="damage-report-damages">
-          <view class="damage-human-section">
-            <view class="fs-body fw-bold damage-human-title">明显损伤</view>
-            <block wx:if="{{currentHumanDisplay.obvious_damage && currentHumanDisplay.obvious_damage.length}}">
-              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.obvious_damage}}" wx:key="index">
-                <text class="fs-body">· {{item}}</text>
-              </view>
-            </block>
-            <text class="text-muted fs-body damage-human-empty" wx:else>暂无明显可见损伤</text>
-          </view>
-          <view class="damage-human-section">
-            <view class="fs-body fw-bold damage-human-title">可能损伤</view>
-            <block wx:if="{{currentHumanDisplay.possible_damage && currentHumanDisplay.possible_damage.length}}">
-              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.possible_damage}}" wx:key="index">
-                <text class="fs-body">· {{item}}</text>
-              </view>
-            </block>
-            <text class="text-muted fs-body damage-human-empty" wx:else>暂无待进一步确认项</text>
-          </view>
-          <view class="damage-human-section">
-            <view class="fs-body fw-bold damage-human-title">维修建议</view>
-            <block wx:if="{{currentHumanDisplay.repair_advice && currentHumanDisplay.repair_advice.length}}">
-              <view class="damage-damage-item" wx:for="{{currentHumanDisplay.repair_advice}}" wx:key="index">
-                <text class="fs-body">· {{item}}</text>
-              </view>
-            </block>
-            <text class="text-muted fs-body damage-human-empty" wx:else>暂无专项建议</text>
-          </view>
-          <view class="damage-disclaimer text-muted fs-sm">本分析结果仅供参考，具体请以实车检测与正规维修厂意见为准。</view>
-        </view>
+        <accident-report-view vm="{{reportVm}}" />
       </view>
 
       <!-- 询价位置（用于邀请附近服务商，必填） -->

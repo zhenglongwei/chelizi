@@ -7,6 +7,8 @@ const reviewValidator = require('../review-validator');
 const antifraud = require('../antifraud');
 const objectiveSchema = require('../utils/review-objective-schema');
 const shopScore = require('../shop-score');
+const orderRewardCap = require('./order-reward-cap-service');
+const { preWithholdLaborRemunerationEachPayment } = require('../utils/labor-remuneration-withhold');
 
 function parseJsonField(v, fallback) {
   if (v == null || v === '') return fallback;
@@ -108,9 +110,8 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
     settlement_list_image: settlementImage,
   });
 
-  let contentQuality = validation.premium ? 'premium' : 'valid';
-  let contentQualityLevel = validation.premium ? 2 : 1;
-  let isPremium = validation.premium;
+  let contentQuality = 'valid';
+  let contentQualityLevel = 1;
 
   const faultEvidenceUrls = parseJsonField(rv.fault_evidence_images, []);
   const objFlat = parseJsonField(rv.objective_answers, {});
@@ -119,18 +120,18 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
   if (m3Merged.q_fault_resolved === false && faultEvidenceUrls.length > 0 && contentQualityLevel === 1) {
     contentQuality = '维权参考';
     contentQualityLevel = 2;
-    isPremium = true;
   }
   if (contentQualityLevel > 2) {
     contentQualityLevel = 2;
     if (contentQuality === '标杆') contentQuality = 'premium';
-    isPremium = true;
   }
 
-  const premiumFloat = isPremium ? rewardCalculator.calcPremiumFloatReward(rewardResult.reward_pre, true) : 0;
-  totalReward += premiumFloat;
+  const isPremium = false;
+  const premiumFloat = 0;
 
   const eligibility = await antifraud.getRewardEligibility(pool, userId);
+  const rewardRulesSnapshot = await rewardCalculator.getRewardRules(pool);
+  const pv1Global = rewardRulesSnapshot.platformIncentiveV1 || {};
   const commissionCapRatio = 1.0;
   const maxByCommission = (rewardResult.commission_amount || 0) * commissionCapRatio;
   if (maxByCommission > 0) totalReward = Math.min(totalReward, maxByCommission);
@@ -165,8 +166,26 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
     }
   }
 
-  const taxDeducted = rewardAmount > 800 ? Math.round((rewardAmount - 800) * 0.2 * 100) / 100 : 0;
-  let userReceives = rewardAmount - taxDeducted;
+  const wRA = preWithholdLaborRemunerationEachPayment(rewardAmount);
+  let taxDeducted = wRA.taxDeducted;
+  let userReceives = wRA.afterTax;
+  const userReceivesPreHardCap = userReceives;
+  const taxDeductedPreHardCap = taxDeducted;
+  if (userReceives > 0) {
+    const capped = await orderRewardCap.clampPayoutToOrderHardCap(
+      pool,
+      order_id,
+      order,
+      {
+        afterTax: userReceives,
+        taxDeducted,
+      },
+      null,
+      { review_id: reviewId, payout_kind: 'rebate_human_approve' }
+    );
+    userReceives = capped.afterTax;
+    taxDeducted = capped.taxDeducted;
+  }
 
   let shouldWithhold = false;
   if (eligibility.level === 0 && rewardAmount === 0 && !demotedByViolation && complexityLevel !== 'L1') {
@@ -191,8 +210,9 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
       withholdAmount = currentMonthL1 >= cap ? 0 : Math.min(withholdAmount, cap - currentMonthL1);
     }
     withholdAmount = Math.round(withholdAmount * 100) / 100;
-    const withholdTax = withholdAmount > 800 ? Math.round((withholdAmount - 800) * 0.2 * 100) / 100 : 0;
-    const withholdReceives = Math.round((withholdAmount - withholdTax) * 100) / 100;
+    const wHW = preWithholdLaborRemunerationEachPayment(withholdAmount);
+    const withholdTax = wHW.taxDeducted;
+    const withholdReceives = wHW.afterTax;
     if (withholdReceives > 0) {
       try {
         await pool.execute(
@@ -278,11 +298,20 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
       userReceives,
       userId,
     ]);
-    await pool.execute(
-      `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
-       VALUES (?, ?, 'rebate', ?, '主评价奖励金（人工裁定）', ?, ?, 'main', ?, NOW())`,
-      ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
-    );
+    const hasSrc = await orderRewardCap.hasRewardSourceOrderColumn(pool);
+    if (hasSrc) {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金（人工裁定）', ?, ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, order_id, orderTier ?? null, taxDeducted ?? null]
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_tier, review_stage, tax_deducted, created_at)
+         VALUES (?, ?, 'rebate', ?, '主评价奖励金（人工裁定）', ?, ?, 'main', ?, NOW())`,
+        ['TXN' + Date.now(), userId, userReceives, reviewId, orderTier ?? null, taxDeducted ?? null]
+      );
+    }
   }
 
   try {
@@ -293,6 +322,57 @@ async function approvePendingHumanAiReview(pool, reviewId, adminUserId) {
   } catch (e) {
     console.error('[review-human-audit] audit log:', e.message);
   }
+
+  try {
+    const auditLogger = require('../reward-audit-logger');
+    auditLogger.logReviewSubmit({
+      review_id: reviewId,
+      order_id,
+      user_id: userId,
+      reward_pre: rewardResult.reward_pre,
+      reward_base: rewardResult.reward_pre,
+      order_tier: orderTier,
+      complexity_level: complexityLevel,
+      commission_rate: rewardResult.commission_rate,
+      commission_amount: rewardResult.commission_amount,
+      vehicle_price_tier: rewardResult.vehicle_price_tier,
+      vehicle_coeff: rewardResult.vehicle_coeff,
+      content_quality: contentQuality,
+      content_quality_level: contentQualityLevel,
+      is_premium: isPremium,
+      premium_float: premiumFloat,
+      total_reward: totalReward,
+      max_by_commission: maxByCommission,
+      immediate_percent: 1,
+      user_level: eligibility.level,
+      eligibility_can_receive: eligibility.canReceive,
+      eligibility_multiplier: eligibility.multiplier,
+      l1_monthly_cap: null,
+      current_month_l1: null,
+      reward_amount_before_tax: rewardAmount,
+      tax_deducted: taxDeducted,
+      user_receives: userReceives,
+      user_receives_pre_hard_cap: userReceivesPreHardCap,
+      tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+      compliance_red_line_pct: rewardRulesSnapshot.complianceRedLine,
+      platform_incentive_v1: auditLogger.pickPv1ForAudit(pv1Global),
+      tracks: {
+        base: {
+          reward_pre: rewardResult.reward_pre,
+          premium_float: premiumFloat,
+          total_reward_pre_tax: totalReward,
+          reward_amount_pre_tax: rewardAmount,
+          user_receives: userReceives,
+          tax_deducted: taxDeducted,
+          user_receives_pre_hard_cap: userReceivesPreHardCap,
+          tax_deducted_pre_hard_cap: taxDeductedPreHardCap,
+          source: 'human_approve_pending_ai',
+        },
+        interaction: { settled: false, pipeline: 'monthly_like_bonus' },
+        conversion: { settled: false, pipeline: 'monthly_conversion_or_post_verify' },
+      },
+    });
+  } catch (_) {}
 
   return {
     success: true,

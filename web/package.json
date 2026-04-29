@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:miniprogram": "jest --config jest.miniprogram.config.js",
-    "simulate:flow": "node scripts/simulate-full-flow.js"
+    "simulate:flow": "node scripts/simulate-full-flow.js",
+    "test:modules:e2e": "node scripts/test-modular-capabilities-e2e.js"
   },
   "dependencies": {
     "@ant-design/icons": "^5.2.6",

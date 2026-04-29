@@ -7,7 +7,6 @@ const {
   getShopReviews,
   reportReviewReading,
   likeReview,
-  dislikeReview,
   getShopBookingOptions
 } = require('../../../utils/api');
 const { runUserBookingFlow } = require('../../../utils/user-booking-flow');
@@ -24,6 +23,9 @@ const { formatMethodsSummary } = require('../../../utils/parts-verification-labe
 const { enrichReviewV3PublicCard } = require('../../../utils/review-v3-public-display');
 
 const logger = getLogger('ShopDetail');
+const { buildReferralSharePath, SHARE_TITLES } = require('../../../utils/referral-share');
+const { showWechatShareMenu } = require('../../../utils/show-share-menu');
+const { buildOwnerSideScoreRow, INSUFFICIENT_SAMPLE_HINT, getShopOrderCount } = require('../../../utils/shop-public-score');
 
 function buildPartsMerchantVerifyLine(pd) {
   if (!pd || typeof pd !== 'object') return '';
@@ -63,6 +65,7 @@ Page({
     repairProjectKey: '',
     favored: false,
     pageRootStyle: 'padding-top: 88px',
+    scrollIntoReview: '',
     _readingTimers: {}, // reviewId -> { intervalId, sawAt, sessionSec, totalReported }
   },
 
@@ -76,8 +79,14 @@ Page({
     const navH = getNavBarHeight();
     this.setData({ shopId: id, pageRootStyle: 'padding-top: ' + navH + 'px' });
     this.initScrollHeight(navH);
-    logger.info('进入维修厂详情', { id });
+    const highlightReview = String(options.review_id || '').trim();
+    if (highlightReview) this._pendingHighlightReviewId = highlightReview;
+    logger.info('进入维修厂详情', { id, review_id: highlightReview || undefined });
     this.loadDetail();
+  },
+
+  onShow() {
+    showWechatShareMenu();
   },
 
   initScrollHeight(navBarHeight) {
@@ -98,6 +107,7 @@ Page({
       const deviationRate = parseFloat(shop.deviation_rate) || 0;
       const deviationClass = getDeviationClass(deviationRate);
       const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
+      const scoreRow = buildOwnerSideScoreRow(shop);
       const starDisplay = scoreToStarDisplay(shop.shop_score, shop.rating);
 
       const products = (shop.products || []).map((p) => {
@@ -109,6 +119,10 @@ Page({
         };
       });
 
+      const orderN = getShopOrderCount(shop);
+      const insufficientRatingLine =
+        orderN > 0 ? INSUFFICIENT_SAMPLE_HINT + ' · ' + orderN + '单' : INSUFFICIENT_SAMPLE_HINT;
+
       this.setData({
         shop: {
           ...shop,
@@ -119,9 +133,12 @@ Page({
           products,
           deviationRate: deviationRate.toFixed(1),
           deviationClass,
+          showPublicScore: scoreRow.showPublicScore,
           avgRating: starDisplay.scoreText,
           starsDisplay: starDisplay.stars,
-          totalReviews: stats.total_reviews || 0
+          totalReviews: stats.total_reviews || 0,
+          total_orders: orderN,
+          insufficientRatingLine
         },
         loading: false
       });
@@ -276,15 +293,16 @@ Page({
         });
       });
 
+      const merged = reviewPage === 1 ? mapped : [...reviews, ...mapped];
       const updates = {
-        reviews: [...reviews, ...mapped],
+        reviews: merged,
         reviewPage: reviewPage + 1,
         reviewTotal: total,
-        hasMoreReviews: reviews.length + list.length < total,
+        hasMoreReviews: merged.length < total,
         loadingReviews: false
       };
       if (reviewPage === 1 && keys.length > 0) updates.repairProjectKeys = keys;
-      this.setData(updates);
+      this.setData(updates, () => this._maybeScrollToHighlightReview());
     } catch (err) {
       logger.error('加载评价失败', err);
       this.setData({ loadingReviews: false });
@@ -295,12 +313,34 @@ Page({
     const key = e.currentTarget.dataset.key || '';
     const cur = this.data.repairProjectKey;
     if (key === cur) return;
+    this._pendingHighlightReviewId = '';
     this.setData({
       repairProjectKey: key,
       reviews: [],
       reviewPage: 1,
       hasMoreReviews: true
     }, () => this.loadReviews());
+  },
+
+  /** 分享落地含 review_id 时，分页加载后滚到对应评价 */
+  _maybeScrollToHighlightReview() {
+    const tid = this._pendingHighlightReviewId;
+    if (!tid || this.data.loadingReviews) return;
+    const list = this.data.reviews || [];
+    const found = list.some((r) => r && r.review_id === tid);
+    if (!found) {
+      if (this.data.hasMoreReviews) {
+        this.loadReviews();
+      } else {
+        this._pendingHighlightReviewId = '';
+      }
+      return;
+    }
+    this._pendingHighlightReviewId = '';
+    const into = 'review-' + tid;
+    this.setData({ scrollIntoReview: into }, () => {
+      setTimeout(() => this.setData({ scrollIntoReview: '' }), 900);
+    });
   },
 
   onCall() {
@@ -505,22 +545,6 @@ Page({
     }
   },
 
-  async onDislikeReview(e) {
-    const idx = e.currentTarget.dataset.index;
-    const reviewId = e.currentTarget.dataset.reviewId;
-    const reviews = [...this.data.reviews];
-    if (!reviews[idx] || reviews[idx].disliked || reviews[idx].liked) return;
-    try {
-      await dislikeReview(reviewId);
-      reviews[idx].disliked = true;
-      reviews[idx].dislike_count = (reviews[idx].dislike_count || 0) + 1;
-      this.setData({ reviews });
-      ui.showSuccess('已踩');
-    } catch (err) {
-      ui.showError(err.message || '操作失败');
-    }
-  },
-
   onAppealTap(e) {
     const orderId = e.currentTarget.dataset.orderId;
     if (orderId) navigation.navigateTo('/pages/order/detail/index', { id: orderId });
@@ -539,6 +563,26 @@ Page({
     }).catch((err) => {
       ui.showError(err.message || '点赞失败');
     });
+  },
+
+  /** 代理人分销：分享店铺或单条评价，路径带 ref */
+  onShareAppMessage(res) {
+    const sid = this.data.shopId;
+    const shopName = this.data.shop && this.data.shop.name;
+    if (res.from === 'button') {
+      const ds = res.target && res.target.dataset;
+      const rid = ds && ds.reviewId ? String(ds.reviewId).trim() : '';
+      if (rid && sid) {
+        return {
+          title: SHARE_TITLES.review,
+          path: buildReferralSharePath('/pages/shop/detail/index', { id: sid, review_id: rid })
+        };
+      }
+    }
+    return {
+      title: shopName ? `辙见 · ${shopName}` : SHARE_TITLES.shop,
+      path: buildReferralSharePath('/pages/shop/detail/index', { id: sid })
+    };
   },
 
   onUnload() {

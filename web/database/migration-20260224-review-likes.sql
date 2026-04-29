@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS review_likes (
   like_type VARCHAR(20) DEFAULT 'normal' COMMENT 'normal-普通 post_verify-事后验证',
   is_valid_for_bonus TINYINT UNSIGNED DEFAULT 0 COMMENT '是否纳入奖金核算 0-否 1-是',
   weight_coefficient DECIMAL(6,4) DEFAULT 0 COMMENT '账号综合权重系数',
-  vehicle_match_by_plate TINYINT UNSIGNED DEFAULT 0 COMMENT '车型匹配 1=车牌一致 0=否',
+  vehicle_match_by_plate TINYINT UNSIGNED DEFAULT 0 COMMENT '高权车型匹配 1=同品牌同车型与评价订单一致 0=否（新库见 schema.sql 注释；存量库请跑 migration-20260414）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_user_review (user_id, review_id),
   INDEX idx_review_id (review_id),
@@ -40,9 +40,30 @@ CREATE TABLE IF NOT EXISTS review_likes (
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评价点赞记录';
 
--- 3. reviews 表扩展（若列已存在会报错，可忽略）
-ALTER TABLE reviews ADD COLUMN content_quality_level TINYINT UNSIGNED DEFAULT 1 COMMENT '内容质量等级 1-4' AFTER like_count;
-ALTER TABLE reviews ADD COLUMN post_verify_like_count INT UNSIGNED DEFAULT 0 COMMENT '事后验证点赞数' AFTER content_quality_level;
+-- 3. reviews 表扩展（幂等：列已存在则跳过，避免 ERROR 1060 Duplicate column）
+SET @q = IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'content_quality_level'
+  ),
+  'SELECT 1',
+  'ALTER TABLE reviews ADD COLUMN content_quality_level TINYINT UNSIGNED DEFAULT 1 COMMENT ''内容质量等级 1-4'' AFTER like_count'
+);
+PREPARE _m20260224_r1 FROM @q;
+EXECUTE _m20260224_r1;
+DEALLOCATE PREPARE _m20260224_r1;
+
+SET @q = IF(
+  EXISTS(
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'post_verify_like_count'
+  ),
+  'SELECT 1',
+  'ALTER TABLE reviews ADD COLUMN post_verify_like_count INT UNSIGNED DEFAULT 0 COMMENT ''事后验证点赞数'' AFTER content_quality_level'
+);
+PREPARE _m20260224_r2 FROM @q;
+EXECUTE _m20260224_r2;
+DEALLOCATE PREPARE _m20260224_r2;
 
 -- 4. transactions 表 type 扩展（已有 rebate/withdraw/recharge，新增 like_bonus/conversion_bonus/post_verify_bonus）
 -- 无需改表结构，type 为 VARCHAR，直接写入新值即可

@@ -11,6 +11,8 @@ import {
   Input,
   message,
   Typography,
+  Alert,
+  Empty,
 } from 'antd';
 import { EyeOutlined, CheckOutlined } from '@ant-design/icons';
 import { callCloudFunction } from '../utils/api';
@@ -139,6 +141,14 @@ export default function DisputeManagement() {
   return (
     <div className="dispute-management">
       <Title level={2}>纠纷处理</Title>
+
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="占位/未启用"
+        description="当前版本投诉/纠纷数据源尚未接入，后台列表可能长期为空；此入口用于后续“申诉中心/纠纷处理”能力收口。"
+      />
       
       <Card>
         <Table
@@ -147,6 +157,15 @@ export default function DisputeManagement() {
           loading={loading}
           rowKey="_id"
           pagination={{ pageSize: 10 }}
+          locale={{
+            emptyText: (
+              <Empty
+                description={
+                  loading ? '加载中…' : '暂无纠纷数据（当前为占位/未启用；后续接入投诉数据源后会在此显示）'
+                }
+              />
+            ),
+          }}
         />
       </Card>
 

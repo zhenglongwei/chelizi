@@ -84,52 +84,64 @@ npm start
 
 ### 1. 用户认证
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
+
+| 方法   | 接口                 | 说明   |
+| ---- | ------------------ | ---- |
 | POST | /api/v1/auth/login | 微信登录 |
+
 
 ### 2. 用户管理
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
-| GET | /api/v1/user/profile | 获取用户信息 |
-| PUT | /api/v1/user/profile | 更新用户信息 |
-| GET | /api/v1/user/balance | 余额明细 |
-| POST | /api/v1/user/withdraw | 申请提现（微信通道且单笔≥2000元时 `real_name` 必填；商家转账时返回 `package_info`；有待确认单时自动续传不重复扣款） |
-| POST | /api/v1/user/withdraw/reconcile | 同步微信单据并返回是否可再次拉起确认页 |
-| POST | /api/v1/user/withdraw/cancel-pending | 撤销待用户确认的转账单（异步终态以回调/查询为准） |
-| POST | /api/v1/pay/wechat/reward-transfer-notify | 微信商家转账结果通知（raw body，勿经 JSON 中间件） |
+
+| 方法   | 接口                                        | 说明                                                                         |
+| ---- | ----------------------------------------- | -------------------------------------------------------------------------- |
+| GET  | /api/v1/user/profile                      | 获取用户信息                                                                     |
+| PUT  | /api/v1/user/profile                      | 更新用户信息                                                                     |
+| GET  | /api/v1/user/balance                      | 余额明细                                                                       |
+| POST | /api/v1/user/withdraw                     | 申请提现（微信通道且单笔≥2000元时 `real_name` 必填；商家转账时返回 `package_info`；有待确认单时自动续传不重复扣款） |
+| POST | /api/v1/user/withdraw/reconcile           | 同步微信单据并返回是否可再次拉起确认页                                                        |
+| POST | /api/v1/user/withdraw/cancel-pending      | 撤销待用户确认的转账单（异步终态以回调/查询为准）                                                  |
+| POST | /api/v1/pay/wechat/reward-transfer-notify | 微信商家转账结果通知（raw body，勿经 JSON 中间件）                                           |
+
 
 ### 3. 定损分析
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
-| POST | /api/v1/damage/analyze | AI定损分析 |
-| GET | /api/v1/damage/report/:id | 获取报告 |
+
+| 方法   | 接口                        | 说明     |
+| ---- | ------------------------- | ------ |
+| POST | /api/v1/damage/analyze    | AI定损分析 |
+| GET  | /api/v1/damage/report/:id | 获取报告   |
+
 
 ### 4. 竞价报价
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
-| POST | /api/v1/bidding/create | 创建竞价 |
-| GET | /api/v1/bidding/:id | 竞价详情 |
-| GET | /api/v1/bidding/:id/quotes | 报价列表 |
+
+| 方法   | 接口                         | 说明    |
+| ---- | -------------------------- | ----- |
+| POST | /api/v1/bidding/create     | 创建竞价  |
+| GET  | /api/v1/bidding/:id        | 竞价详情  |
+| GET  | /api/v1/bidding/:id/quotes | 报价列表  |
 | POST | /api/v1/bidding/:id/select | 选择维修厂 |
+
 
 ### 5. 维修厂
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
-| GET | /api/v1/shops/nearby | 附近维修厂 |
-| GET | /api/v1/shops/:id | 维修厂详情 |
+
+| 方法  | 接口                        | 说明    |
+| --- | ------------------------- | ----- |
+| GET | /api/v1/shops/nearby      | 附近维修厂 |
+| GET | /api/v1/shops/:id         | 维修厂详情 |
 | GET | /api/v1/shops/:id/reviews | 维修厂评价 |
+
 
 ### 6. 评价
 
-| 方法 | 接口 | 说明 |
-|------|------|------|
-| POST | /api/v1/reviews | 提交评价 |
+
+| 方法   | 接口                      | 说明     |
+| ---- | ----------------------- | ------ |
+| POST | /api/v1/reviews         | 提交评价   |
 | POST | /api/v1/reviews/analyze | AI对比分析 |
+
 
 ## 数据库表结构
 
@@ -190,7 +202,9 @@ server {
 ## 更新日志
 
 ### v2.0.0 (2026-02-11)
+
 - 从微信云开发迁移到阿里云ECS
 - 新增完整的RESTful API
 - 新增MySQL数据库支持
 - 新增JWT认证
+

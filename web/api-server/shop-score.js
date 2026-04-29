@@ -1,10 +1,11 @@
 /**
  * 店铺综合得分服务
- * 按《全指标底层逻辑梳理》第二、三章实现
+ * 按 docs/体系/05 与 reward-calculator 口径实现（历史长文见 docs/已归档/全指标底层逻辑梳理.md）
  * 单条评价权重、时间衰减、店铺加权得分、硬指标加减分
  */
 
 const antifraud = require('./antifraud');
+const rewardCalculator = require('./reward-calculator');
 
 async function hasColumn(pool, table, col) {
   try {
@@ -74,11 +75,19 @@ async function computeShopScore(pool, shopId, precomputedHard = null) {
   try {
     const hasQ3Excluded = await hasColumn(pool, 'reviews', 'q3_weight_excluded');
     const hasContentQuality = await hasColumn(pool, 'reviews', 'content_quality');
+    const hasAlignCoeff = await hasColumn(pool, 'reviews', 'evidence_alignment_coeff');
+    let shopScoreIgnoreContentQualityLevel = false;
+    try {
+      const rules = await rewardCalculator.getRewardRules(pool);
+      const p = rules.platformIncentiveV1 || {};
+      shopScoreIgnoreContentQualityLevel = p.enabled !== false && p.shopScoreIgnoreContentQualityLevel !== false;
+    } catch (_) {}
     const q3Col = hasQ3Excluded ? 'r.q3_weight_excluded,' : '';
     const contentQualityCol = hasContentQuality ? 'r.content_quality,' : '';
+    const alignCol = hasAlignCoeff ? 'r.evidence_alignment_coeff,' : '';
     const [rows] = await pool.execute(
       `SELECT r.review_id, r.user_id, r.rating, r.created_at, r.weight, ${contentQualityCol} r.content_quality_level,
-              ${q3Col}
+              ${q3Col} ${alignCol}
               o.complexity_level, o.is_insurance_accident,
               s.compliance_rate
        FROM reviews r
@@ -116,7 +125,10 @@ async function computeShopScore(pool, shopId, precomputedHard = null) {
       } else {
         const trust = await antifraud.getUserTrustLevel(pool, r.user_id);
         const isNegative = (parseFloat(r.rating) || 5) <= 2;
-        const contentQuality = (r.content_quality_level >= 2 || (hasContentQuality && (r.content_quality === 'premium' || r.content_quality === '维权参考' || r.content_quality === '标杆' || r.content_quality === '爆款'))) ? 'premium' : 'valid';
+        let contentQuality = (r.content_quality_level >= 2 || (hasContentQuality && (r.content_quality === 'premium' || r.content_quality === '维权参考' || r.content_quality === '标杆' || r.content_quality === '爆款'))) ? 'premium' : 'valid';
+        if (shopScoreIgnoreContentQualityLevel) {
+          contentQuality = 'valid';
+        }
         weight = calcReviewWeight({
           complexityLevel: r.complexity_level,
           isInsuranceAccident: !!r.is_insurance_accident,
@@ -125,6 +137,13 @@ async function computeShopScore(pool, shopId, precomputedHard = null) {
           userTrustWeight: trust.weight,
           complianceCoeff: complianceRate >= 95 ? 1.2 : 1.0,
         }) * decay;
+      }
+
+      if (hasAlignCoeff && r.evidence_alignment_coeff != null) {
+        const ac = parseFloat(r.evidence_alignment_coeff);
+        if (!Number.isNaN(ac)) {
+          weight *= Math.max(0, Math.min(1, ac));
+        }
       }
 
       const rating = parseFloat(r.rating) || 5;

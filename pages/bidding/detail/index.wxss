@@ -260,6 +260,43 @@
   border-radius: var(--radius-sm);
   line-height: 1.4;
 }
+
+.bid-va-owner-wrap {
+  margin-top: var(--space-sm);
+}
+.bid-va-owner-wrap--compact .bid-va-owner-block {
+  margin-bottom: var(--space-md);
+}
+.bid-va-owner-intro {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+.bid-va-owner-block {
+  margin-bottom: var(--space-lg);
+}
+.bid-va-owner-headline {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--primary);
+}
+.bid-va-owner-line {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: 6rpx;
+  padding-left: 4rpx;
+}
+.bid-va-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+.bid-va-disclaimer-line {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 6rpx;
+}
+
 /* 确认弹窗中的报价明细 */
 .bid-modal-items {
   margin-top: var(--space-md);
@@ -543,4 +580,29 @@
   text-align: center;
   height: 72rpx;
   line-height: 72rpx;
+}
+
+.bid-modal-confirm-block {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+.bid-modal-dwell {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+.bid-modal-clause {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  padding: 8rpx 0;
+}
+.bid-modal-check {
+  width: 40rpx;
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.bid-modal-check.on {
+  color: var(--primary);
 }

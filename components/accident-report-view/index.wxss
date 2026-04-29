@@ -1,0 +1,23 @@
+.ar-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.ar-section {
+  padding-top: 6rpx;
+}
+
+.ar-title {
+  margin-bottom: 10rpx;
+}
+
+.ar-item {
+  margin: 8rpx 0;
+}
+
+.ar-disclaimer {
+  margin-top: 10rpx;
+  line-height: 1.55;
+}
+

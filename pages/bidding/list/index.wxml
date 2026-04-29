@@ -26,7 +26,7 @@
         <image class="bidding-empty-icon" src="/images/icon/compete_active.png" mode="aspectFit"/>
       </view>
       <text class="text-muted fs-body">暂无竞价记录</text>
-      <navigator class="bidding-link" url="/pages/damage/upload/index">去定损</navigator>
+      <navigator class="bidding-link" url="/pages/damage/upload/index">去预报价</navigator>
     </view>
     <scroll-view wx:else class="bidding-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
       <view class="bidding-list">
@@ -38,16 +38,15 @@
             <view class="bidding-card-info">
               <view class="bidding-card-head">
                 <text class="bidding-card-title fs-body fw-bold">{{item.title}}</text>
-                <view class="bidding-status-badge {{item.badgeVariant}}">{{item.statusText}}</view>
+                <view class="bidding-status-badge {{item.badgeVariant}}">
+                  <image class="bidding-badge-icon" src="/images/icon/clock.png" mode="aspectFit" />
+                  <text>{{item.statusText}}</text>
+                </view>
               </view>
-              <view class="bidding-card-meta">
+              <view class="bidding-card-meta bidding-card-meta--two">
                 <view class="bidding-meta-item">
                   <text class="bidding-meta-label">范围</text>
                   <text class="bidding-meta-value">{{item.range_km || 5}}km</text>
-                </view>
-                <view class="bidding-meta-item">
-                  <text class="bidding-meta-label">{{item.metaTimeLabel}}</text>
-                  <text class="bidding-meta-value {{item.isOngoing ? 'text-star' : ''}}">{{item.metaTimeValue}}</text>
                 </view>
                 <view class="bidding-meta-item">
                   <text class="bidding-meta-label">报价</text>
@@ -57,10 +56,23 @@
             </view>
           </view>
           <view class="bidding-card-actions">
-            <button plain class="bidding-btn bidding-btn-primary" data-id="{{item.bidding_id}}" catchtap="onViewQuotesTap">查看报价</button>
-            <button wx:if="{{item.showEndRound}}" plain class="bidding-btn bidding-btn-outline" data-id="{{item.bidding_id}}" catchtap="onEndBiddingTap">结束本轮</button>
-            <button wx:if="{{item.canRecreate}}" plain class="bidding-btn bidding-btn-outline" data-report-id="{{item.report_id}}" catchtap="onRecreateTap">重新发起</button>
-            <button wx:if="{{item.order_id}}" plain class="bidding-btn bidding-btn-outline" data-order-id="{{item.order_id}}" catchtap="onOrderTap">查看订单</button>
+            <button
+              plain
+              class="bidding-btn {{item.hasQuotes ? 'bidding-btn-primary' : 'bidding-btn-primary bidding-btn-primary--disabled'}}"
+              disabled="{{!item.hasQuotes}}"
+              data-id="{{item.bidding_id}}"
+              catchtap="onViewQuotesTap"
+              hover-class="bidding-btn-hover"
+            >查看报价</button>
+            <button
+              wx:if="{{item.canRecreate}}"
+              plain
+              class="bidding-btn {{item.recreateBtnClass}}"
+              data-report-id="{{item.report_id}}"
+              catchtap="onRecreateTap"
+              hover-class="bidding-btn-hover"
+            >重新发起</button>
+            <button wx:if="{{item.order_id}}" plain class="bidding-btn bidding-btn-secondary" data-order-id="{{item.order_id}}" catchtap="onOrderTap" hover-class="bidding-btn-hover">查看订单</button>
           </view>
         </view>
       </view>

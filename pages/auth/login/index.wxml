@@ -11,7 +11,7 @@
     <view class="login-benefits card">
       <view class="login-benefits-title fs-body fw-bold">登录后可享受</view>
       <view class="login-benefits-list">
-        <text class="text-muted fs-cap">· AI 定损分析与竞价</text>
+        <text class="text-muted fs-cap">· 预报价与竞价</text>
         <text class="text-muted fs-cap">· 维修厂预约</text>
         <text class="text-muted fs-cap">· 订单管理与评价返点</text>
       </view>

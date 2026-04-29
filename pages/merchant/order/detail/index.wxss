@@ -4,6 +4,160 @@
   padding-bottom: 200rpx; /* 底部固定操作区占位 */
 }
 
+/* 环节分区：概览 / 车况与约定 / 维修过程（关键节点 + 完工） */
+.merchant-phase-card.merchant-phase-rail {
+  border-left: 6rpx solid var(--primary);
+}
+
+.merchant-phase-header {
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.merchant-phase-kicker {
+  font-size: var(--fs-sm);
+  color: var(--text-hint);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+/* 环节标题下紧跟的第一个小节标题，避免与 kicker 区双重留白 */
+.merchant-phase-card .merchant-phase-header + .section-head .section-title,
+.merchant-phase-card .merchant-flow-hint + .section-head .section-title {
+  margin-top: var(--space-xs);
+}
+
+.merchant-flow-hint {
+  display: block;
+  margin-bottom: var(--space-md);
+  line-height: 1.55;
+}
+
+.merchant-phase-progress-hint {
+  margin-bottom: var(--space-sm);
+}
+
+.merchant-owner-photo-hint {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: var(--space-sm);
+}
+
+.merchant-owner-photo-empty {
+  display: block;
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-owner-photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.merchant-owner-photo-thumb {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: var(--radius-sm);
+  background: var(--bg-placeholder);
+}
+
+.merchant-context-subcard {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--bg-placeholder);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+}
+
+.merchant-context-subcard--owner {
+  background: var(--primary-bg);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.merchant-subcard-kicker {
+  font-size: var(--fs-cap);
+  color: var(--text-hint);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-md);
+}
+
+.merchant-quote-summary {
+  margin-bottom: var(--space-xs);
+}
+
+.merchant-repair-items--inset {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.merchant-subcard-empty {
+  display: block;
+  margin-top: var(--space-xs);
+}
+
+.value-added-list--inset .value-added-item {
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.value-added-list--inset .value-added-item:last-child {
+  border-bottom: none;
+}
+
+.merchant-phase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.merchant-phase-btn {
+  flex: 1;
+  min-width: 240rpx;
+  margin: 0;
+}
+
+.material-audit-block-text {
+  display: block;
+  margin-top: var(--space-sm);
+}
+
+.evidence-hint-block {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+.evidence-footnote {
+  display: block;
+  margin-top: var(--space-sm);
+}
+
+.evidence-footnote--tight {
+  margin-top: var(--space-xs);
+}
+
+.merchant-leadtech-row {
+  margin-bottom: var(--space-md);
+}
+
+.parts-verify-skip-row {
+  margin-top: var(--space-md);
+}
+
+.parts-verify-other-input {
+  margin-top: var(--space-sm);
+}
+
+.warranty-desc {
+  display: block;
+  line-height: 1.55;
+  margin-top: var(--space-xs);
+}
+
 .detail-section {
   padding: var(--space-xl);
   margin-bottom: var(--space-lg);
@@ -284,4 +438,41 @@
   color: var(--primary);
   border-color: var(--primary);
   background: var(--primary-bg);
+}
+
+/* 增值服务：与车主订单详情 order-va-owner-* 一致（结构化 + 免责） */
+.order-va-owner-wrap--inset {
+  margin-top: 0;
+}
+.order-va-owner-wrap {
+  margin-top: var(--space-xs);
+}
+.order-va-owner-intro {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+.order-va-owner-block {
+  margin-bottom: var(--space-lg);
+}
+.order-va-owner-headline {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--primary);
+}
+.order-va-owner-line {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: 6rpx;
+  padding-left: 4rpx;
+}
+.order-va-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+.order-va-disclaimer-line {
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 6rpx;
 }

@@ -5,6 +5,7 @@ const navigation = require('../../utils/navigation');
 const { getShopsNearby } = require('../../utils/api');
 const { fetchAndApplyUnreadBadge } = require('../../utils/message-badge');
 const { getNavBarHeight, getSystemInfo } = require('../../utils/util');
+const { showWechatShareMenu } = require('../../utils/show-share-menu');
 
 const logger = getLogger('Index');
 
@@ -22,10 +23,10 @@ const QUICK_ENTRIES = [
   { id: 4, name: '保养服务', icon: '🔧', category: '保养服务' }
 ];
 
-const { scoreToStarDisplay } = require('../../utils/shop-score-display');
+const { buildOwnerSideScoreRow } = require('../../utils/shop-public-score');
 
 function mapShopItem(s, idx) {
-  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
+  const scoreRow = buildOwnerSideScoreRow(s);
   let badgeText = '';
   let badgeClass = '';
   let locationText = s.district || s.address || '—';
@@ -40,14 +41,21 @@ function mapShopItem(s, idx) {
     badgeText = s.distance + 'km';
     badgeClass = 'badge-distance';
   }
+  const ratingLine = scoreRow.showPublicScore
+    ? scoreRow.rating + ' | ' + scoreRow.orderCount + '单'
+    : scoreRow.orderCount > 0
+      ? scoreRow.rating + ' · ' + scoreRow.orderCount + '单'
+      : scoreRow.rating;
   return {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
-    rating: starDisplay.scoreText,
-    starsDisplay: starDisplay.stars,
-    scoreNum: starDisplay.score,
-    orderCount: s.total_orders || s.rating_count || 0,
+    showPublicScore: scoreRow.showPublicScore,
+    rating: scoreRow.rating,
+    ratingLine,
+    starsDisplay: scoreRow.starsDisplay,
+    scoreNum: scoreRow.scoreNum,
+    orderCount: scoreRow.orderCount,
     is_certified: s.is_certified,
     badgeText,
     badgeClass,
@@ -95,6 +103,7 @@ Page({
 
   onShow() {
     logger.debug('首页显示');
+    showWechatShareMenu();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 0 });
     }
@@ -252,5 +261,14 @@ Page({
     if (!shopId) return;
     logger.info('点击维修厂', shopId);
     navigation.navigateTo('/pages/shop/detail/index', { id: shopId });
+  },
+
+  /** 代理人分销：分享小程序首页，路径带 ref（登录用户为推荐人） */
+  onShareAppMessage() {
+    const { buildReferralSharePath, SHARE_TITLES } = require('../../utils/referral-share');
+    return {
+      title: SHARE_TITLES.home,
+      path: buildReferralSharePath('/pages/index/index')
+    };
   }
 });

@@ -1,0 +1,371 @@
+/**
+ * 评价聚合页（可被主包/分包复用的样式）
+ *
+ * 注意：主包页面不可直接 @import 分包内的 wxss。
+ */
+@import './review-public-polish.wxss';
+@import './review-linear.wxss';
+.feed-page {
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+.feed-sort-bar {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--page-padding-x);
+  background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.feed-sort-item {
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  padding: var(--space-xs) 0;
+}
+
+.feed-sort-item.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.feed-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.feed-scroll {
+  height: 100%;
+}
+
+.feed-list {
+  padding: var(--space-lg) var(--page-padding-x);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.feed-card {
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.feed-shop-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
+  border-bottom: 1rpx solid var(--border);
+}
+
+.feed-shop-logo {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  background: var(--bg-placeholder);
+}
+
+.feed-shop-info {
+  flex: 1;
+  margin-left: var(--space-md);
+  min-width: 0;
+}
+
+.feed-shop-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-shop-addr {
+  display: block;
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-shop-arrow {
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: var(--space-sm);
+}
+
+.feed-review-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.feed-user-avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--avatar-placeholder-bg);
+  border: 1rpx solid var(--avatar-placeholder-border);
+}
+
+.feed-user {
+  flex: 1;
+  min-width: 120rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-level {
+  padding: 0 var(--space-xs);
+}
+
+.feed-date {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.feed-review-meta {
+  margin-bottom: var(--space-xs);
+}
+
+.feed-promise-block {
+  margin-bottom: var(--space-sm);
+}
+
+.feed-promise-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.feed-promise-tag {
+  padding: var(--space-xs) var(--space-md);
+  color: var(--text-primary);
+  background: var(--primary-bg);
+  border-radius: var(--radius-md);
+  border: 1rpx solid rgba(37, 99, 235, 0.2);
+  max-width: 100%;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.feed-meta-label {
+  margin-right: var(--space-xs);
+}
+
+.feed-stars {
+  margin-bottom: var(--space-sm);
+}
+
+.feed-objectives {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+  margin-top: var(--space-sm);
+  padding: var(--space-lg);
+  background: linear-gradient(165deg, rgba(37, 99, 235, 0.05) 0%, var(--bg-page) 50%);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+}
+
+.feed-obj-section-title {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--fs-cap);
+}
+
+.feed-obj {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.feed-obj-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-obj-title {
+  display: block;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.feed-obj-hint {
+  display: block;
+  line-height: 1.45;
+}
+
+.feed-obj-ans {
+  flex-shrink: 0;
+  font-weight: 600;
+  margin-top: 2rpx;
+}
+
+.feed-obj-ans.ans-yes {
+  color: var(--success);
+}
+
+.feed-obj-ans.ans-no {
+  color: var(--warning);
+}
+
+.feed-content-wrap {
+  margin-bottom: var(--space-sm);
+}
+
+.feed-content {
+  display: block;
+  line-height: 1.5;
+}
+
+.feed-content-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.feed-expand-btn {
+  display: inline-block;
+  margin-top: var(--space-xs);
+}
+
+.feed-images-wrap {
+  margin-top: var(--space-md);
+}
+
+.feed-img-group {
+  margin-bottom: var(--space-md);
+}
+
+.feed-img-label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.feed-img-sublabel {
+  display: block;
+  margin-bottom: var(--space-sm);
+  line-height: 1.45;
+}
+
+.feed-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.feed-img {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-sm);
+  background: var(--bg-placeholder);
+}
+
+.feed-img-sm {
+  width: 120rpx;
+  height: 120rpx;
+}
+
+.feed-qprop-block {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx dashed var(--border);
+}
+
+.feed-qprop-round {
+  margin-top: var(--space-sm);
+}
+
+.feed-badge {
+  margin-top: var(--space-sm);
+}
+
+.feed-appeal {
+  margin-top: var(--space-sm);
+}
+
+.feed-owner-verify {
+  margin-top: var(--space-sm);
+}
+
+.feed-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+}
+
+.feed-like {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.feed-like-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.feed-referral-share-btn {
+  margin: 0;
+  padding: 0 var(--space-sm);
+  height: auto;
+  line-height: 1.4;
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  font-size: var(--fs-cap);
+}
+
+.feed-referral-share-btn::after {
+  border: none;
+}
+
+.feed-dislike {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.feed-dislike.disliked {
+  color: var(--text-weak);
+}
+
+.feed-dislike-icon {
+  font-size: 28rpx;
+}
+
+.feed-more {
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+.feed-empty {
+  text-align: center;
+  padding: var(--space-2xl);
+}
+
+.feed-bottom-pad {
+  height: 40rpx;
+}

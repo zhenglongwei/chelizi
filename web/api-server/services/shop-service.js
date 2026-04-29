@@ -313,6 +313,8 @@ async function getNearby(pool, query) {
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
   const offset = (pageNum - 1) * limitNum;
+  const lim = Math.trunc(limitNum);
+  const off = Math.trunc(offset);
 
   let whereClause = 'WHERE status = 1 AND (qualification_status = 1 OR qualification_status IS NULL)';
   const params = [];
@@ -369,8 +371,7 @@ async function getNearby(pool, query) {
       ) x`;
       const [cnt] = await pool.execute(countSql, [lat, lng, lat, ...params, effectiveMaxKm]);
       totalCount = cnt[0]?.c ?? 0;
-      sql += ' ORDER BY distance LIMIT ? OFFSET ?';
-      sqlParams.push(limitNum, offset);
+      sql += ` ORDER BY distance LIMIT ${lim} OFFSET ${off}`;
       const [rows] = await pool.execute(sql, sqlParams);
       shops = rows;
     }
@@ -441,8 +442,8 @@ async function getNearby(pool, query) {
   else if (sort === 'complaint_rate') orderBy = 'COALESCE(complaint_rate, 100) ASC, total_orders DESC';
 
   const [shops] = await pool.execute(
-    `SELECT * FROM shops ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
-    [...params, limitNum, offset]
+    `SELECT * FROM shops ${whereClause} ORDER BY ${orderBy} LIMIT ${lim} OFFSET ${off}`,
+    [...params]
   );
 
   let list = shops.map(s => mapShop(s, false));
@@ -466,6 +467,8 @@ async function search(pool, query) {
   const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
   const pageNum = Math.max(parseInt(page) || 1, 1);
   const offset = (pageNum - 1) * limitNum;
+  const lim = Math.trunc(limitNum);
+  const off = Math.trunc(offset);
 
   let whereClause = 'WHERE status = 1 AND (qualification_status = 1 OR qualification_status IS NULL)';
   const params = [];
@@ -554,8 +557,7 @@ async function search(pool, query) {
       else if (sort === 'orders') orderBy = 'total_orders DESC';
       else if (sort === 'compliance_rate') orderBy = 'COALESCE(compliance_rate, 0) DESC, total_orders DESC';
       else if (sort === 'complaint_rate') orderBy = 'COALESCE(complaint_rate, 100) ASC, total_orders DESC';
-      sql += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-      sqlParams.push(limitNum, offset);
+      sql += ` ORDER BY ${orderBy} LIMIT ${lim} OFFSET ${off}`;
       const [rows] = await pool.execute(sql, sqlParams);
       shops = rows;
     }
@@ -647,8 +649,8 @@ async function search(pool, query) {
   else if (sort === 'complaint_rate') orderBy = 'COALESCE(complaint_rate, 100) ASC, total_orders DESC';
 
   const [shops] = await pool.execute(
-    `SELECT * FROM shops ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
-    [...params, limitNum, offset]
+    `SELECT * FROM shops ${whereClause} ORDER BY ${orderBy} LIMIT ${lim} OFFSET ${off}`,
+    [...params]
   );
 
   let listFinal = shops.map(s => mapShop(s, false));
@@ -736,9 +738,14 @@ async function getReviews(pool, shopId, query) {
   const reviewLikeService = require('./review-like-service');
   const { sort = 'completeness', page = 1, limit = 20, exclude_l1, currentUserId, repair_project_key, repair_project_item } = query;
   const excludeL1 = exclude_l1 !== '0' && exclude_l1 !== 'false'; // 默认 true
-  const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
-  const pageNum = Math.max(parseInt(page) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const offset = (pageNum - 1) * limitNum;
+  const lim = Math.trunc(limitNum);
+  const off = Math.trunc(offset);
+  if (!Number.isFinite(lim) || !Number.isFinite(off) || lim < 1 || lim > 100 || off < 0) {
+    return { success: false, error: '分页参数非法', statusCode: 400 };
+  }
 
   const orderBy = sort === 'latest'
     ? 'r.created_at DESC'
@@ -750,7 +757,7 @@ async function getReviews(pool, shopId, query) {
     ? ' AND (r.repair_project_key = ? OR r.repair_project_key LIKE ? OR r.repair_project_key LIKE ? OR r.repair_project_key LIKE ?)' : '';
   const params = [shopId];
   if (projectFilter) params.push(projectParam, projectParam + '|%', '%|' + projectParam, '%|' + projectParam + '|%');
-  params.push(limitNum, offset);
+  // LIMIT/OFFSET 不用占位符：避免部分环境下 mysql2 预处理报 Incorrect arguments to mysqld_stmt_execute
 
   const [reviews] = await pool.execute(
     `SELECT r.*, u.nickname, u.avatar_url, o.repair_plan, o.quoted_amount, o.actual_amount, o.completion_evidence,
@@ -760,7 +767,7 @@ async function getReviews(pool, shopId, query) {
      JOIN orders o ON r.order_id = o.order_id
      WHERE r.shop_id = ? AND r.type = 1 AND r.status = 1${l1Filter}${projectFilter}
      ORDER BY ${orderBy}
-     LIMIT ? OFFSET ?`,
+     LIMIT ${lim} OFFSET ${off}`,
     params
   );
 
@@ -790,7 +797,6 @@ async function getReviews(pool, shopId, query) {
 
   const reviewIds = reviews.map(r => r.review_id);
   let likeStats = {};
-  let userDislikedIds = new Set();
   let userLikedIds = new Set();
   try {
     likeStats = await reviewLikeService.getReviewLikeStats(pool, reviewIds);
@@ -798,11 +804,6 @@ async function getReviews(pool, shopId, query) {
   if (currentUserId && reviewIds.length > 0) {
     try {
       const placeholders = reviewIds.map(() => '?').join(',');
-      const [dislikeRows] = await pool.execute(
-        `SELECT review_id FROM review_dislikes WHERE review_id IN (${placeholders}) AND user_id = ?`,
-        [...reviewIds, currentUserId]
-      );
-      userDislikedIds = new Set((dislikeRows || []).map((d) => d.review_id));
       const [likeRows] = await pool.execute(
         `SELECT review_id FROM review_likes WHERE review_id IN (${placeholders}) AND user_id = ?`,
         [...reviewIds, currentUserId]
@@ -931,7 +932,7 @@ async function getReviews(pool, shopId, query) {
           like_count: r.like_count ?? stats.like_count ?? 0,
           dislike_count: r.dislike_count ?? 0,
           is_liked: userLikedIds.has(r.review_id),
-          is_disliked: userDislikedIds.has(r.review_id),
+          is_disliked: false,
           post_verify_count: stats.post_verify_count ?? 0,
           has_owner_verify_badge: !!stats.has_owner_verify_badge,
           created_at: r.created_at,
@@ -957,6 +958,7 @@ async function getReviews(pool, shopId, query) {
 async function getRank(pool, query) {
   const { dimension = 'price', limit = 10 } = query;
   const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
+  const limRank = Math.trunc(limitNum);
   const col = (dimension === 'quality' ? 'ratings_quality' : 'ratings_price');
   const avgExpr = `AVG(COALESCE(r.${col}, r.rating))`;
 
@@ -970,8 +972,8 @@ async function getRank(pool, query) {
      GROUP BY s.shop_id
      HAVING COUNT(r.review_id) >= 3
      ORDER BY avg_dim DESC, s.total_orders DESC
-     LIMIT ?`,
-    [limitNum]
+     LIMIT ${limRank}`,
+    []
   );
 
   await shopSortService.ensureShopScores(pool, rows);

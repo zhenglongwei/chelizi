@@ -6,7 +6,7 @@ const { getShopsRank } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 
 const logger = getLogger('ReputationRank');
-const { scoreToStarDisplay } = require('../../../utils/shop-score-display');
+const { buildOwnerSideScoreRow } = require('../../../utils/shop-public-score');
 
 const DIMENSION_LABELS = {
   price: '价格最透明 TOP10',
@@ -14,15 +14,22 @@ const DIMENSION_LABELS = {
 };
 
 function mapShopItem(s, idx) {
-  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
+  const scoreRow = buildOwnerSideScoreRow(s);
+  const ratingLine = scoreRow.showPublicScore
+    ? scoreRow.rating + ' | ' + scoreRow.orderCount + '单'
+    : scoreRow.orderCount > 0
+      ? scoreRow.rating + ' · ' + scoreRow.orderCount + '单'
+      : scoreRow.rating;
   return {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
-    rating: starDisplay.scoreText,
-    starsDisplay: starDisplay.stars,
-    scoreNum: starDisplay.score,
-    orderCount: s.total_orders || s.rating_count || 0,
+    showPublicScore: scoreRow.showPublicScore,
+    rating: scoreRow.rating,
+    ratingLine,
+    starsDisplay: scoreRow.starsDisplay,
+    scoreNum: scoreRow.scoreNum,
+    orderCount: scoreRow.orderCount,
     rank: idx + 1,
     productSnippetText: s.product_snippet_text || null
   };

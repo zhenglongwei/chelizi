@@ -1,0 +1,35 @@
+<custom-nav-bar title="拆检费留痕" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card proof-card">
+    <text class="fs-body fw-medium">线下支付留痕（选填）</text>
+    <text class="text-muted fs-cap proof-hint">拆检费通常仅在您不同意留店维修时线下支付。平台不收款，仅做凭证留存，减少后续纠纷。</text>
+
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">金额（元）</text>
+      <input class="form-input" type="digit" placeholder="选填" value="{{amount}}" bindinput="onAmountInput" />
+    </view>
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">备注</text>
+      <input class="form-input" placeholder="选填，如：收款方式/对方姓名" value="{{note}}" bindinput="onNoteInput" maxlength="200" />
+    </view>
+
+    <view class="form-row form-row--images">
+      <text class="form-label text-muted fs-cap">凭证图片（至少1张）</text>
+      <view class="img-grid">
+        <view class="img-item" wx:for="{{imageUrls}}" wx:key="*this">
+          <image class="img-thumb" src="{{item}}" mode="aspectFill" bindtap="onPreviewImage" data-url="{{item}}" />
+          <view class="img-del" catchtap="onRemoveImage" data-url="{{item}}">×</view>
+        </view>
+        <view class="img-add" wx:if="{{imageUrls.length < 6}}" bindtap="onChooseImages">
+          <text class="img-add-plus">+</text>
+          <text class="text-muted fs-cap">上传</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="btn-primary proof-submit" loading="{{submitting}}" disabled="{{submitting || !imageUrls.length}}" bindtap="onSubmit">
+      {{submitting ? '提交中...' : '提交留痕'}}
+    </button>
+  </view>
+</view>
+

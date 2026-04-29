@@ -180,6 +180,121 @@
   border-radius: var(--radius-sm);
 }
 
+.mqf-va-tpl-wrap {
+  margin-top: var(--space-sm);
+}
+
+.mqf-va-tpl-group {
+  margin-bottom: var(--space-lg);
+}
+
+.mqf-va-tpl-group-title {
+  display: block;
+  color: var(--text-secondary, #374151);
+  margin-bottom: var(--space-sm);
+}
+
+.mqf-va-chk-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+  border-bottom: 1rpx solid var(--border-light, #f3f4f6);
+}
+
+.mqf-va-chk-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+  border: 2rpx solid var(--border);
+  border-radius: 8rpx;
+  background: var(--bg-card, #fff);
+  box-sizing: border-box;
+}
+
+.mqf-va-chk-icon--on {
+  border-color: var(--primary);
+  background: var(--primary);
+  position: relative;
+}
+
+.mqf-va-chk-icon--on::after {
+  content: '';
+  position: absolute;
+  left: 8rpx;
+  top: 4rpx;
+  width: 10rpx;
+  height: 16rpx;
+  border: solid #fff;
+  border-width: 0 3rpx 3rpx 0;
+  transform: rotate(45deg);
+}
+
+.mqf-va-chk-label {
+  flex: 1;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.mqf-va-custom-title {
+  display: block;
+  margin-top: var(--space-md);
+  margin-bottom: var(--space-xs);
+}
+
+.mqf-va-compliance-block {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+}
+
+.mqf-va-compliance-line {
+  display: block;
+  line-height: 1.55;
+  margin-bottom: var(--space-xs);
+}
+
+/* 竞价/方案页：增值服务入口（摘要 + 跳转子页） */
+.mqf-value-added-compact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.mqf-value-added-go-btn {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-lg);
+  color: var(--primary);
+  background: var(--accent-bg);
+  border: 1rpx solid var(--primary);
+  border-radius: var(--radius-sm);
+}
+
+.mqf-va-chosen-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.mqf-va-chosen-chip {
+  max-width: 100%;
+  padding: 8rpx 16rpx;
+  background: var(--bg-page);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.mqf-va-chosen-empty {
+  display: block;
+  line-height: 1.5;
+}
+
 /* 汇总：总报价、工期 */
 .mqf-summary-section {
   padding-top: var(--space-lg);
@@ -194,6 +309,22 @@
 .mqf-total-label {
   display: block;
   margin-bottom: var(--space-sm);
+}
+
+.mqf-total-sum-hint {
+  display: block;
+  margin-bottom: var(--space-sm);
+  line-height: 1.45;
+}
+
+.mqf-total-input-wrap--readonly {
+  opacity: 1;
+}
+
+.mqf-total-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 48rpx;
 }
 
 .mqf-total-input-wrap {

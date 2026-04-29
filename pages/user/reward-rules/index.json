@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "奖励规则说明",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/index"
+  }
+}

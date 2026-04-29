@@ -1,0 +1,42 @@
+<view class="repair-phase-bar {{compact ? 'repair-phase-bar--compact' : ''}}">
+
+  <view class="repair-phase-track">
+
+    <view class="repair-phase-seg {{beforeDone ? 'repair-phase-seg--done' : ''}}" />
+
+    <view class="repair-phase-seg {{duringDone ? 'repair-phase-seg--done' : ''}}" />
+
+    <view class="repair-phase-seg {{afterDone ? 'repair-phase-seg--done' : ''}}" />
+
+  </view>
+
+  <view class="repair-phase-labels">
+
+    <view class="repair-phase-node">
+
+      <view class="repair-phase-dot {{beforeDone ? 'repair-phase-dot--done' : ''}}" />
+
+      <text class="repair-phase-text {{beforeDone ? 'repair-phase-text--done' : ''}}">维修前</text>
+
+    </view>
+
+    <view class="repair-phase-node">
+
+      <view class="repair-phase-dot {{duringDone ? 'repair-phase-dot--done' : ''}}" />
+
+      <text class="repair-phase-text {{duringDone ? 'repair-phase-text--done' : ''}}">维修过程</text>
+
+    </view>
+
+    <view class="repair-phase-node">
+
+      <view class="repair-phase-dot {{afterDone ? 'repair-phase-dot--done' : ''}}" />
+
+      <text class="repair-phase-text {{afterDone ? 'repair-phase-text--done' : ''}}">完工</text>
+
+    </view>
+
+  </view>
+
+</view>
+

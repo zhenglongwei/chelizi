@@ -274,24 +274,53 @@ async function processWithheldRewards(pool, userId) {
     if (rows.length === 0) return { paid: 0, total: 0, skipped: false };
 
     let totalPaid = 0;
+    const orderRewardCap = require('./services/order-reward-cap-service');
     for (const r of rows) {
-      const amount = parseFloat(r.user_receives) || 0;
+      let amount = parseFloat(r.user_receives) || 0;
       if (amount <= 0) continue;
+      const taxW = parseFloat(r.tax_deducted) || 0;
+      let payAmt = amount;
+      let payTax = taxW;
+      if (r.order_id) {
+        const [ords] = await pool.execute(
+          'SELECT o.order_id, o.quoted_amount, o.actual_amount, o.complexity_level, o.shop_id, o.quote_id, o.is_insurance_accident, o.repair_plan, o.bidding_id FROM orders o WHERE o.order_id = ?',
+          [r.order_id]
+        );
+        const orderRow = ords[0];
+        if (orderRow) {
+          const capped = await orderRewardCap.clampPayoutToOrderHardCap(pool, r.order_id, orderRow, {
+            afterTax: payAmt,
+            taxDeducted: payTax,
+          });
+          payAmt = capped.afterTax;
+          payTax = capped.taxDeducted;
+        }
+      }
+      if (payAmt <= 0) continue;
       const txnId = 'TXN' + Date.now() + '_' + r.id;
       await pool.execute(
         'UPDATE users SET balance = balance + ?, total_rebate = total_rebate + ? WHERE user_id = ?',
-        [amount, amount, userId]
+        [payAmt, payAmt, userId]
       );
-      await pool.execute(
-        `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, created_at)
-         VALUES (?, ?, 'rebate', ?, '0级回溯奖励金', ?, NOW())`,
-        [txnId, userId, amount, r.review_id]
-      );
+      const hasSrc = await orderRewardCap.hasRewardSourceOrderColumn(pool);
+      if (hasSrc && r.order_id) {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, reward_source_order_id, tax_deducted, created_at)
+           VALUES (?, ?, 'rebate', ?, '0级回溯奖励金', ?, ?, ?, NOW())`,
+          [txnId, userId, payAmt, r.review_id, r.order_id, payTax]
+        );
+      } else {
+        await pool.execute(
+          `INSERT INTO transactions (transaction_id, user_id, type, amount, description, related_id, tax_deducted, created_at)
+           VALUES (?, ?, 'rebate', ?, '0级回溯奖励金', ?, ?, NOW())`,
+          [txnId, userId, payAmt, r.review_id, payTax]
+        );
+      }
       await pool.execute(
         "UPDATE withheld_rewards SET status = 'paid', paid_at = NOW() WHERE id = ?",
         [r.id]
       );
-      totalPaid += amount;
+      totalPaid += payAmt;
     }
     return { paid: totalPaid, total: rows.length, skipped: false };
   } catch (err) {
@@ -401,6 +430,63 @@ async function getRewardEligibility(pool, userId) {
   if (trust.level === 0) return { canReceive: false, level: 0, multiplier: 0 };
   if (trust.level === 1) return { canReceive: true, level: 1, multiplier: 0.5 };
   return { canReceive: true, level: trust.level, multiplier: 1 };
+}
+
+/**
+ * 是否关闭「下单频次」限制（新用户窗口笔数、同店滚动窗口笔数）。
+ * 测试阶段可在环境变量设 ZHEJIAN_DISABLE_ORDER_FREQ_LIMITS=1
+ */
+function isOrderFreqLimitsDisabled() {
+  const v = String(process.env.ZHEJIAN_DISABLE_ORDER_FREQ_LIMITS || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+/**
+ * 新用户 N 天内下单笔数上限（应在发起竞价时校验，避免服务商报价后车主选厂时才被拒）
+ */
+async function assertNewUserOrderFrequencyOk(pool, userId) {
+  if (isOrderFreqLimitsDisabled()) return { ok: true };
+  const afConfig = await getAntifraudConfig(pool);
+  const [userCreatedRow] = await pool.execute('SELECT created_at FROM users WHERE user_id = ?', [userId]);
+  const userCreatedAt = userCreatedRow.length > 0 ? new Date(userCreatedRow[0].created_at) : null;
+  const now = new Date();
+  const newUserDaysAgo = new Date(now.getTime() - afConfig.newUserDays * 24 * 60 * 60 * 1000);
+  const isNewUser = userCreatedAt && userCreatedAt > newUserDaysAgo;
+  if (!isNewUser) return { ok: true };
+  const [recentOrders] = await pool.execute(
+    `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND created_at >= ? AND status != 4`,
+    [userId, newUserDaysAgo]
+  );
+  if ((recentOrders[0]?.c || 0) >= afConfig.newUserOrderMax) {
+    return {
+      ok: false,
+      error: `新用户 ${afConfig.newUserDays} 天内最多下单 ${afConfig.newUserOrderMax} 笔，为保障交易真实性请稍后再试`,
+      statusCode: 400,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * 同一商户滚动窗口内下单笔数上限（仅在选择维修厂、已有 shop_id 时可校验）
+ */
+async function assertSameShopOrderFrequencyOk(pool, userId, shopId) {
+  if (isOrderFreqLimitsDisabled()) return { ok: true };
+  const afConfig = await getAntifraudConfig(pool);
+  const now = new Date();
+  const sameShopDaysAgo = new Date(now.getTime() - afConfig.orderSameShopDays * 24 * 60 * 60 * 1000);
+  const [sameShopCount] = await pool.execute(
+    `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND shop_id = ? AND created_at >= ? AND status != 4`,
+    [userId, shopId, sameShopDaysAgo]
+  );
+  if ((sameShopCount[0]?.c || 0) >= afConfig.orderSameShopMax) {
+    return {
+      ok: false,
+      error: `您在该商户 ${afConfig.orderSameShopDays} 天内已有 ${afConfig.orderSameShopMax} 笔订单，为保障交易真实性暂无法继续下单`,
+      statusCode: 400,
+    };
+  }
+  return { ok: true };
 }
 
 /**
@@ -529,6 +615,55 @@ async function checkContentAntiCheat(pool, content, excludeReviewId) {
 }
 
 /**
+ * 仅与历史主评的字符相似度检测（不校验最短字数/水词，供极简 v3 等「不评文字优质」策略配合使用）
+ * @param {import('mysql2/promise').Pool} pool
+ * @param {string} content
+ * @param {string} [excludeReviewId]
+ * @returns {Promise<{ pass: boolean, reason?: string }>}
+ */
+async function checkContentSimilarityOnly(pool, content, excludeReviewId) {
+  try {
+    const [cfgRows] = await pool.execute(
+      "SELECT `key`, `value` FROM settings WHERE `key` = 'antifraud_content_similarity_threshold'"
+    );
+    const similarityThreshold = parseInt(
+      (cfgRows && cfgRows[0] && cfgRows[0].value) || 60,
+      10
+    );
+
+    const text = String(content || '').trim();
+    if (text.length < 4) {
+      return { pass: true };
+    }
+
+    const [existing] = await pool.execute(
+      `SELECT content FROM reviews WHERE content IS NOT NULL AND content != '' AND type = 1
+       ${excludeReviewId ? 'AND review_id != ?' : ''}
+       ORDER BY created_at DESC LIMIT 500`,
+      excludeReviewId ? [excludeReviewId] : []
+    );
+    const simpleSimilarity = (a, b) => {
+      if (!a || !b) return 0;
+      const sa = new Set(a.split(''));
+      const sb = new Set(b.split(''));
+      let intersect = 0;
+      for (const c of sa) if (sb.has(c)) intersect++;
+      return (intersect * 2) / (sa.size + sb.size);
+    };
+    for (const row of existing || []) {
+      const sim = simpleSimilarity(text, row.content || '') * 100;
+      if (sim >= similarityThreshold) {
+        return { pass: false, reason: '评价内容与已有评价相似度过高，请补充真实体验描述' };
+      }
+    }
+    return { pass: true };
+  } catch (err) {
+    console.error('[antifraud] checkContentSimilarityOnly error:', err.message);
+    return { pass: true };
+  }
+}
+
+/**
  * 写入审计日志
  * @param {object} pool - 数据库连接池
  * @param {object} params - { logType, action, targetTable, targetId, oldValue, newValue, operatorId, operatorRole, ip }
@@ -578,9 +713,13 @@ module.exports = {
   getRewardEligibility,
   processWithheldRewards,
   getAntifraudConfig,
+  isOrderFreqLimitsDisabled,
+  assertNewUserOrderFrequencyOk,
+  assertSameShopOrderFrequencyOk,
   calcReviewWeight,
   computeShopWeightedScore,
   checkContentAntiCheat,
+  checkContentSimilarityOnly,
   verifyInsuranceClaim,
   writeAuditLog,
 };

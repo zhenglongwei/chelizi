@@ -1,6 +1,6 @@
 # 评价 AI 审核 - 千问大模型接入设计方案
 
-> 基于《全指标底层逻辑梳理.md》《评价和激励体系》（含第四章防刷管理规范）《评价奖励金体系-设计方案》，梳理需 AI 分析的维度、输入输出、接入时机。
+> 基于历史稿 `docs/已归档/全指标底层逻辑梳理.md`、`docs/已归档/评价和激励体系.md`（含第四章防刷管理规范）、`docs/已归档/评价奖励金体系-设计方案.md` 梳理需 AI 分析的维度、输入输出、接入时机。**产品现行规则**以 `docs/体系/02`、`03` 为准。
 
 ---
 
@@ -23,7 +23,7 @@
 - **内容违规**：广告、低俗、辱骂、虚假宣传
 - **有效内容门槛**：与维修项目相关的具体描述，无意义水评驳回
 
-### 3. 评价奖励金体系 - 必填模块（以《全指标底层逻辑梳理》2.2 分阶管控为准）
+### 3. 评价奖励金体系 - 必填模块（以 `docs/体系/02` 与实现为准；历史分阶见 `docs/已归档/全指标底层逻辑梳理.md`）
 
 - **L1-L2**：1–2 张实拍图（新旧配件对比图 / 施工结果图二选一），至少 1 句与项目相关描述。**无需**支付凭证、结算单、全过程施工图
 - **L3-L4**：2 张核心实拍图（① 维修项目结果图；② 新旧配件对比图 / 维修明细单 / 定损单），包含项目、价格、服务细节等相关描述。**无需**支付凭证、全过程施工图、视频（仅作优质评价加分项）
@@ -67,30 +67,20 @@
 
 ## 五、千问调用时机与流程
 
-### 方案 A：提交时一次性审核（推荐）
+### 方案 A：提交时千问（现行·首评主路径）
+
+> **与历史方案差异（2026-04 起）**：主评价提交流程**不再**用 `analyzeReviewWithQwen` 对文字做「优质/详细度」等拦截；主路径为 **`analyzeReviewEvidenceContradictionWithQwen`**，且**仅当**请求内带有**可访问的**服务商相关图 URL（车主补充的 `settlement`/`completion` 等，至少 1 张）时发起视觉调用；**无图则不调该接口**。返回聚焦 **图-文明确事实矛盾** 与**底线合规**（见 `qwen-analyzer.js` 内 `REVIEW_EVIDENCE_CONTRADICTION_*`）。整体性重评、运营向分析仍可能使用原 `analyzeReviewWithQwen`（与首评 400 拦截分离）。
 
 ```
 用户点击「提交评价」
     ↓
-1. 规则校验（黑名单、双凭证有无、L1 封顶等）— 现有逻辑
+1. 规则校验（黑名单、客观题 v3、200 字上界、相似度等）— 现有逻辑
     ↓
-2. 调用千问：传入「订单信息 + 上传的图片 URL + 评价文本」
+2. 若已配置千问且本单 images.length>0：调用「材料-表述矛盾」千问
     ↓
-3. 千问返回结构化 JSON：
-   {
-     pass: bool,           // 是否通过
-     rejectReason?: string,
-     details: {
-       settlementCheck: {...},
-       imageMatchCheck: {...},
-       contentQuality: {...},
-       contentViolation: {...},
-       similarityRisk: {...}
-     }
-   }
+3. 千问返回 JSON 示例：pass、rejectReason、details.textImageContradiction、details.contentViolation
     ↓
-4. pass=true → 写入 reviews、发奖励、写 audit_log(ai,pass)
-   pass=false → 400 + rejectReason，写 audit_log(ai,reject)
+4. pass=true → 写入 reviews；pass=false → 400 + rejectReason
 ```
 
 ### 方案 B：上传时预检 + 提交时终审

@@ -3,9 +3,11 @@ const {
   getToken,
   getUserOrder,
   getRewardPreview,
+  markUserOrderArrived,
+  claimMerchantNotHandled,
+  forceCloseOrder,
   cancelOrder,
   confirmOrder,
-  escalateCancelRequest,
   approveRepairPlan,
   prepayUserRepairOrder,
   confirmFinalQuote,
@@ -16,6 +18,8 @@ const { requestUserSubscribe } = require('../../../utils/subscribe');
 const navigation = require('../../../utils/navigation');
 const { QUOTE_LABELS, getShopNthQuoteLabel, getShopRoundStageCode } = require('../../../utils/quote-nomenclature');
 const { prependPreQuoteProposalToList } = require('../../../utils/quote-proposal-public-list');
+const { buildOwnerValueAddedDisplay } = require('../../../utils/value-added-services');
+const { computeOwnerRepairPhaseProgress } = require('../../../utils/repair-phase-progress');
 
 const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认完成', 3: '待评价', 4: '已取消' };
 
@@ -118,6 +122,13 @@ function normalizePlanSnapForDiff(snap) {
 }
 
 /** 多轮报价协商记录（含相对上一轮的结构化差异） */
+function formatMilestoneForDisplay(m) {
+  if (!m || typeof m !== 'object') return m;
+  let t = m.created_at != null ? String(m.created_at) : '';
+  if (t.length >= 16) t = t.slice(0, 16).replace('T', ' ');
+  return { ...m, created_at_display: t };
+}
+
 function buildQuoteProposalDisplayList(raw, preQuoteSnap) {
   if (!Array.isArray(raw) || raw.length === 0) return [];
   const preNorm = normalizePlanSnapForDiff(parseQuoteSnapObj(preQuoteSnap));
@@ -164,12 +175,17 @@ Page({
     pageRootStyle: 'padding-top: 88px',
     planItems: [],
     planValueAdded: [],
+    planValueAddedDisplay: null,
     planDiff: null,
     completionEvidence: { repair_photos: [], settlement_photos: [], material_photos: [] },
     approving: false,
     approvingFinal: false,
     durationCountdownText: '',
     durationCountdownExpired: false,
+    lifecycleCountdownTitle: '',
+    lifecycleCountdownText: '',
+    lifecycleCountdownExpired: false,
+    lifecycleCountdownVisible: false,
     repairPaying: false,
     finalQuotePending: false,
     preQuoteSnap: null,
@@ -182,13 +198,21 @@ Page({
     orderFooterVisible: false,
     rewardDisplayTotal: '0.00',
     rewardInvalidHint: '',
-    rewardRuleEstimate: ''
+    rewardRuleEstimate: '',
+    repairMilestones: [],
+    repairPhaseBeforeDone: false,
+    repairPhaseDuringDone: false,
+    repairPhaseAfterDone: false,
+    waitingPartsExtensions: [],
+    selfHelpRequests: [],
   },
 
   _durationTimer: null,
+  _lifecycleTimer: null,
 
   onLoad(options) {
     this.setData({ pageRootStyle: 'padding-top: ' + getNavBarHeight() + 'px' });
+    this._pendingAnchor = (options.anchor || '').trim();
     const id = options.id;
     if (!id) {
       wx.showToast({ title: '参数错误', icon: 'none' });
@@ -219,18 +243,55 @@ Page({
         getUserOrder(id),
         getRewardPreview(id).catch(() => null)
       ]);
+      let damageReportImages = [];
+      const drRaw = order.damage_report_images;
+      if (Array.isArray(drRaw)) {
+        damageReportImages = drRaw
+          .map((u) => (typeof u === 'string' ? u.trim() : u && u.url ? String(u.url).trim() : ''))
+          .filter((u) => u.length > 0);
+      } else if (typeof drRaw === 'string' && drRaw.trim()) {
+        try {
+          const arr = JSON.parse(drRaw);
+          if (Array.isArray(arr)) {
+            damageReportImages = arr
+              .map((u) => (typeof u === 'string' ? u.trim() : u && u.url ? String(u.url).trim() : ''))
+              .filter((u) => u.length > 0);
+          }
+        } catch (_) {}
+      }
+      order.damage_report_images = damageReportImages;
+
       if (order.status === 3 && order.first_review_id) {
         order.statusText = '已评价';
       } else {
         order.statusText = STATUS_MAP[order.status] ?? '未知';
       }
       order.canCancel = order.can_cancel === true && order.status !== 2;
-      order.cancelNeedsReason = order.cancel_needs_reason === true;
-      order.cancelRejected = order.cancel_rejected === true;
-      order.cancelRequestId = order.cancel_request_id;
+      // “撤单申请/人工通道”旧链路已下线，取消交易不再需要理由，也不存在「提交人工通道」按钮
+      order.cancelNeedsReason = false;
+      order.cancelRejected = false;
+      order.cancelRequestId = null;
       order.canConfirm = (order.status === 2);
       order.canReview = (order.status === 3 && !order.first_review_id);
       order.canFollowup = order.can_followup && order.first_review_id;
+      order.canMarkArrived =
+        order.status !== 4 &&
+        order.lifecycle_main === 'pending_arrival' &&
+        !order.owner_arrived_at;
+      order.canUploadOfflineFeeProof = order.status === 4;
+      // 到店后48h无推进：允许发起“维修商未处理”
+      if (order.lifecycle_main === 'pending_disassembly' && order.lifecycle_started_at && order.status !== 4) {
+        const t = new Date(order.lifecycle_started_at).getTime();
+        order.canClaimNotHandled = t > 0 && (Date.now() - t >= 48 * 3600 * 1000) && order.lifecycle_sub !== 'merchant_not_handled_claimed';
+      } else {
+        order.canClaimNotHandled = false;
+      }
+      // 强制结单：超承诺交车 7 天（后端也会校验）
+      order.canForceClose = false;
+      if (order.status === 2 && order.lifecycle_main === 'pending_delivery' && order.lifecycle_started_at) {
+        const t = new Date(order.lifecycle_started_at).getTime();
+        order.canForceClose = t > 0 && (Date.now() - t >= 7 * 24 * 3600 * 1000);
+      }
       order.repair_plan_status = parseInt(order.repair_plan_status, 10) || 0;
       const fqs = order.final_quote_status != null ? parseInt(order.final_quote_status, 10) : 0;
       order.final_quote_status = fqs;
@@ -320,6 +381,10 @@ Page({
         order.shop_phone ||
         order.status === 1 ||
         order.status === 2 ||
+        order.canMarkArrived ||
+        order.canUploadOfflineFeeProof ||
+        order.canClaimNotHandled ||
+        order.canForceClose ||
         order.canConfirm ||
         order.canReview ||
         order.canFollowup ||
@@ -369,11 +434,18 @@ Page({
         }
       }
 
+      const repairMilestones = (Array.isArray(order.repair_milestones) ? order.repair_milestones : []).map(
+        formatMilestoneForDisplay
+      );
+
+      const repairPhase = computeOwnerRepairPhaseProgress(order);
+
       this.setData({
         order,
         rewardPreview,
         planItems,
         planValueAdded,
+        planValueAddedDisplay: buildOwnerValueAddedDisplay(planValueAdded),
         planDiff,
         finalQuoteDiff,
         completionEvidence,
@@ -388,14 +460,157 @@ Page({
         orderFooterVisible,
         rewardDisplayTotal,
         rewardInvalidHint,
-        rewardRuleEstimate
+        rewardRuleEstimate,
+        repairMilestones,
+        repairPhaseBeforeDone: repairPhase.beforeDone,
+        repairPhaseDuringDone: repairPhase.duringDone,
+        repairPhaseAfterDone: repairPhase.afterDone,
+        waitingPartsExtensions: Array.isArray(order.waiting_parts_extensions) ? order.waiting_parts_extensions : [],
+        selfHelpRequests: Array.isArray(order.self_help_requests) ? order.self_help_requests : [],
       });
       this._startDurationTimer();
+      this._startLifecycleTimer();
       if (order.status < 2) requestUserSubscribe('order_update');
+      if (this._pendingAnchor === 'milestones') {
+        this._pendingAnchor = '';
+        setTimeout(() => {
+          wx.pageScrollTo({ selector: '#repair-milestones-anchor', duration: 280 });
+        }, 350);
+      }
     } catch (e) {
       wx.showToast({ title: e.message || '加载失败', icon: 'none' });
       this.setData({ loading: false, orderFooterVisible: false });
     }
+  },
+
+  _pickLifecycleCountdownMeta(order) {
+    if (!order) return { visible: false, title: '', deadlineIso: null };
+    if (!order.lifecycle_deadline_at) return { visible: false, title: '', deadlineIso: null };
+    if (order.status === 4) return { visible: false, title: '', deadlineIso: null };
+    const sub = (order.lifecycle_sub || '').trim();
+    if (sub === 'merchant_not_handled_claimed') {
+      return { visible: true, title: '最后通牒倒计时', deadlineIso: order.lifecycle_deadline_at };
+    }
+    return { visible: true, title: '当前节点倒计时', deadlineIso: order.lifecycle_deadline_at };
+  },
+
+  _startLifecycleTimer() {
+    if (this._lifecycleTimer) {
+      clearInterval(this._lifecycleTimer);
+      this._lifecycleTimer = null;
+    }
+    const order = this.data.order;
+    const meta = this._pickLifecycleCountdownMeta(order);
+    if (!meta.visible || !meta.deadlineIso) {
+      this.setData({
+        lifecycleCountdownVisible: false,
+        lifecycleCountdownTitle: '',
+        lifecycleCountdownText: '',
+        lifecycleCountdownExpired: false
+      });
+      return;
+    }
+    const update = () => {
+      const deadline = new Date(meta.deadlineIso);
+      const now = Date.now();
+      if (!deadline.getTime() || Number.isNaN(deadline.getTime())) {
+        this.setData({
+          lifecycleCountdownVisible: false,
+          lifecycleCountdownTitle: '',
+          lifecycleCountdownText: '',
+          lifecycleCountdownExpired: false
+        });
+        return;
+      }
+      if (now >= deadline.getTime()) {
+        this.setData({
+          lifecycleCountdownVisible: true,
+          lifecycleCountdownTitle: meta.title,
+          lifecycleCountdownText: '',
+          lifecycleCountdownExpired: true
+        });
+        if (this._lifecycleTimer) {
+          clearInterval(this._lifecycleTimer);
+          this._lifecycleTimer = null;
+        }
+        return;
+      }
+      const ms = deadline.getTime() - now;
+      const d = Math.floor(ms / 86400000);
+      const h = Math.floor((ms % 86400000) / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      let text = '';
+      if (d > 0) text = d + '天' + (h > 0 ? h + '小时' : '');
+      else if (h > 0) text = h + '小时' + m + '分';
+      else text = m + '分钟';
+      this.setData({
+        lifecycleCountdownVisible: true,
+        lifecycleCountdownTitle: meta.title,
+        lifecycleCountdownText: text || '不足1分钟',
+        lifecycleCountdownExpired: false
+      });
+    };
+    update();
+    this._lifecycleTimer = setInterval(update, 60000);
+  },
+
+  onMarkArrived() {
+    const order = this.data.order;
+    if (!order || !order.canMarkArrived) return;
+    wx.showModal({
+      title: '确认到店',
+      content: '请确认您已到达维修厂门店。提交后将提醒维修厂尽快处理后续流程。',
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await markUserOrderArrived(order.order_id);
+          ui.showSuccess('已记录到店');
+          await this.loadOrder(order.order_id);
+        } catch (e) {
+          ui.showError(e.message || '操作失败');
+        }
+      }
+    });
+  },
+
+  onUploadOfflineFeeProof() {
+    const order = this.data.order;
+    if (!order || !order.canUploadOfflineFeeProof) return;
+    navigation.navigateTo('/pages/order/offline-fee-proof/index', { id: order.order_id });
+  },
+
+  onClaimMerchantNotHandled() {
+    const order = this.data.order;
+    if (!order || !order.canClaimNotHandled) return;
+    wx.showModal({
+      title: '维修商未处理',
+      content: '如您已到店且维修商超过 48 小时仍未推进拆解/报价，可发起催办。系统将给维修商最后 24 小时处理；仍无进展将自动取消并按规则留痕赔付。',
+      confirmText: '发起催办',
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await claimMerchantNotHandled(order.order_id, {});
+          ui.showSuccess('已提交催办');
+          await this.loadOrder(order.order_id);
+        } catch (e) {
+          ui.showError(e.message || '操作失败');
+        }
+      }
+    });
+  },
+
+  onForceClose() {
+    const order = this.data.order;
+    if (!order || !order.canForceClose) return;
+    wx.showModal({
+      title: '强制结单',
+      content: '如维修商超承诺交车 7 天仍未交付或不配合，可上传取车/车辆外观凭证并强制结单进入评价流程。',
+      confirmText: '去上传',
+      success: (res) => {
+        if (!res.confirm) return;
+        navigation.navigateTo('/pages/order/force-close/index', { id: order.order_id });
+      }
+    });
   },
 
   _startDurationTimer() {
@@ -436,6 +651,10 @@ Page({
       clearInterval(this._durationTimer);
       this._durationTimer = null;
     }
+    if (this._lifecycleTimer) {
+      clearInterval(this._lifecycleTimer);
+      this._lifecycleTimer = null;
+    }
   },
 
   onCallShop() {
@@ -447,6 +666,14 @@ Page({
     const urls = e.currentTarget.dataset.urls || [];
     const current = e.currentTarget.dataset.current;
     if (urls.length) wx.previewImage({ urls, current: current || urls[0] });
+  },
+
+  onPreviewOwnerPhotos(e) {
+    const idx = parseInt(e.currentTarget.dataset.index, 10);
+    const urls = (this.data.order && this.data.order.damage_report_images) || [];
+    if (!urls.length) return;
+    const cur = urls[Number.isNaN(idx) ? 0 : idx] || urls[0];
+    wx.previewImage({ current: cur, urls });
   },
 
   onPreviewPendingFinalQuotePhoto(e) {
@@ -462,6 +689,18 @@ Page({
     if (!quoteProposalList || Number.isNaN(idx) || !quoteProposalList[idx]) return;
     const urls = quoteProposalList[idx].photo_urls || [];
     if (urls.length) wx.previewImage({ urls, current: current || urls[0] });
+  },
+
+  onPreviewMilestonePhotos(e) {
+    const urls = e.currentTarget.dataset.urls || [];
+    const current = e.currentTarget.dataset.current;
+    if (urls.length) wx.previewImage({ urls, current: current || urls[0] });
+  },
+
+  async onRequestOrderSubscribe() {
+    const ok = await requestUserSubscribe('order_update');
+    if (ok) ui.showSuccess('已订阅订单通知');
+    else ui.showWarning('未订阅或额度已用尽，仍可在消息中心查看');
   },
 
   async onConfirm() {
@@ -498,44 +737,20 @@ Page({
   onCancel() {
     const { order } = this.data;
     if (!order || !order.canCancel) return;
-    if (order.cancelNeedsReason) {
-      wx.showModal({
-        title: '申请撤销',
-        editable: true,
-        placeholderText: '请填写撤单理由（必填）',
-        success: async (res) => {
-          if (!res.confirm) return;
-          const reason = (res.content || '').trim();
-          if (!reason) {
-            ui.showWarning('请填写撤单理由');
-            return;
-          }
-          try {
-            const data = await cancelOrder(order.order_id, reason);
-            ui.showSuccess(data.direct ? '已撤销' : '撤单申请已提交');
-            if (data.direct) wx.navigateBack();
-            else this.loadOrder(order.order_id);
-          } catch (e) {
-            ui.showError(e.message || '操作失败');
-          }
+    wx.showModal({
+      title: '取消交易',
+      content: '取消后可重新选择其他报价，确定取消交易吗？',
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await cancelOrder(order.order_id);
+          ui.showSuccess('已取消交易');
+          wx.navigateBack();
+        } catch (e) {
+          ui.showError(e.message || '取消失败');
         }
-      });
-    } else {
-      wx.showModal({
-        title: '撤销订单',
-        content: '撤销后可重新选择其他报价，确定撤销吗？',
-        success: async (res) => {
-          if (!res.confirm) return;
-          try {
-            await cancelOrder(order.order_id);
-            ui.showSuccess('已撤销');
-            wx.navigateBack();
-          } catch (e) {
-            ui.showError(e.message || '撤销失败');
-          }
-        }
-      });
-    }
+      }
+    });
   },
 
   async onConfirmFinalQuote(e) {
@@ -550,6 +765,7 @@ Page({
           ? `${QUOTE_LABELS.finalLockedFull}已生效`
           : `已拒绝，维修厂将按${QUOTE_LABELS.biddingPrequoteShort}沟通`
       );
+      if (approve) requestUserSubscribe('order_update');
       await this.loadOrder(order.order_id);
     } catch (err) {
       ui.showError(err.message || '操作失败');
@@ -565,23 +781,12 @@ Page({
     try {
       await approveRepairPlan(order.order_id, approve);
       ui.showSuccess(approve ? '已同意维修方案' : '如有疑问请联系客服');
+      if (approve) requestUserSubscribe('order_update');
       this.loadOrder(order.order_id);
     } catch (err) {
       ui.showError(err.message || '操作失败');
     }
     this.setData({ approving: false });
-  },
-
-  async onEscalateCancel() {
-    const { order } = this.data;
-    if (!order || !order.cancelRejected || !order.cancelRequestId) return;
-    try {
-      await escalateCancelRequest(order.order_id, order.cancelRequestId);
-      ui.showSuccess('已提交人工通道');
-      this.loadOrder(order.order_id);
-    } catch (e) {
-      ui.showError(e.message || '提交失败');
-    }
   },
 
   onBookAppointment() {

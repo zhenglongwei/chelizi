@@ -1,8 +1,130 @@
-{"pages":["pages/index/index","pages/message/index","pages/search/list/index","pages/damage/upload/index","pages/damage/history/index","pages/damage/report/index","pages/bidding/detail/index","pages/help/parts-types/index","pages/help/warranty-notice/index","pages/bidding/list/index","pages/order/list/index","pages/order/hub/index","pages/order/detail/index","pages/shop/detail/index","pages/shop/book/index","pages/shop/product/confirm/index","pages/shop/product/success/index","pages/auth/login/index",
-    "pages/auth/profile/index","pages/review/submit/index","pages/user/index/index","pages/user/withdraw/index","pages/user/settings/index","pages/logs/logs","pages/merchant/index","pages/merchant/login","pages/merchant/forgot-password","pages/merchant/register","pages/merchant/home","pages/merchant/score/index","pages/merchant/score/dimension/index","pages/merchant/commission/index","pages/merchant/bidding/list/index","pages/merchant/bidding/detail/index","pages/merchant/order/list/index","pages/merchant/order/detail/index",
-    "pages/merchant/order/repair-plan-edit/index","pages/merchant/shop/profile/index",
-    "pages/merchant/appeal/list/index",
-    "pages/merchant/appeal/submit/index","pages/merchant/message/index",
-    "pages/merchant/product/list/index","pages/merchant/product/edit/index","pages/merchant/product-order/list/index","pages/user/balance/index","pages/user/product-orders/list/index",
+{
+  "pages": [
+    "pages/index/index",
+    "pages/reputation/index",
+    "pages/damage/upload/index",
+    "pages/damage/history/index",
+    "pages/damage/report/index",
+    "pages/damage/share/index",
+    "pages/message/index",
+    "pages/user/index/index",
+    "pages/user/withdraw/index",
+    "pages/user/settings/index",
+    "pages/user/balance/index",
+    "pages/user/reward-rules/index",
+    "pages/user/product-orders/list/index",
     "pages/user/vehicles/index",
-    "pages/user/level-detail/index","pages/review/followup/index","pages/review/return/index","pages/reputation/index","pages/reputation/rank/index","pages/reviews/feed/index"],"window":{"navigationBarTextStyle":"black","navigationBarTitleText":"辙见","navigationBarBackgroundColor":"#ffffff","backgroundColor":"#F8FAFC","enablePullDownRefresh":true},"tabBar":{"custom":true,"color":"#A0A0A0","selectedColor":"#EAB308","backgroundColor":"#FFFFFF","borderStyle":"black","list":[{"pagePath":"pages/index/index","text":"首页","iconPath":"images/icon/home.png","selectedIconPath":"images/icon/home_active.png"},{"pagePath":"pages/reputation/index","text":"口碑","iconPath":"images/icon/merchant.png","selectedIconPath":"images/icon/merchant_active.png"},{"pagePath":"pages/damage/upload/index","text":"定损","iconPath":"images/icon/camera_tab.png","selectedIconPath":"images/icon/camera_tab_active.png"},{"pagePath":"pages/message/index","text":"消息","iconPath":"images/icon/message.png","selectedIconPath":"images/icon/message_active.png"},{"pagePath":"pages/user/index/index","text":"我的","iconPath":"images/icon/person.png","selectedIconPath":"images/icon/person_active.png"}]},"style":"v2","componentFramework":"glass-easel","sitemapLocation":"sitemap.json","lazyCodeLoading":"requiredComponents","requiredPrivateInfos":["chooseLocation"]}
+    "pages/user/level-detail/index",
+    "pages/search/list/index",
+    "pages/reputation/rank/index",
+    "pages/auth/login/index",
+    "pages/auth/profile/index",
+    "pages/logs/logs"
+  ],
+  "subpackages": [
+    {
+      "root": "pages/bidding",
+      "pages": ["wait/index", "detail/index", "list/index"]
+    },
+    {
+      "root": "pages/order",
+      "pages": ["list/index", "hub/index", "detail/index", "offline-fee-proof/index", "force-close/index"]
+    },
+    {
+      "root": "pages/review",
+      "pages": ["submit/index", "followup/index", "return/index"]
+    },
+    {
+      "root": "pages/help",
+      "pages": ["parts-types/index", "warranty-notice/index"]
+    },
+    {
+      "root": "pages/shop",
+      "pages": ["detail/index", "book/index", "product/confirm/index", "product/success/index"]
+    },
+    {
+      "root": "pages/reviews",
+      "pages": ["feed/index"]
+    },
+    {
+      "root": "pages/merchant",
+      "pages": [
+        "index",
+        "login",
+        "forgot-password",
+        "register",
+        "home",
+        "score/index",
+        "score/dimension/index",
+        "commission/index",
+        "bidding/list/index",
+        "bidding/detail/index",
+        "quote-value-added/index",
+        "order/list/index",
+        "order/detail/index",
+        "order/repair-milestone/index",
+        "order/waiting-parts-extension/index",
+        "order/promised-delivery/index",
+        "order/repair-plan-edit/index",
+        "shop/profile/index",
+        "appeal/list/index",
+        "appeal/submit/index",
+        "message/index",
+        "product/list/index",
+        "product/edit/index",
+        "product-order/list/index"
+      ]
+    }
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "辙见",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#F8FAFC",
+    "enablePullDownRefresh": true
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#A0A0A0",
+    "selectedColor": "#EAB308",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/icon/home.png",
+        "selectedIconPath": "images/icon/home_active.png"
+      },
+      {
+        "pagePath": "pages/reputation/index",
+        "text": "口碑",
+        "iconPath": "images/icon/merchant.png",
+        "selectedIconPath": "images/icon/merchant_active.png"
+      },
+      {
+        "pagePath": "pages/damage/upload/index",
+        "text": "预报价",
+        "iconPath": "images/icon/camera_tab.png",
+        "selectedIconPath": "images/icon/camera_tab_active.png"
+      },
+      {
+        "pagePath": "pages/message/index",
+        "text": "消息",
+        "iconPath": "images/icon/message.png",
+        "selectedIconPath": "images/icon/message_active.png"
+      },
+      {
+        "pagePath": "pages/user/index/index",
+        "text": "我的",
+        "iconPath": "images/icon/person.png",
+        "selectedIconPath": "images/icon/person_active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "componentFramework": "glass-easel",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "requiredPrivateInfos": ["chooseLocation"]
+}

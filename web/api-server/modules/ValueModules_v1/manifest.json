@@ -1,0 +1,26 @@
+{
+  "moduleId": "ValueModules_v1",
+  "version": "1.0.0",
+  "capabilities": [
+    "quote.ocr_import",
+    "repair.timeline_public"
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/open/quote/ocr-import/by-image",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["quote.ocr_import"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/repair/timeline/public",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["repair.timeline_public"]
+    }
+  ],
+  "publicAssets": [],
+  "workers": [],
+  "dependsOnModules": [],
+  "dbMigrations": []
+}

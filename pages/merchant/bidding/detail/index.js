@@ -12,22 +12,45 @@ const {
 } = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
 const { PARTS_TYPES } = require('../../../../utils/parts-types');
-const { parseApiErrorFromArrayBuffer, mapImportedRowsToPlanItems } = require('../../../../utils/merchant-quote-import-helpers');
+const {
+  parseApiErrorFromArrayBuffer,
+  mapImportedRowsToPlanItems,
+  extractDamagePartFromAiSuggestionItem,
+  dedupeAiSuggestionQuoteItemsByDamagePart
+} = require('../../../../utils/merchant-quote-import-helpers');
 const { mergeHumanDisplayFromAnalysis, filterDamagesByFocus } = require('../../../../utils/analysis-human-display');
+const { buildOwnerValueAddedDisplay } = require('../../../../utils/value-added-services');
+const { buildAccidentReportViewModel } = require('../../../../utils/accident-report-presenter');
 
 const logger = getLogger('MerchantBiddingDetail');
 
-/** 去掉建议项「车辆N-」前缀，便于填损失部位 */
-function stripVehiclePrefixFromItem(item) {
-  const s = String(item || '').trim();
-  const m = s.match(/^车辆\d+[-：]\s*(.+)$/);
-  return m ? m[1].trim() : s;
+function buildVaChosenLabels(services) {
+  return (services || []).map((it) => String(it.name || '').trim()).filter(Boolean);
+}
+
+/** 与提交校验一致：仅统计已填「损失部位」且分项价为有效非负数字的行 */
+function computeQuoteSumFromItems(quoteItems) {
+  let sum = 0;
+  for (const it of quoteItems || []) {
+    if (!(it.damage_part || '').trim()) continue;
+    const pr = parseFloat(it.line_price);
+    if (Number.isNaN(pr) || pr < 0) continue;
+    sum += pr;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+function quoteTotalAmountString(quoteItems) {
+  const s = computeQuoteSumFromItems(quoteItems);
+  if (s <= 0) return '';
+  return s.toFixed(2);
 }
 
 const ACCIDENT_TYPE_LABELS = {
   single: '单方事故',
   self_fault: '己方全责',
   other_fault: '对方全责',
+  equal_fault: '同等责任',
   other_main: '对方主责',
   self_main: '己方主责'
 };
@@ -45,11 +68,9 @@ function analysisHasReportSection(ar, humanDisplay, damagesFiltered) {
 }
 
 const REPAIR_TYPES = [{ label: '换', value: '换' }, { label: '修', value: '修' }];
+// 预报价有效期：固定 24 小时（规则强约束）
 const QUOTE_VALIDITY_OPTIONS = [
-  { label: '1 天', value: 1 },
-  { label: '3 天', value: 3 },
-  { label: '5 天', value: 5 },
-  { label: '7 天', value: 7 }
+  { label: '24 小时', value: 1 },
 ];
 let nextId = 1;
 
@@ -66,8 +87,8 @@ Page({
     amount: '',
     duration: '',
     remark: '',
-    quoteValidityDays: 3,
-    quoteValidityIndex: 1,
+    quoteValidityDays: 1,
+    quoteValidityIndex: 0,
     quoteValidityOptions: QUOTE_VALIDITY_OPTIONS,
     submitting: false,
     hasAiSuggestions: false,
@@ -75,8 +96,10 @@ Page({
     aiReportExpanded: false,
     reportHumanDisplay: { obvious_damage: [], possible_damage: [], repair_advice: [] },
     reportDamagesDisplay: [],
-    reportHasHumanLines: false,
-    reportHasAnalysisSection: false
+    reportHasAnalysisSection: false,
+    reportVm: null,
+    vaChosenLabels: [],
+    myQuoteVaDisplay: null
   },
 
   onLoad(options) {
@@ -107,12 +130,13 @@ Page({
       const focusId = viBid.analysis_focus_vehicle_id || '';
       const reportHumanDisplay = mergeHumanDisplayFromAnalysis(ar, focusId);
       const reportDamagesDisplay = filterDamagesByFocus(ar.damages || [], focusId);
+      const reportVm = buildAccidentReportViewModel({
+        mode: 'miniapp',
+        human_display: reportHumanDisplay,
+        damages: reportDamagesDisplay,
+      });
       const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay, reportDamagesDisplay);
-      const reportHasHumanLines =
-        (Array.isArray(reportHumanDisplay.obvious_damage) ? reportHumanDisplay.obvious_damage.length : 0) +
-          (Array.isArray(reportHumanDisplay.possible_damage) ? reportHumanDisplay.possible_damage.length : 0) +
-          (Array.isArray(reportHumanDisplay.repair_advice) ? reportHumanDisplay.repair_advice.length : 0) >
-        0;
+      const myQuoteVaDisplay = buildOwnerValueAddedDisplay((res.my_quote && res.my_quote.value_added_services) || []);
       this.setData({
         bidding: res,
         hasAiSuggestions: hasAi,
@@ -121,11 +145,18 @@ Page({
         reportHumanDisplay,
         reportDamagesDisplay,
         reportHasAnalysisSection,
-        reportHasHumanLines,
-        aiReportExpanded: false
+        reportVm,
+        aiReportExpanded: false,
+        myQuoteVaDisplay
       });
       if (!res.my_quote) {
-        this.setData({ quoteItems: [], valueAddedServices: [], amount: '' });
+        this.setData({
+          quoteItems: [],
+          valueAddedServices: [],
+          amount: '',
+          vaChosenLabels: [],
+          myQuoteVaDisplay: buildOwnerValueAddedDisplay([])
+        });
       }
     } catch (err) {
       logger.error('加载竞价详情失败', err);
@@ -136,14 +167,15 @@ Page({
   onUseAiSuggestions() {
     const { bidding } = this.data;
     const suggestions = bidding?.analysis_result?.repair_suggestions || [];
-    const damages = bidding?.analysis_result?.damages || [];
     if (!suggestions.length) return;
-    const items = suggestions.map((s, i) => {
+    const rawItems = suggestions.map((s, i) => {
       const name = (s.item || '').trim() || ('维修项目' + (i + 1));
-      const isReplace = /更换|换|替换/.test(name);
-      const stripped = stripVehiclePrefixFromItem(name);
-      const fromLine = damages[i] ? String(damages[i].part || '').trim() : '';
-      const damagePart = fromLine || stripped.split(/[更换修]/)[0]?.trim() || stripped || name;
+      const methodRaw = String(s.repair_method || s.repair_type || '').trim();
+      const isReplace =
+        methodRaw === '换' || (methodRaw !== '修' && !methodRaw && /更换|换|替换/.test(name));
+      const fromApi = String(s.damage_part || s.part || '').trim();
+      const damagePart =
+        fromApi || extractDamagePartFromAiSuggestionItem(name) || ('维修项目' + (i + 1));
       return {
         id: 'ai-' + (nextId++),
         damage_part: damagePart,
@@ -155,28 +187,30 @@ Page({
         line_warranty: '12'
       };
     });
-    this.setData({ quoteItems: items });
+    const items = dedupeAiSuggestionQuoteItemsByDamagePart(rawItems);
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
     ui.showSuccess('已采用 AI 建议，可修改后提交');
   },
 
-  onAddValueAdded() {
-    const list = [...(this.data.valueAddedServices || []), { id: 'va-' + (nextId++), name: '' }];
-    this.setData({ valueAddedServices: list });
-  },
-
-  onDelValueAdded(e) {
-    const id = e.currentTarget.dataset.id;
-    const list = (this.data.valueAddedServices || []).filter(it => it.id !== id);
-    this.setData({ valueAddedServices: list });
-  },
-
-  onValueAddedInput(e) {
-    const id = e.currentTarget.dataset.id;
-    const val = (e.detail.value || '').trim();
-    const list = (this.data.valueAddedServices || []).map(it =>
-      it.id === id ? { ...it, name: val } : it
-    );
-    this.setData({ valueAddedServices: list });
+  onOpenQuoteValueAdded() {
+    wx.navigateTo({
+      url: '/pages/merchant/quote-value-added/index',
+      events: {
+        vaDone: (data) => {
+          const list = Array.isArray(data.valueAddedServices) ? data.valueAddedServices : [];
+          this.setData({
+            valueAddedServices: list,
+            vaChosenLabels: buildVaChosenLabels(list),
+            myQuoteVaDisplay: buildOwnerValueAddedDisplay(list)
+          });
+        }
+      },
+      success: (res) => {
+        if (res.eventChannel && typeof res.eventChannel.emit === 'function') {
+          res.eventChannel.emit('initVa', { valueAddedServices: this.data.valueAddedServices || [] });
+        }
+      }
+    });
   },
 
   onAddItem() {
@@ -190,13 +224,13 @@ Page({
       line_price: '',
       line_warranty: '12'
     }];
-    this.setData({ quoteItems: items });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onDelItem(e) {
     const id = e.currentTarget.dataset.id;
     const items = (this.data.quoteItems || []).filter(it => it.id !== id);
-    this.setData({ quoteItems: items });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onItemFieldInput(e) {
@@ -206,7 +240,7 @@ Page({
     const items = (this.data.quoteItems || []).map(it =>
       it.id === id ? { ...it, [field]: val } : it
     );
-    this.setData({ quoteItems: items });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onRepairTypeChange(e) {
@@ -220,7 +254,7 @@ Page({
       else if (!it.parts_type) { next.parts_type = '原厂件'; next.partsTypeIndex = 0; }
       return next;
     });
-    this.setData({ quoteItems: items });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onPartsTypeChange(e) {
@@ -230,11 +264,7 @@ Page({
     const items = (this.data.quoteItems || []).map(it =>
       it.id === id ? { ...it, parts_type: val, partsTypeIndex: idx } : it
     );
-    this.setData({ quoteItems: items });
-  },
-
-  onAmountInput(e) {
-    this.setData({ amount: (e.detail.value || '').trim() });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onDurationInput(e) {
@@ -247,7 +277,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     const val = (e.detail.value || '').trim();
     const items = this.data.quoteItems.map(it => (it.id === id ? { ...it, line_price: val } : it));
-    this.setData({ quoteItems: items });
+    this.setData({ quoteItems: items, amount: quoteTotalAmountString(items) });
   },
 
   onLineWarrantyInput(e) {
@@ -355,11 +385,11 @@ Page({
             const idCtr = { v: nextId };
             const items = mapImportedRowsToPlanItems(data.items || [], { idCounter: idCtr, withPartsTypeLock: false });
             nextId = idCtr.v;
-            const patch = { quoteItems: items, importBusy: false };
-            if (data.amount_sum != null && data.amount_sum > 0 && !this.data.amount) {
-              patch.amount = String(data.amount_sum);
-            }
-            this.setData(patch);
+            this.setData({
+              quoteItems: items,
+              importBusy: false,
+              amount: quoteTotalAmountString(items)
+            });
             const hints = [];
             if (data.missing_fields && data.missing_fields.length) hints.push('待补全：' + data.missing_fields.join('；'));
             if (data.ai_warnings && data.ai_warnings.length) hints.push('提示：' + data.ai_warnings.join('；'));
@@ -401,8 +431,11 @@ Page({
           const idCtr = { v: nextId };
           const items = mapImportedRowsToPlanItems(out.items || [], { idCounter: idCtr, withPartsTypeLock: false });
           nextId = idCtr.v;
-          const patch = { quoteItems: items, importBusy: false };
-          if (out.amount != null && out.amount > 0 && !this.data.amount) patch.amount = String(out.amount);
+          const patch = {
+            quoteItems: items,
+            importBusy: false,
+            amount: quoteTotalAmountString(items)
+          };
           if (out.duration != null && !this.data.duration) patch.duration = String(out.duration);
           this.setData(patch);
           if (out.missing_fields && out.missing_fields.length) {
@@ -419,12 +452,7 @@ Page({
   },
 
   async onSubmit() {
-    const { biddingId, amount, quoteItems, valueAddedServices, duration, remark, submitting } = this.data;
-    const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt <= 0) {
-      ui.showWarning('请输入有效报价金额');
-      return;
-    }
+    const { biddingId, quoteItems, valueAddedServices, duration, remark, submitting } = this.data;
     const dur = duration === '' || duration == null ? null : parseInt(duration, 10);
     if (dur == null || isNaN(dur) || dur < 0) {
       ui.showWarning('请填写预计工期（天）');
@@ -455,13 +483,21 @@ Page({
         warranty_months: wm
       });
     }
-    if (Math.abs(sumLine - amt) > 0.51) {
-      ui.showWarning('分项金额合计 ¥' + sumLine.toFixed(2) + ' 与总报价不一致，请核对');
+    sumLine = Math.round(sumLine * 100) / 100;
+    const amt = sumLine;
+    if (amt <= 0) {
+      ui.showWarning('总报价须大于 0：请为每条维修项目填写有效的分项金额（元）');
       return;
     }
-    const value_added_services = (valueAddedServices || [])
-      .filter(it => (it.name || '').trim())
-      .map(it => ({ name: (it.name || '').trim() }));
+    this.setData({ amount: amt.toFixed(2) });
+    const seenNames = new Set();
+    const value_added_services = [];
+    for (const it of valueAddedServices || []) {
+      const n = String(it.name || '').trim();
+      if (!n || seenNames.has(n)) continue;
+      seenNames.add(n);
+      value_added_services.push({ name: n });
+    }
 
     this.setData({ submitting: true });
     try {
@@ -472,7 +508,8 @@ Page({
         value_added_services,
         duration: dur,
         remark: remark || null,
-        quote_validity_days: this.data.quoteValidityDays || 3
+        // 有效期固定 24 小时；服务端将忽略该字段（保留兼容，避免旧包体报错）
+        quote_validity_days: 1
       });
       ui.showSuccess('报价已提交');
       setTimeout(() => wx.navigateBack(), 800);

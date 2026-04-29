@@ -1,0 +1,25 @@
+<custom-nav-bar title="承诺交车时间" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card pd-card">
+    <text class="fs-body fw-medium">设置承诺交车时间</text>
+    <text class="text-muted fs-cap pd-hint">该时间为硬截止时间，用于超时判定与车主自救入口。建议留出合理缓冲。</text>
+
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">日期</text>
+      <picker mode="date" value="{{date}}" bindchange="onDateChange">
+        <view class="form-picker">{{date || '请选择日期'}}</view>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label text-muted fs-cap">时间</text>
+      <picker mode="time" value="{{time}}" bindchange="onTimeChange">
+        <view class="form-picker">{{time || '请选择时间'}}</view>
+      </picker>
+    </view>
+
+    <button class="btn-primary pd-submit" loading="{{submitting}}" disabled="{{submitting || !date || !time}}" bindtap="onSubmit">
+      {{submitting ? '提交中...' : '确认设置'}}
+    </button>
+  </view>
+</view>
+

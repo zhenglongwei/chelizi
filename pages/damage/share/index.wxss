@@ -1,0 +1,22 @@
+.share-page { min-height: 100vh; background: var(--bg-page); }
+.share-loading, .share-error { padding: var(--space-2xl); text-align: center; }
+.share-error { display: flex; flex-direction: column; align-items: center; gap: var(--space-lg); margin: var(--space-2xl) var(--page-padding-x); padding: var(--space-2xl); }
+.share-link { color: var(--primary); font-size: var(--fs-body); }
+.share-scroll { padding: var(--space-lg) var(--page-padding-x); }
+.share-card { margin-bottom: var(--space-lg); padding: var(--space-xl); }
+.share-title { margin-bottom: var(--space-lg); }
+.share-subtitle { margin-top: calc(var(--space-md) * -1); margin-bottom: var(--space-md); }
+.share-human-section { margin-top: var(--space-md); }
+.share-human-title { margin-bottom: var(--space-xs); }
+.share-item { margin-top: var(--space-sm); color: var(--text-secondary); }
+.share-disclaimer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+  line-height: 1.5;
+}
+.share-actions { margin-top: var(--space-lg); display: flex; flex-direction: column; gap: var(--space-md); }
+.share-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); background: var(--primary); color: #fff; border: none; }
+.share-btn-secondary { background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
+.share-bottom-pad { height: var(--space-2xl); }
+

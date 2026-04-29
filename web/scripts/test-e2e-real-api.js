@@ -275,8 +275,17 @@ async function main() {
   });
   if (!ok('9.1 接单', acceptRes)) process.exit(1);
 
-  // ========== 10. 维修完成（先尝试正常 API，若返回 auditing 则用 force-complete） ==========
+  // ========== 10. 维修完成（须先有一条「完工」过程留痕，再 PUT status=2） ==========
   console.log('\n--- 10. 维修完成 ---');
+  const afterMilestoneRes = await request('POST', `/api/v1/merchant/orders/${orderId}/repair-milestones`, {
+    headers: { Authorization: `Bearer ${merchantToken}` },
+    body: {
+      milestone_code: 'after_process',
+      photo_urls: ['https://example.com/milestone-after.jpg'],
+      note: 'E2E 完工留痕',
+    },
+  });
+  if (!ok('10.0 完工过程留痕', afterMilestoneRes)) process.exit(1);
   const completionEvidence = {
     repair_photos: ['https://example.com/repair.jpg'],
     settlement_photos: ['https://example.com/settlement.jpg'],

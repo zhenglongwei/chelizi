@@ -1,5 +1,5 @@
 /**
- * 主评价客观题与星级联动（《重构评价体系》+ 现网 reviews 五维字段映射）
+ * 主评价客观题与星级联动（历史题干见 docs/已归档/重构评价体系.md + 现网 reviews 五维字段映射）
  * general：5 题；accident：6 题
  */
 
@@ -147,6 +147,7 @@ function falseObjectiveKeysForAppeals(scene, m3) {
 const QUESTION_LABELS = {
   q_pay_match: '最终支付金额是否与系统结算金额一致',
   q_process_transparent: '维修过程是否按规则同步核心节点记录/录像',
+  q_quote_transparency_star: '车主反馈报价节点与凭证展示不够透明（极简评价）',
   q_parts_match_quote: '更换配件是否与报价承诺一致',
   q_fault_resolved: '报修故障是否完全解决、无新增问题',
   q_warranty_provided: '是否在订单方案/报价明细中提供明确分项质保约定（质保月数，店端作出）',
@@ -159,6 +160,7 @@ const QUESTION_LABELS = {
 const PENALTIES = {
   q_pay_match: 20,
   q_process_transparent: 5,
+  q_quote_transparency_star: 5,
   q_parts_match_quote: 15,
   q_fault_resolved: 0,
   q_warranty_provided: 5,
@@ -211,8 +213,26 @@ function star15(v) {
   return !Number.isNaN(n) && n >= 1 && n <= 5 ? n : NaN;
 }
 
-/** 五星序表单：报价透明度、配件溯源、整体修复、服务态度 */
+/** 五星序表单：流程透明度、报价、配件溯源、整体修复、服务态度 */
 function hasV3FiveStarAnswers(m3) {
+  const proc = star15(m3?.process_transparency_star);
+  const q = star15(m3?.quote_transparency_star);
+  const p = star15(m3?.parts_traceability_star);
+  const r = star15(m3?.repair_effect_star);
+  const s = star15(m3?.service_experience_star);
+  return (
+    !Number.isNaN(proc) &&
+    !Number.isNaN(q) &&
+    !Number.isNaN(p) &&
+    !Number.isNaN(r) &&
+    !Number.isNaN(s)
+  );
+}
+
+/** 旧客户端仅传四维 five_star（缺 process_transparency_star） */
+function hasV3FourStarFiveFormWithoutProcess(m3) {
+  const procRaw = m3?.process_transparency_star;
+  if (procRaw != null && procRaw !== '') return false;
   const q = star15(m3?.quote_transparency_star);
   const p = star15(m3?.parts_traceability_star);
   const r = star15(m3?.repair_effect_star);
@@ -224,6 +244,14 @@ function validateObjectiveAnswersV3(m3) {
   const resStar = star15(m3?.repair_effect_star);
   const svcStar = star15(m3?.service_experience_star);
   const hasFive = hasV3FiveStarAnswers(m3);
+
+  if (hasV3FourStarFiveFormWithoutProcess(m3)) {
+    return {
+      ok: false,
+      error:
+        '请完成「流程透明度」1～5 星（1 星表示您认为流程完全不透明，5 星表示完全透明），并更新到最新版本小程序后重试',
+    };
+  }
 
   if (hasFive) {
     const ovr = m3?.owner_verify_result;
@@ -278,6 +306,7 @@ function buildObjectiveAnswersPayloadV3(order, m3) {
       version: 3,
       v3_form: 'five_star',
       scene,
+      process_transparency_star: star15(m3.process_transparency_star),
       quote_transparency_star: star15(m3.quote_transparency_star),
       parts_traceability_star: star15(m3.parts_traceability_star),
       repair_effect_star: resStar,
@@ -325,9 +354,11 @@ function falseObjectiveKeysForAppealsV3(m3) {
   const resStar = parseInt(m3?.repair_effect_star, 10);
   const quoteStar = parseInt(m3?.quote_transparency_star, 10);
   const partsStar = parseInt(m3?.parts_traceability_star, 10);
+  const procStar = parseInt(m3?.process_transparency_star, 10);
   if (!Number.isNaN(resStar) && resStar <= 2) keys.push('q_fault_resolved');
   else if (m3?.fault_fix_effect === 'none') keys.push('q_fault_resolved');
-  if (!Number.isNaN(quoteStar) && quoteStar <= 2) keys.push('q_process_transparent');
+  if (!Number.isNaN(procStar) && procStar <= 2) keys.push('q_process_transparent');
+  if (!Number.isNaN(quoteStar) && quoteStar <= 2) keys.push('q_quote_transparency_star');
   if (!Number.isNaN(partsStar) && partsStar <= 2) keys.push('q_parts_match_quote');
   if (m3?.parts_authenticity_check === 'mismatch') keys.push('q_parts_match_quote');
   return [...new Set(keys)];
@@ -371,4 +402,5 @@ module.exports = {
   buildObjectiveAnswersPayloadV3,
   falseObjectiveKeysForAppealsV3,
   hasV3FiveStarAnswers,
+  hasV3FourStarFiveFormWithoutProcess,
 };

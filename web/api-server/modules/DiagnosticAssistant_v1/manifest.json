@@ -1,0 +1,138 @@
+{
+  "moduleId": "DiagnosticAssistant_v1",
+  "version": "1.0.0",
+  "capabilities": [
+    "diagnosis.image_analyze",
+    "diagnosis.dtc_interpret",
+    "diagnosis.symptom_analyze",
+    "parts.auth_query_by_code",
+    "parts.auth_query_by_image",
+    "parts.fitment_check_by_vin",
+    "parts.auth_risk_scoring",
+    "parts.auth_signing_payload"
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/open/diagnosis/image-analyze",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["diagnosis.image_analyze"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/diagnosis/dtc-interpret",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["diagnosis.dtc_interpret"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/diagnosis/symptom-analyze",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["diagnosis.symptom_analyze"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/parts/auth/query-by-code",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["parts.auth_query_by_code"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/parts/auth/query-by-image",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["parts.auth_query_by_image"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/parts/auth/fitment-check-by-vin",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["parts.fitment_check_by_vin"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/parts/auth/risk-scoring",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["parts.auth_risk_scoring"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/open/parts/auth/signing-payload",
+      "auth": "openapi_key",
+      "requiredCapabilities": ["parts.auth_signing_payload"]
+    },
+    {
+      "method": "GET",
+      "path": "/h5/parts-auth",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "GET",
+      "path": "/h5/diagnosis",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "GET",
+      "path": "/h5/tools",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/h5/track",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/diagnosis/image-analyze",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/diagnosis/dtc-interpret",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/diagnosis/symptom-analyze",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/parts/auth/query-by-code",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/parts/auth/query-by-image",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/parts/auth/risk-scoring",
+      "auth": "public",
+      "requiredCapabilities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/parts/auth/manual-check-record",
+      "auth": "public",
+      "requiredCapabilities": []
+    }
+  ],
+  "publicAssets": [
+    "web/api-server/public-h5/parts-auth.html",
+    "web/api-server/public-h5/diagnosis-assistant.html",
+    "web/api-server/public-h5/tools-hub.html"
+  ],
+  "workers": [],
+  "dependsOnModules": [],
+  "dbMigrations": []
+}

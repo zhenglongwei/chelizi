@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>损失报告（AI）摘要</title>
+    <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+    <style>
+      :root { --bg:#0b1220; --card:#111a2b; --text:#e5e7eb; --muted:#9ca3af; --primary:#f59e0b; --border:rgba(255,255,255,.08); }
+      body { margin:0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+        background: radial-gradient(900px 500px at 20% 0%, rgba(245,158,11,.15), transparent 60%), var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 22px 14px 50px; }
+      .brand { display:flex; align-items:center; justify-content:space-between; margin: 6px 2px 16px; }
+      .brand h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing:.2px; }
+      .brand .hint { font-size: 12px; color: var(--muted); }
+      .card { background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015)); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+      .section { margin-top: 12px; }
+      .section h2 { font-size: 14px; margin: 0 0 8px; }
+      ul { margin: 0; padding-left: 16px; }
+      li { margin: 6px 0; color: var(--text); line-height: 1.5; }
+      .muted { color: var(--muted); }
+      .actions { display:flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+      .btn { display:inline-flex; align-items:center; justify-content:center; height: 44px; border-radius: 12px; text-decoration:none; font-weight: 700; }
+      .btnPrimary { background: var(--primary); color: #111827; }
+      .btnGhost { border: 1px solid var(--border); color: var(--text); background: rgba(255,255,255,.02); }
+      .btnDisabled { opacity:.55; pointer-events:none; }
+      .footer { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+      .error { color: #fca5a5; }
+      .spinner { width:16px;height:16px;border:2px solid rgba(255,255,255,.25);border-top-color:rgba(255,255,255,.8);border-radius:50%;display:inline-block;animation:spin 1s linear infinite;vertical-align:-3px;margin-right:8px;}
+      @keyframes spin { to { transform: rotate(360deg);} }
+      code { color: #fde68a; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <h1>事故车损失报告（AI）摘要</h1>
+        <div class="hint">simplewin.cn</div>
+      </div>
+
+      <div class="card">
+        <div id="status" class="muted"><span class="spinner"></span>加载中…</div>
+
+        <div id="content" style="display:none;">
+          <div class="section">
+            <h2>明显损伤</h2>
+            <ul id="obvious"></ul>
+            <div id="obviousEmpty" class="muted" style="display:none;">暂无明显可见损伤</div>
+          </div>
+          <div class="section">
+            <h2>可能损伤</h2>
+            <ul id="possible"></ul>
+            <div id="possibleEmpty" class="muted" style="display:none;">暂无待进一步确认项</div>
+          </div>
+          <div class="section">
+            <h2>维修建议</h2>
+            <ul id="advice"></ul>
+            <div id="adviceEmpty" class="muted" style="display:none;">暂无专项建议</div>
+          </div>
+
+          <div class="actions">
+            <div id="wxLaunchWrap" style="display:none;">
+              <wx-open-launch-weapp id="wxLaunch" username="__WEAPP_ORIGINAL_ID__" path="/pages/damage/upload/index">
+                <script type="text/wxtag-template">
+                  <style>
+                    .wxbtn { display:flex; align-items:center; justify-content:center; height:44px; border-radius:12px; background: #f59e0b; color:#111827; font-weight:700; }
+                  </style>
+                  <div class="wxbtn">我也要分析（打开小程序）</div>
+                </script>
+              </wx-open-launch-weapp>
+            </div>
+            <a class="btn btnPrimary" id="cta" href="#">我也要分析（打开小程序）</a>
+            <a class="btn btnGhost" id="copyLink" href="#">复制本页链接</a>
+          </div>
+
+          <div class="footer" id="footerDisclaimer">
+            本摘要仅供参考，不构成保险定损或责任认定；请以实车检测与正规维修厂意见为准。<br/>
+            若无法打开小程序：请在微信内打开本链接，或复制到微信聊天中再点开。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const token = "__TOKEN__";
+        const weappAppId = "__WEAPP_APPID__";
+        const params = new URLSearchParams(location.search || '');
+        const source = (params.get('src') || 'direct').trim() || 'direct';
+        const cid = (params.get('cid') || '').trim();
+        const kw = (params.get('kw') || '').trim();
+        const isLeadToken = /^LDT\d+\./.test(token);
+        const weappPathLead = "/pages/damage/upload/index?lead_token=" + encodeURIComponent(token);
+        const weappPathShare = "/pages/damage/share/index?token=" + encodeURIComponent(token);
+        const statusEl = document.getElementById("status");
+        const contentEl = document.getElementById("content");
+        const obviousEl = document.getElementById("obvious");
+        const possibleEl = document.getElementById("possible");
+        const adviceEl = document.getElementById("advice");
+        const obviousEmpty = document.getElementById("obviousEmpty");
+        const possibleEmpty = document.getElementById("possibleEmpty");
+        const adviceEmpty = document.getElementById("adviceEmpty");
+        const cta = document.getElementById("cta");
+        const copyLink = document.getElementById("copyLink");
+        const footerDisclaimer = document.getElementById("footerDisclaimer");
+
+        async function track(action, extra) {
+          try {
+            await fetch('/api/v1/public/h5/track', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tool: 'damage-report-share',
+                source,
+                action: String(action || ''),
+                extra: {
+                  ...(extra && typeof extra === 'object' ? extra : {}),
+                  cid: cid || undefined,
+                  kw: kw || undefined,
+                  token_type: isLeadToken ? 'lead' : 'share',
+                }
+              }),
+            });
+          } catch (_) {}
+        }
+
+        function fillList(el, arr) {
+          el.innerHTML = "";
+          (arr || []).forEach((t) => {
+            const li = document.createElement("li");
+            li.textContent = String(t || "");
+            el.appendChild(li);
+          });
+        }
+
+        function showError(msg) {
+          statusEl.innerHTML = '<span class="error">' + (msg || "加载失败") + '</span>';
+          contentEl.style.display = "none";
+        }
+
+        function showPending(text) {
+          statusEl.innerHTML = '<span class="spinner"></span>' + (text || "AI 分析中…");
+          statusEl.style.display = "block";
+          contentEl.style.display = "none";
+        }
+
+        function disableActions(disabled) {
+          const wrap = document.getElementById("wxLaunchWrap");
+          if (wrap) wrap.style.display = disabled ? "none" : wrap.style.display;
+          if (cta) {
+            cta.className = disabled ? "btn btnPrimary btnDisabled" : "btn btnPrimary";
+            cta.href = disabled ? "javascript:void(0)" : cta.href;
+          }
+        }
+
+        // CTA 默认降级：非微信环境/签名失败时提示在微信内打开
+        cta.href = "weixin://";
+
+        function isWechat() {
+          return /MicroMessenger/i.test(navigator.userAgent || "");
+        }
+
+        async function setupWxOpenTag() {
+          if (!isWechat() || !window.wx) return;
+          // 使用当前完整URL（去掉 hash），向服务端请求签名
+          const curUrl = location.href.split("#")[0];
+          const r = await fetch("/api/v1/public/wechat/jssdk-config?url=" + encodeURIComponent(curUrl));
+          const body = await r.json();
+          if (!body || body.code !== 200 || !body.data) throw new Error(body && body.message ? body.message : "jssdk-config failed");
+          const cfg = body.data;
+          window.wx.config({
+            debug: false,
+            appId: cfg.appId,
+            timestamp: cfg.timestamp,
+            nonceStr: cfg.nonceStr,
+            signature: cfg.signature,
+            jsApiList: [],
+            openTagList: ["wx-open-launch-weapp"]
+          });
+          window.wx.ready(function () {
+            // 配置开放标签：跳到小程序分享摘要页
+            const wrap = document.getElementById("wxLaunchWrap");
+            const tag = document.getElementById("wxLaunch");
+            if (tag) {
+              // 注意：无论 token 来源，B 看到报告后“我也要分析”应进入小程序分析入口，而不是复用 A 的 token。
+              // lead_token 仅用于“获取精确报价”的转化场景，避免 B 误用 A 的报告直接转化。
+              tag.setAttribute("path", "/pages/damage/upload/index");
+              // username 需要填小程序原始ID（gh_xxx），这里通过运行时替换写入
+            }
+            // 先不展示：必须等报告加载成功后再展示按钮，避免“跳过报告”
+            if (wrap) wrap.style.display = "none";
+            cta.style.display = "none";
+          });
+          window.wx.error(function () {
+            // 失败则保留降级按钮
+          });
+        }
+
+        copyLink.addEventListener("click", async (e) => {
+          e.preventDefault();
+          try {
+            await navigator.clipboard.writeText(location.href);
+            copyLink.textContent = "已复制";
+            setTimeout(() => (copyLink.textContent = "复制本页链接"), 1200);
+            track('copy_share_link', { link_length: String(location.href || '').length });
+          } catch (_) {
+            alert("复制失败，请手动复制地址栏链接。");
+          }
+        });
+
+        function fetchSummary() {
+          // lead token 优先走 lead 读取接口；否则走 share token 接口
+          const primary = isLeadToken
+            ? "/api/v1/public/lead/damage/report/" + encodeURIComponent(token)
+            : "/api/v1/public/damage/report/share/" + encodeURIComponent(token);
+          const fallback = isLeadToken
+            ? "/api/v1/public/damage/report/share/" + encodeURIComponent(token)
+            : null;
+          return fetch(primary, { method: "GET" })
+            .then((r) => r.json())
+            .catch(() => (fallback ? fetch(fallback, { method: "GET" }).then((r) => r.json()) : Promise.reject(new Error("加载失败"))));
+        }
+
+        // 先禁用跳转按钮：必须先看到 A 的报告
+        disableActions(true);
+
+        let pollCount = 0;
+        function renderDone(body) {
+          const vm = (body.data && body.data.display_vm) ? body.data.display_vm : null;
+          const fallbackAr = (body.data && body.data.analysis_result) ? body.data.analysis_result : {};
+          const sections = vm && Array.isArray(vm.sections) ? vm.sections : [];
+
+          const secObvious = sections.find((x) => x && x.key === "obvious_damage");
+          const secPossible = sections.find((x) => x && x.key === "possible_damage");
+          const secAdvice = sections.find((x) => x && x.key === "repair_advice");
+          const obvious = secObvious && Array.isArray(secObvious.items) ? secObvious.items : (fallbackAr.human_display && Array.isArray(fallbackAr.human_display.obvious_damage) ? fallbackAr.human_display.obvious_damage : []);
+          const possible = secPossible && Array.isArray(secPossible.items) ? secPossible.items : (fallbackAr.human_display && Array.isArray(fallbackAr.human_display.possible_damage) ? fallbackAr.human_display.possible_damage : []);
+          const advice = secAdvice && Array.isArray(secAdvice.items) ? secAdvice.items : (fallbackAr.human_display && Array.isArray(fallbackAr.human_display.repair_advice) ? fallbackAr.human_display.repair_advice : []);
+
+          fillList(obviousEl, obvious);
+          fillList(possibleEl, possible);
+          fillList(adviceEl, advice);
+          obviousEmpty.style.display = obvious.length ? "none" : "block";
+          possibleEmpty.style.display = possible.length ? "none" : "block";
+          adviceEmpty.style.display = advice.length ? "none" : "block";
+
+          statusEl.style.display = "none";
+          contentEl.style.display = "block";
+          if (footerDisclaimer && vm && vm.disclaimer) {
+            footerDisclaimer.textContent = String(vm.disclaimer || '').trim();
+          }
+
+          // 报告已展示，才开放“我也要分析”入口
+          disableActions(false);
+          const wrap = document.getElementById("wxLaunchWrap");
+          if (wrap) {
+            wrap.style.display = "block";
+            cta.style.display = "none";
+          } else {
+            cta.style.display = "inline-flex";
+          }
+
+          track('report_rendered', {
+            report_status: body && body.data ? body.data.status : undefined,
+            damage_level: vm && vm.highlights ? vm.highlights.damage_level : undefined,
+          });
+        }
+
+        function schedulePoll() {
+          pollCount++;
+          const ms = pollCount < 10 ? 1500 : pollCount < 30 ? 2500 : 4000;
+          setTimeout(loadOnce, ms);
+        }
+
+        function loadOnce() {
+          fetchSummary()
+            .then((body) => {
+              if (!body || body.code !== 200 || !body.data) {
+                throw new Error((body && body.message) || "接口返回异常");
+              }
+
+              const reportStatus = body.data.status; // 0=queued/pending 1=done 3=irrelevant 4=manual_review
+              const vm = body.data.display_vm || null;
+              const ar = (body.data.analysis_result || {});
+              const reason = ar.repair_related_reason || ar.reject_reason || (vm && Array.isArray(vm.risk_red_flags) && vm.risk_red_flags[0] ? vm.risk_red_flags[0] : "");
+
+              if (reportStatus === 0) {
+                showPending(pollCount >= 20 ? "AI 分析中…你可以先离开，稍后再打开本页查看结果" : "AI 分析中…");
+                if (pollCount === 0) track('report_pending', {});
+                schedulePoll();
+                return;
+              }
+
+              if (reportStatus === 3) {
+                showError(reason ? ("未通过： " + reason) : "未通过审核：图片与修车无关，请在小程序重新上传事故照片");
+                disableActions(false);
+                track('report_rejected', { reason: reason || '' });
+                return;
+              }
+
+              if (reportStatus === 4) {
+                showPending("人工审核中…审核通过后将自动出结果，你可以稍后再打开本页");
+                if (pollCount === 0) track('report_manual_review', {});
+                schedulePoll();
+                return;
+              }
+
+              renderDone(body);
+            })
+            .catch((err) => showError((err && err.message) || "加载失败"));
+        }
+
+        showPending("AI 分析中…");
+        loadOnce();
+
+        // 启用微信开放标签拉起小程序
+        setupWxOpenTag().catch(() => {});
+
+        track('page_view', { path: location.pathname });
+
+        if (cta) {
+          cta.addEventListener('click', () => {
+            track('cta_open_miniapp_click', { via: 'fallback_link' });
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
+

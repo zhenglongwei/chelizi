@@ -8,12 +8,12 @@ const {
   reportReviewReading,
   recordReviewViewed,
   likeReview,
-  dislikeReview,
   getToken
 } = require('../../utils/api');
 const { fetchAndApplyUnreadBadge } = require('../../utils/message-badge');
 const { getNavBarHeight, getSystemInfo } = require('../../utils/util');
-const { scoreToStarDisplay } = require('../../utils/shop-score-display');
+const { showWechatShareMenu } = require('../../utils/show-share-menu');
+const { buildOwnerSideScoreRow } = require('../../utils/shop-public-score');
 const { buildQuoteProposalDisplayList, buildQuoteJourneySummary } = require('../../utils/quote-proposal-display');
 const {
   parseObjectiveBool,
@@ -30,7 +30,7 @@ const MAX_SESSION_SEC = 180;
 const MAX_TOTAL_SEC = 300;
 
 function mapShopItem(s, idx) {
-  const starDisplay = scoreToStarDisplay(s.shop_score, s.rating);
+  const scoreRow = buildOwnerSideScoreRow(s);
   let badgeText = '';
   let badgeClass = '';
   let locationText = s.district || s.address || '—';
@@ -45,14 +45,21 @@ function mapShopItem(s, idx) {
     badgeText = s.distance + 'km';
     badgeClass = 'badge-distance';
   }
+  const ratingLine = scoreRow.showPublicScore
+    ? scoreRow.rating + ' | ' + scoreRow.orderCount + '单'
+    : scoreRow.orderCount > 0
+      ? scoreRow.rating + ' · ' + scoreRow.orderCount + '单'
+      : scoreRow.rating;
   return {
     shop_id: s.shop_id,
     name: s.name,
     logo: s.logo || '/images/brand/brand-app-icon-zhejian.png',
-    rating: starDisplay.scoreText,
-    starsDisplay: starDisplay.stars,
-    scoreNum: starDisplay.score,
-    orderCount: s.total_orders || s.rating_count || 0,
+    showPublicScore: scoreRow.showPublicScore,
+    rating: scoreRow.rating,
+    ratingLine,
+    starsDisplay: scoreRow.starsDisplay,
+    scoreNum: scoreRow.scoreNum,
+    orderCount: scoreRow.orderCount,
     is_certified: s.is_certified,
     badgeText,
     badgeClass,
@@ -129,6 +136,7 @@ Page({
   },
 
   onShow() {
+    showWechatShareMenu();
     try {
       const app = getApp();
       if (app && app.globalData && app.globalData.reputationSubTab === 'reviews') {
@@ -604,25 +612,35 @@ Page({
     });
   },
 
-  async onDislikeReview(e) {
-    const idx = e.currentTarget.dataset.index;
-    const reviewId = e.currentTarget.dataset.reviewId;
-    const reviews = [...this.data.reviews];
-    if (!reviews[idx] || reviews[idx].disliked || reviews[idx].liked) return;
-    try {
-      await dislikeReview(reviewId);
-      reviews[idx].disliked = true;
-      reviews[idx].dislike_count = (reviews[idx].dislike_count || 0) + 1;
-      this.setData({ reviews });
-      ui.showSuccess('已踩');
-    } catch (err) {
-      ui.showError(err.message || '操作失败');
-    }
-  },
-
   onAppealTap(e) {
     const orderId = e.currentTarget.dataset.orderId;
     if (orderId) navigation.navigateTo('/pages/order/detail/index', { id: orderId });
+  },
+
+  /** 代理人分销：分享口碑（店铺/评价流）或从评价卡片分享进店铺锚定评价 */
+  onShareAppMessage(res) {
+    const { buildReferralSharePath, SHARE_TITLES } = require('../../utils/referral-share');
+    if (res.from === 'button') {
+      const ds = res.target && res.target.dataset;
+      const reviewId = ds && ds.reviewId ? String(ds.reviewId).trim() : '';
+      const shopId = ds && ds.shopId ? String(ds.shopId).trim() : '';
+      if (reviewId && shopId) {
+        return {
+          title: SHARE_TITLES.review,
+          path: buildReferralSharePath('/pages/shop/detail/index', { id: shopId, review_id: reviewId })
+        };
+      }
+    }
+    if (this.data.mainTab === 'reviews') {
+      return {
+        title: SHARE_TITLES.reputationReviews,
+        path: buildReferralSharePath('/pages/reputation/index', { tab: 'reviews' })
+      };
+    }
+    return {
+      title: SHARE_TITLES.reputationShop,
+      path: buildReferralSharePath('/pages/reputation/index')
+    };
   },
 
   onUnload() {

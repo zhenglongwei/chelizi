@@ -6,6 +6,7 @@
 .report-scroll { padding: var(--space-lg) var(--page-padding-x); }
 .report-card { margin-bottom: var(--space-lg); padding: var(--space-xl); }
 .report-title { margin-bottom: var(--space-lg); }
+.report-subtitle { margin-top: calc(var(--space-md) * -1); margin-bottom: var(--space-md); }
 .report-row { display: flex; justify-content: space-between; padding: var(--space-md) 0; border-bottom: 1rpx solid var(--border); }
 .report-label { color: var(--text-secondary); }
 .report-value { color: var(--text-primary); font-weight: 500; }
@@ -21,4 +22,5 @@
 }
 .report-actions { margin-top: var(--space-lg); }
 .report-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); background: var(--primary); color: #fff; }
+.report-btn-secondary { margin-top: var(--space-md); background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
 .report-bottom-pad { height: var(--space-2xl); }

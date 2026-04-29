@@ -11,12 +11,37 @@ const antifraud = require('../antifraud');
 const rewardCalculator = require('../reward-calculator');
 const biddingDistribution = require('./bidding-distribution');
 const shopSortService = require('../shop-sort-service');
+const orderLifecycle = require('./order-lifecycle-service');
 const LOG_PREFIX = '[BiddingService]';
 
 /**
  * @param {object} [opts]
  * @param {boolean} [opts.requireBiddingWindowOpen=true] 为 true 时仅竞价窗口内（expire_at 未过）可见，用于商户「待报价」；已报价列表传 false，窗口结束后仍可查看
  */
+/**
+ * 竞价单无任何 bidding_distribution 行时，商户端仍按「用户坐标 + range_km」可见；
+ * 车主端 invited_count 仅统计 distribution 会得到 0，与商户待报价列表矛盾，需用本函数回退计数。
+ */
+async function countShopsGeographicallyEligibleForBidding(pool, biddingId) {
+  const acosArg =
+    'cos(radians(u.latitude)) * cos(radians(s.latitude)) * cos(radians(s.longitude) - radians(u.longitude)) + sin(radians(u.latitude)) * sin(radians(s.latitude))';
+  const [rows] = await pool.execute(
+    `SELECT COUNT(DISTINCT s.shop_id) AS c
+     FROM biddings b
+     INNER JOIN users u ON b.user_id = u.user_id
+     INNER JOIN shops s ON s.status = 1 AND (s.qualification_status = 1 OR s.qualification_status IS NULL)
+     WHERE b.bidding_id = ?
+       AND b.status = 0
+       AND b.expire_at > NOW()
+       AND NOT EXISTS (SELECT 1 FROM bidding_distribution bd0 WHERE bd0.bidding_id = b.bidding_id)
+       AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+       AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+       AND (6371 * acos(LEAST(1, GREATEST(-1, ${acosArg})))) <= b.range_km`,
+    [biddingId]
+  );
+  return parseInt(rows[0]?.c, 10) || 0;
+}
+
 function merchantVisibleWhereFragment(tablePrefix = 'b', shopIdParam = null, opts = {}) {
   const requireBiddingWindowOpen = opts.requireBiddingWindowOpen !== false;
   const b = tablePrefix;
@@ -275,6 +300,23 @@ async function createBidding(pool, userId, body) {
   if (!report_id) {
     return { success: false, error: '定损报告ID不能为空', statusCode: 400 };
   }
+  // 定损报告状态：pending/完成/拒绝/人工审核
+  let reportStatus = null;
+  try {
+    const [rRows] = await pool.execute(
+      'SELECT status FROM damage_reports WHERE report_id = ? AND user_id = ? LIMIT 1',
+      [report_id, userId]
+    );
+    if (!rRows.length) {
+      return { success: false, error: '定损报告不存在', statusCode: 404 };
+    }
+    reportStatus = parseInt(rRows[0].status, 10);
+    if (reportStatus === 3) {
+      return { success: false, error: '图片与修车无关，无法发起竞价，请重新上传事故照片', statusCode: 400 };
+    }
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} load damage_reports.status failed:`, e.message);
+  }
   // 0 级禁止下单（点赞追加奖金方案：0级仅浏览，禁止下单/评价；点赞保持开放）
   const trust = await antifraud.getUserTrustLevel(pool, userId);
   if (trust.level === 0) {
@@ -339,6 +381,12 @@ async function createBidding(pool, userId, body) {
       };
     }
   }
+
+  const freqOk = await antifraud.assertNewUserOrderFrequencyOk(pool, userId);
+  if (!freqOk.ok) {
+    return { success: false, error: freqOk.error, statusCode: freqOk.statusCode || 400 };
+  }
+
   const lat = latitude != null && !isNaN(Number(latitude)) ? Number(latitude) : null;
   const lng = longitude != null && !isNaN(Number(longitude)) ? Number(longitude) : null;
   if (lat != null && lng != null) {
@@ -380,10 +428,19 @@ async function createBidding(pool, userId, body) {
       console.warn(`${LOG_PREFIX} merge analysis_focus_vehicle_id to damage_reports:`, e.message);
     }
   }
-  try {
-    await biddingDistribution.runBiddingDistribution(pool, biddingId);
-  } catch (distErr) {
-    console.warn(`${LOG_PREFIX} runBiddingDistribution error:`, distErr.message);
+  // 分发门闸：仅当定损分析完成且相关时才分发；pending/manual_review 时车主可先进入竞价页但服务商暂不可见
+  if (reportStatus === 1) {
+    try {
+      await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['done', biddingId]);
+      await biddingDistribution.runBiddingDistribution(pool, biddingId);
+    } catch (distErr) {
+      console.warn(`${LOG_PREFIX} runBiddingDistribution error:`, distErr.message);
+      await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['pending', biddingId]);
+    }
+  } else if (reportStatus === 4) {
+    await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['manual_review', biddingId]);
+  } else {
+    await pool.execute('UPDATE biddings SET distribution_status = ? WHERE bidding_id = ?', ['pending', biddingId]);
   }
   return { success: true, data: { bidding_id: biddingId } };
 }
@@ -393,11 +450,24 @@ async function createBidding(pool, userId, body) {
  */
 async function selectQuote(pool, req) {
   const id = (req.params || {}).id;
-  const { shop_id } = req.body || {};
+  const { shop_id, selection_confirmation } = req.body || {};
   const userId = req.userId;
 
   if (!id || !shop_id) {
     return { success: false, error: id ? '维修厂ID不能为空' : '竞价ID不能为空', statusCode: 400 };
+  }
+  // 选厂“三重确认”强约束：停留 5 秒 + 勾选条款 + 生成确认书落库（服务端兜底，避免绕过客户端）
+  const REQUIRED_CLAUSE_IDS = ['prequote_only_visual', 'final_may_change', 'can_refuse_if_unexpected'];
+  const sc = selection_confirmation && typeof selection_confirmation === 'object' ? selection_confirmation : null;
+  const dwellSeconds = sc && sc.dwell_seconds != null ? parseInt(sc.dwell_seconds, 10) : 0;
+  const checkedIds = sc && Array.isArray(sc.checked_clause_ids) ? sc.checked_clause_ids.map((s) => String(s)) : [];
+  if (!sc || Number.isNaN(dwellSeconds) || dwellSeconds < 5) {
+    return { success: false, error: '请选择前请先阅读并停留 5 秒，再完成确认', statusCode: 400 };
+  }
+  for (const cid of REQUIRED_CLAUSE_IDS) {
+    if (!checkedIds.includes(cid)) {
+      return { success: false, error: '请选择前请勾选确认条款', statusCode: 400 };
+    }
   }
   // 0 级禁止下单
   const trust = await antifraud.getUserTrustLevel(pool, userId);
@@ -444,30 +514,9 @@ async function selectQuote(pool, req) {
     return { success: false, error: bl.reason || '账号存在异常，暂无法下单', statusCode: 403 };
   }
 
-  const afConfig = await antifraud.getAntifraudConfig(pool);
-  const [userCreatedRow] = await pool.execute('SELECT created_at FROM users WHERE user_id = ?', [userId]);
-  const userCreatedAt = userCreatedRow.length > 0 ? new Date(userCreatedRow[0].created_at) : null;
-  const now = new Date();
-  const sameShopDaysAgo = new Date(now.getTime() - afConfig.orderSameShopDays * 24 * 60 * 60 * 1000);
-  const newUserDaysAgo = new Date(now.getTime() - afConfig.newUserDays * 24 * 60 * 60 * 1000);
-
-  const [sameShopCount] = await pool.execute(
-    `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND shop_id = ? AND created_at >= ? AND status != 4`,
-    [userId, shop_id, sameShopDaysAgo]
-  );
-  if ((sameShopCount[0]?.c || 0) >= afConfig.orderSameShopMax) {
-    return { success: false, error: `您在该商户 ${afConfig.orderSameShopDays} 天内已有 ${afConfig.orderSameShopMax} 笔订单，为保障交易真实性暂无法继续下单`, statusCode: 400 };
-  }
-
-  const isNewUser = userCreatedAt && userCreatedAt > newUserDaysAgo;
-  if (isNewUser) {
-    const [recentOrders] = await pool.execute(
-      `SELECT COUNT(*) as c FROM orders WHERE user_id = ? AND created_at >= ? AND status != 4`,
-      [userId, newUserDaysAgo]
-    );
-    if ((recentOrders[0]?.c || 0) >= afConfig.newUserOrderMax) {
-      return { success: false, error: `新用户 ${afConfig.newUserDays} 天内最多下单 ${afConfig.newUserOrderMax} 笔，为保障交易真实性请稍后再试`, statusCode: 400 };
-    }
+  const sameShopOk = await antifraud.assertSameShopOrderFrequencyOk(pool, userId, shop_id);
+  if (!sameShopOk.ok) {
+    return { success: false, error: sameShopOk.error, statusCode: sameShopOk.statusCode || 400 };
   }
 
   // 竞价流程：用户确认报价后自动接单，订单直接 status=1，无需服务商手动接单
@@ -483,6 +532,37 @@ async function selectQuote(pool, req) {
   const preQuoteSnapshotJson = repairPlanJson;
 
   const orderId = 'ORD' + Date.now();
+  try {
+    const confirmationId = 'oic_' + crypto.randomBytes(12).toString('hex');
+    const clausesTextMap =
+      sc && sc.clauses_text_map && typeof sc.clauses_text_map === 'object' ? sc.clauses_text_map : {};
+    const clientConfirmedAtMs = sc && sc.client_confirmed_at_ms != null ? parseInt(sc.client_confirmed_at_ms, 10) : 0;
+    const clausesJson = JSON.stringify({
+      required_clause_ids: REQUIRED_CLAUSE_IDS,
+      checked_clause_ids: checkedIds,
+      clauses_text_map: clausesTextMap,
+      client_meta: sc ? (sc.client_meta || null) : null,
+    });
+    if (!Number.isNaN(clientConfirmedAtMs) && clientConfirmedAtMs > 0) {
+      await pool.execute(
+        `INSERT INTO order_intent_confirmations
+          (confirmation_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, dwell_seconds, clauses, client_confirmed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(? / 1000))`,
+        [confirmationId, id, userId, shop_id, quote.quote_id, quote.amount, dwellSeconds, clausesJson, clientConfirmedAtMs]
+      );
+    } else {
+      await pool.execute(
+        `INSERT INTO order_intent_confirmations
+          (confirmation_id, bidding_id, user_id, shop_id, quote_id, quoted_amount, dwell_seconds, clauses)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [confirmationId, id, userId, shop_id, quote.quote_id, quote.amount, dwellSeconds, clausesJson]
+      );
+    }
+  } catch (e) {
+    if (!String((e && e.message) || '').includes('order_intent_confirmations')) {
+      console.warn('[BiddingService] 确认书落库失败:', e && e.message);
+    }
+  }
   const hasPreSnap = await hasColumn(pool, 'orders', 'pre_quote_snapshot');
   if (hasPreSnap) {
     await pool.execute(
@@ -496,6 +576,12 @@ async function selectQuote(pool, req) {
        VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), ?, 0, NOW())`,
       [orderId, id, userId, shop_id, quote.quote_id, quote.amount, repairPlanJson]
     );
+  }
+
+  try {
+    await orderLifecycle.initOnOrderCreated(pool, orderId);
+  } catch (e) {
+    console.warn('[BiddingService] initOnOrderCreated failed:', e && e.message);
   }
 
   let isInsuranceAccident = 0;
@@ -612,6 +698,7 @@ async function endBidding(pool, biddingId, userId) {
 module.exports = {
   countPendingBiddingsForShop,
   listBiddingsForShop,
+  countShopsGeographicallyEligibleForBidding,
   mapBiddingRowToItem,
   merchantVisibleWhereFragment,
   sortQuotesByScoreAsync,
