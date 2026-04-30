@@ -18,6 +18,13 @@
         </view>
       </view>
 
+      <view class="notice-info" style="margin-left: var(--page-padding-x); margin-right: var(--page-padding-x);">
+        <view class="notice-info__icon">i</view>
+        <view class="notice-info__body">
+          <text class="fw-medium text-primary">专业提示</text>：预报价为 AI 辅助判断，用于风险提示与区间参考；不代表维修商最终报价或保险合同认定。请勿在描述中填写身份证号、银行卡号等敏感信息。
+        </view>
+      </view>
+
       <!-- 照片上传 -->
       <view class="damage-section card">
         <view class="damage-section-title fs-body fw-bold">事故照片<text class="text-error">*</text></view>
@@ -70,7 +77,7 @@
 
     <view class="damage-footer">
       <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
-      <view class="damage-btn btn-primary {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onSubmitPreQuote">
+      <view class="damage-btn btn-brand {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onSubmitPreQuote">
         <text class="fs-body fw-bold">{{analyzing ? '提交中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '提交预报价（后台分析，不用等待）')}}</text>
       </view>
     </view>
@@ -84,6 +91,7 @@
           <view class="damage-progress-fill" style="{{progressStyle}}"></view>
         </view>
         <text class="text-muted fs-cap">正在生成预报价参考，请稍候...</text>
+        <text class="text-muted fs-cap" style="display:block;margin-top:8rpx">你可暂时离开本页，稍后返回查看结果；分析完成后底部会出现「发起竞价」。</text>
       </view>
 
       <!-- 分析结果 / 跳过分析的表单 -->
@@ -241,7 +249,7 @@
 
     <view class="damage-footer">
       <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
-      <view class="damage-btn btn-primary" bindtap="onCreateBidding">
+      <view class="damage-btn btn-brand" bindtap="onCreateBidding">
         <text class="fs-body fw-bold">{{submitting ? '提交中...' : '发起竞价'}}</text>
       </view>
     </view>

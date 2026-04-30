@@ -19,6 +19,13 @@ function registerRoutes(app, ctx) {
     errorResponse,
   } = ctx;
 
+  const publicH5Dir = path.join(__dirname, '..', '..', 'public-h5');
+  app.get('/h5/ui.css', (req, res) => {
+    res.type('text/css');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.sendFile(path.join(publicH5Dir, 'ui.css'));
+  });
+
   function getClientIp(req) {
     const xff = String((req.headers && req.headers['x-forwarded-for']) || '').split(',')[0].trim();
     return xff || req.ip || req.socket && req.socket.remoteAddress || 'unknown';

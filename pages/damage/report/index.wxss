@@ -21,6 +21,6 @@
   line-height: 1.5;
 }
 .report-actions { margin-top: var(--space-lg); }
-.report-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); background: var(--primary); color: #fff; }
+.report-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); }
 .report-btn-secondary { margin-top: var(--space-md); background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
 .report-bottom-pad { height: var(--space-2xl); }

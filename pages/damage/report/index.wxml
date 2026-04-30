@@ -17,10 +17,14 @@
       <view class="report-card card">
         <view class="report-title fs-h3 fw-bold">AI分析报告</view>
         <view class="report-subtitle text-muted fs-sm">以下为AI基于照片的分析结果，不代表维修商最终报价。</view>
+        <view class="notice-info" style="margin-top: var(--space-lg); margin-bottom: 0;">
+          <view class="notice-info__icon">i</view>
+          <view class="notice-info__body">报告仅供决策参考；涉及维修范围、配件品质与价格以到店检测及书面报价为准。</view>
+        </view>
         <accident-report-view vm="{{reportVm}}" />
       </view>
       <view class="report-actions">
-        <button class="report-btn btn-primary" bindtap="onGoBidding">
+        <button class="report-btn btn-brand" bindtap="onGoBidding">
           <text class="fs-body fw-bold">获取维修商报价</text>
         </button>
         <button class="report-btn report-btn-secondary" plain bindtap="onRecreatePrequote">

@@ -1,23 +1,37 @@
 .ar-root {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: var(--space-lg);
+  margin-top: var(--space-md);
 }
 
 .ar-section {
-  padding-top: 6rpx;
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--border);
+}
+
+.ar-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .ar-title {
-  margin-bottom: 10rpx;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
 }
 
 .ar-item {
-  margin: 8rpx 0;
+  margin: var(--space-xs) 0;
+  padding-left: var(--space-xs);
+  border-left: 4rpx solid var(--primary-border-soft);
 }
 
 .ar-disclaimer {
-  margin-top: 10rpx;
-  line-height: 1.55;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border);
+  line-height: 1.6;
+  color: var(--text-hint);
+  font-size: var(--fs-sm);
 }
-

@@ -23,7 +23,7 @@
 .logo {
   font-size: 20px;
   font-weight: bold;
-  color: #1890ff;
+  color: var(--primary);
 }
 
 .nav-menu {
@@ -38,7 +38,7 @@
 }
 
 .nav-menu a:hover {
-  color: #1890ff;
+  color: var(--primary);
 }
 
 .home-content {
@@ -50,10 +50,11 @@
 .hero-section {
   padding: 80px 0;
   text-align: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--home-hero-start) 0%, var(--home-hero-end) 100%);
   color: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin: 24px 0;
+  box-shadow: var(--shadow-card);
 }
 
 .hero-content {
@@ -99,7 +100,7 @@
 
 .value-icon {
   font-size: 48px;
-  color: #1890ff;
+  color: var(--primary);
   margin-bottom: 16px;
 }
 
@@ -132,7 +133,7 @@
 .placeholder-image {
   width: 100%;
   height: 400px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--home-hero-start) 0%, var(--home-hero-end) 100%);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -159,7 +160,7 @@
 
 .feature-icon {
   font-size: 48px;
-  color: #1890ff;
+  color: var(--primary);
   margin-bottom: 16px;
 }
 
@@ -172,7 +173,7 @@
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: #1890ff;
+  background: var(--primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -192,5 +193,59 @@
 .footer-content {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+/* AI 诊断助手承接区 */
+.home-diagnosis-section {
+  padding: 56px 0 40px;
+  background: var(--bg-page);
+  border-radius: var(--radius-lg);
+  margin: 0 0 24px;
+}
+
+.home-diagnosis-title {
+  margin-bottom: 12px !important;
+  color: var(--text-primary) !important;
+}
+
+.home-diagnosis-lead {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 16px !important;
+}
+
+.home-diagnosis-bullets {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.home-diagnosis-bullets li {
+  margin: 8px 0;
+}
+
+.home-diagnosis-card {
+  box-shadow: var(--shadow-card) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+.home-diagnosis-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.home-diagnosis-card-icon {
+  font-size: 22px;
+  color: var(--primary);
+}
+
+.home-diagnosis-wechat-hint {
+  margin: 0 !important;
+  font-size: 13px;
 }
 

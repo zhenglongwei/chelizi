@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  base: '/assets/', // 资源路径前缀，使 index.html 可放根目录，JS/CSS 放 assets/
+  // 注意：base 必须与 build.assetsDir 的产物结构一致。
+  // 当前 assetsDir 为空字符串（产物输出到 dist 根目录），所以 base 应为 '/'，避免运行时去 /assets/ 下找文件导致白屏。
+  base: '/',
   plugins: [react()],
   resolve: {
     alias: {

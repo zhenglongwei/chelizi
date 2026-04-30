@@ -1,0 +1,18 @@
+/**
+ * 官网 / 后台共用设计 token（与小程序 design-system、H5 ui.css 对齐）
+ */
+:root {
+  --primary: #2563eb;
+  --primary-light: #60a5fa;
+  --accent: #eab308;
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-hint: #94a3b8;
+  --border: rgba(0, 0, 0, 0.06);
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --radius-lg: 16px;
+  --home-hero-start: #0f172a;
+  --home-hero-end: #1e3a8a;
+}

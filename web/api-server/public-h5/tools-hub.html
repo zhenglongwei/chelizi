@@ -4,42 +4,67 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>辙见工具中心</title>
-  <style>
-    body { margin: 0; background: #f6f7fb; color: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 18px; }
-    .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04); }
-    h1 { margin: 0 0 10px; font-size: 22px; }
-    h3 { margin: 0 0 6px; font-size: 16px; }
-    p { margin: 0 0 8px; color: #555; font-size: 14px; line-height: 1.5; }
-    .btn { display: inline-block; border-radius: 10px; padding: 10px 14px; text-decoration: none; font-size: 14px; }
-    .btn-primary { background: #1677ff; color: #fff; }
-    .btn-ghost { background: #f2f4f8; color: #333; margin-left: 8px; }
-    .muted { color: #888; font-size: 12px; }
-    .share-line { display:flex; gap:8px; margin-top:10px; }
-    .share-line input { flex:1; border:1px solid #ddd; border-radius:8px; padding:8px; background:#f8f9fc; color:#333; }
-  </style>
+  <link rel="stylesheet" href="/h5/ui.css" />
 </head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>辙见工具中心</h1>
-      <p>先在网页里完成诊断或验真，再按页面引导进入小程序获取维修商报价。</p>
-      <p class="muted">可在官网、公众号菜单、搜索落地页直接挂这个入口。</p>
-      <p class="muted">下方是当前页面分享链接，仅用于复制分享，不需要手动输入。</p>
-      <div class="share-line">
-        <input id="hubShareLink" readonly />
-        <button class="btn btn-ghost" id="copyHubLink">复制入口链接</button>
+<body class="h5-tool">
+  <div class="h5-wrap">
+    <header class="h5-topbar">
+      <div>
+        <div class="h5-brand">辙见 · 工具中心</div>
+        <h1 class="h5-page-title">诊断与验真</h1>
+        <p class="h5-page-desc">在网页内完成 AI 诊断或配件验真，再按引导进入小程序获取多家维修商报价。支持官网、公众号菜单、搜索落地页挂载。</p>
+      </div>
+    </header>
+
+    <div class="h5-notice" role="status">
+      <span class="h5-notice__icon" aria-hidden="true">i</span>
+      <div>
+        <strong style="color:var(--text-primary)">合规说明</strong>：工具输出仅供参考，不构成定损或维修承诺；涉及资金与维修合同请在小程序内完成。
       </div>
     </div>
 
-    <div class="card">
-      <h3>AI诊断助手</h3>
-      <p>支持图片、故障码、症状文本三种输入，统一输出风险等级、维修建议和费用区间。</p>
-      <a class="btn btn-primary" id="toDiagnosis" href="/h5/diagnosis?src=hub">进入诊断助手</a>
-      <a class="btn btn-ghost" id="toDiagnosisDtc" href="/h5/diagnosis/dtc?src=hub">故障码入口</a>
-      <a class="btn btn-ghost" id="toDiagnosisSymptom" href="/h5/diagnosis/symptom?src=hub">症状入口</a>
+    <section class="h5-card">
+      <h2 class="h5-card__title">分享本入口</h2>
+      <p class="h5-muted" style="margin:0 0 10px">复制下方链接用于公众号菜单、文章内按钮或投放落地（可带 <code>src</code> 归因参数）。</p>
+      <div class="h5-share-line">
+        <input id="hubShareLink" class="h5-input" readonly aria-label="当前页完整链接" />
+        <button type="button" class="h5-btn h5-btn--ghost" id="copyHubLink">复制</button>
+      </div>
+    </section>
+
+    <h2 class="h5-card__title" style="margin:8px 2px 12px">AI 诊断助手</h2>
+    <div class="h5-grid h5-grid--2">
+      <article class="h5-tool-card">
+        <h3 class="h5-tool-card__title">综合入口</h3>
+        <p class="h5-tool-card__desc">图片链接、故障码、症状描述三种方式，统一输出风险等级、建议与费用区间参考。</p>
+        <div class="h5-tool-card__cta">
+          <a class="h5-btn h5-btn--primary h5-btn--block" id="toDiagnosis" href="/h5/diagnosis?src=hub">进入诊断助手</a>
+        </div>
+      </article>
+      <article class="h5-tool-card">
+        <h3 class="h5-tool-card__title">故障码（SEO）</h3>
+        <p class="h5-tool-card__desc">面向搜索流量：输入 DTC 快速了解含义、风险与检查建议。</p>
+        <div class="h5-tool-card__cta">
+          <a class="h5-btn h5-btn--ghost h5-btn--block" id="toDiagnosisDtc" href="/h5/diagnosis/dtc?src=hub">故障码入口</a>
+        </div>
+      </article>
+      <article class="h5-tool-card">
+        <h3 class="h5-tool-card__title">症状描述（SEO）</h3>
+        <p class="h5-tool-card__desc">面向搜索/内容平台：一句话描述现象，获得风险提示与下一步建议。</p>
+        <div class="h5-tool-card__cta">
+          <a class="h5-btn h5-btn--ghost h5-btn--block" id="toDiagnosisSymptom" href="/h5/diagnosis/symptom?src=hub">症状入口</a>
+        </div>
+      </article>
+      <article class="h5-tool-card">
+        <h3 class="h5-tool-card__title">配件验真</h3>
+        <p class="h5-tool-card__desc">按编号或图片进行验真流程（与诊断分流，降低误用）。</p>
+        <div class="h5-tool-card__cta">
+          <a class="h5-btn h5-btn--ghost h5-btn--block" href="/h5/parts-auth?src=hub_parts">打开配件验真</a>
+        </div>
+      </article>
     </div>
 
+    <p class="h5-muted" style="margin-top:16px;text-align:center">© 辙见 · 盈简科技</p>
   </div>
   <script>
     const source = (new URLSearchParams(location.search).get('src') || 'hub').trim() || 'hub';

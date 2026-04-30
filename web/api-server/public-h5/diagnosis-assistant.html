@@ -5,79 +5,94 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="referrer" content="no-referrer" />
   <title>__PAGE_TITLE__</title>
+  <link rel="stylesheet" href="/h5/ui.css" />
   <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
-  <style>
-    body { margin: 0; background:#f6f7fb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#111; }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
-    .card { background:#fff; border-radius: 12px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.04); margin-bottom: 12px; }
-    h1 { margin: 0 0 8px; font-size: 22px; }
-    h3 { margin: 10px 0 6px; font-size: 15px; }
-    label { display:block; font-size:13px; color:#444; margin:6px 0; }
-    input, textarea { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:8px; padding:10px; font-size:14px; }
-    .actions { display:flex; flex-wrap: wrap; gap:8px; margin-top:10px; }
-    .btn { border:0; border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; }
-    .btn-primary { background:#1677ff; color:#fff; }
-    .btn-ghost { background:#f2f4f8; color:#333; }
-    .muted { color:#888; font-size:12px; }
-    .hidden { display:none; }
-    ul { margin: 6px 0 0 0; padding-left:18px; }
-    .share-line { display:flex; gap:8px; margin-top:10px; }
-    .share-line input { flex: 1; }
-  </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>__PAGE_H1__</h1>
-      <p class="muted" id="pageDesc">支持图片诊断、故障码诊断、症状诊断。无需填写技术参数，直接提交即可。</p>
+<body class="h5-tool">
+  <a class="h5-skip" href="#main">跳到主要内容</a>
+  <div class="h5-wrap" id="main">
+    <header class="h5-topbar">
+      <div>
+        <div class="h5-brand">辙见 · 工具</div>
+        <h1 class="h5-page-title">__PAGE_H1__</h1>
+        <p class="h5-page-desc" id="pageDesc">支持图片诊断、故障码诊断、症状诊断。无需填写技术参数，直接提交即可。</p>
+      </div>
+    </header>
 
-      <div id="sectionImage">
-      <h3>图片诊断</h3>
-      <label>图片链接（换行或英文逗号分隔）</label>
-      <textarea id="imageUrls" rows="3" placeholder="https://.../1.jpg, https://.../2.jpg"></textarea>
-      <label>补充描述（可选）</label>
-      <textarea id="imageDesc" rows="2" placeholder="例如：低速追尾，前杠凹陷"></textarea>
-      <div class="actions">
-        <button class="btn btn-primary" id="btnImageDiag">开始图片诊断</button>
+    <div class="h5-notice" role="status">
+      <span class="h5-notice__icon" aria-hidden="true">i</span>
+      <div>
+        <strong style="color:var(--text-primary)">专业提示</strong>：输出为 AI 辅助判断，用于风险提示与下一步建议；不构成保险定损、责任认定或维修合同。重要决策请以实车检测与正规维修厂意见为准。
       </div>
-      </div>
-
-      <div id="sectionDtc">
-      <h3>故障码诊断</h3>
-      <label>DTC 故障码</label>
-      <input id="dtcCode" placeholder="例如：P0300" />
-      <div class="actions">
-        <button class="btn btn-ghost" id="btnDtcDiag">开始故障码诊断</button>
-      </div>
-      </div>
-
-      <div id="sectionSymptom">
-      <h3>症状文本诊断</h3>
-      <label>症状描述</label>
-      <textarea id="symptomText" rows="2" placeholder="例如：怠速抖动，发动机故障灯亮"></textarea>
-      <div class="actions">
-        <button class="btn btn-ghost" id="btnSymptomDiag">开始症状诊断</button>
-      </div>
+    </div>
+    <div class="h5-notice h5-notice--neutral">
+      <span class="h5-notice__icon" style="background:var(--text-secondary)" aria-hidden="true">·</span>
+      <div>
+        你提交的内容仅用于本次分析；请勿在文本中包含银行卡号、身份证号等敏感信息。图片诊断需填写可公网访问的图片链接。
       </div>
     </div>
 
-    <div class="card hidden" id="resultCard">
+    <section class="h5-card" id="inputCard" aria-labelledby="inputHeading">
+      <h2 class="h5-card__title" id="inputHeading">开始诊断</h2>
+
+      <div id="tabBar" class="h5-tabs" role="tablist" aria-label="诊断方式">
+        <button type="button" class="h5-tab" role="tab" id="tabImage" aria-controls="panelImage" aria-selected="true">图片</button>
+        <button type="button" class="h5-tab" role="tab" id="tabDtc" aria-controls="panelDtc" aria-selected="false">故障码</button>
+        <button type="button" class="h5-tab" role="tab" id="tabSymptom" aria-controls="panelSymptom" aria-selected="false">症状</button>
+      </div>
+
+      <div id="panelImage" class="h5-panel is-active" role="tabpanel" aria-labelledby="tabImage">
+        <label class="h5-label" for="imageUrls">图片链接（换行或英文逗号分隔）</label>
+        <textarea id="imageUrls" class="h5-textarea" rows="3" placeholder="https://.../1.jpg, https://.../2.jpg"></textarea>
+        <label class="h5-label" for="imageDesc">补充描述（可选）</label>
+        <textarea id="imageDesc" class="h5-textarea" rows="2" placeholder="例如：低速追尾，前杠凹陷"></textarea>
+        <div class="h5-actions">
+          <button type="button" class="h5-btn h5-btn--primary" id="btnImageDiag">开始图片诊断</button>
+        </div>
+      </div>
+
+      <div id="panelDtc" class="h5-panel" role="tabpanel" aria-labelledby="tabDtc" hidden>
+        <label class="h5-label" for="dtcCode">DTC 故障码</label>
+        <input id="dtcCode" class="h5-input" placeholder="例如：P0300" autocomplete="off" />
+        <div class="h5-actions">
+          <button type="button" class="h5-btn h5-btn--ghost" id="btnDtcDiag">开始故障码诊断</button>
+        </div>
+      </div>
+
+      <div id="panelSymptom" class="h5-panel" role="tabpanel" aria-labelledby="tabSymptom" hidden>
+        <label class="h5-label" for="symptomText">症状描述</label>
+        <textarea id="symptomText" class="h5-textarea" rows="3" placeholder="例如：怠速抖动，发动机故障灯亮"></textarea>
+        <div class="h5-actions">
+          <button type="button" class="h5-btn h5-btn--ghost" id="btnSymptomDiag">开始症状诊断</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="h5-card h5-hidden" id="resultCard" aria-live="polite">
       <div id="resultHead"></div>
       <div id="resultBody"></div>
-      <div class="share-line">
-        <input id="shareLink" readonly placeholder="诊断结果分享链接会显示在这里" />
-        <button class="btn btn-ghost" id="btnCopyShare">复制链接</button>
+      <div class="h5-share-line">
+        <input id="shareLink" class="h5-input" readonly placeholder="诊断结果分享链接会显示在这里" aria-label="分享链接" />
+        <button type="button" class="h5-btn h5-btn--ghost" id="btnCopyShare">复制链接</button>
       </div>
-      <div id="wxLaunchWrap" class="hidden">
+      <p class="h5-muted" id="resultDisclaimer"></p>
+    </section>
+  </div>
+
+  <div id="resultDock" class="h5-dock h5-hidden" aria-label="下一步操作">
+    <div class="h5-dock__inner">
+      <div id="wxLaunchWrap" class="h5-wx-launch-host h5-hidden">
         <wx-open-launch-weapp id="wxLaunch" username="__WEAPP_ORIGINAL_ID__" path="/pages/damage/upload/index">
           <script type="text/wxtag-template">
-            <style>.wxbtn{display:flex;align-items:center;justify-content:center;height:44px;border-radius:10px;background:#1677ff;color:#fff;font-weight:700;margin-top:8px;}</style>
+            <style>
+              .wxbtn{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;font-size:15px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+            </style>
             <div class="wxbtn">获取维修商报价（打开小程序）</div>
           </script>
         </wx-open-launch-weapp>
       </div>
-      <button class="btn btn-primary" id="fallbackOpen" style="margin-top:8px;">获取维修商报价（打开小程序）</button>
-      <p class="muted" id="resultDisclaimer"></p>
+      <button type="button" class="h5-btn h5-btn--primary h5-btn--block" id="fallbackOpen">获取维修商报价（打开小程序）</button>
+      <p class="h5-dock__hint" id="dockHint">在微信内打开本页可使用一键拉起小程序；其他环境请复制链接到微信中打开。</p>
     </div>
   </div>
 
@@ -95,20 +110,76 @@
       return (searchParams.get('entry') || '').trim() || 'all';
     })();
 
+    function setBodyDock(on) {
+      if (on) document.body.classList.add('h5-has-dock');
+      else document.body.classList.remove('h5-has-dock');
+    }
+
     (function applyEntryMode() {
-      const secImage = document.getElementById('sectionImage');
-      const secDtc = document.getElementById('sectionDtc');
-      const secSymptom = document.getElementById('sectionSymptom');
+      const tabBar = document.getElementById('tabBar');
+      const tabImage = document.getElementById('tabImage');
+      const tabDtc = document.getElementById('tabDtc');
+      const tabSymptom = document.getElementById('tabSymptom');
+      const panelImage = document.getElementById('panelImage');
+      const panelDtc = document.getElementById('panelDtc');
+      const panelSymptom = document.getElementById('panelSymptom');
       const desc = document.getElementById('pageDesc');
-      function show(el, ok) { if (el) el.style.display = ok ? '' : 'none'; }
+
+      function activateTab(which) {
+        const tabs = { image: tabImage, dtc: tabDtc, symptom: tabSymptom };
+        const panels = { image: panelImage, dtc: panelDtc, symptom: panelSymptom };
+        Object.keys(tabs).forEach((k) => {
+          const tb = tabs[k];
+          const p = panels[k];
+          if (!tb || !p) return;
+          const on = k === which;
+          tb.setAttribute('aria-selected', on ? 'true' : 'false');
+          if (on) {
+            p.classList.add('is-active');
+            p.removeAttribute('hidden');
+          } else {
+            p.classList.remove('is-active');
+            p.setAttribute('hidden', 'hidden');
+          }
+        });
+      }
+
       if (entry === 'dtc') {
-        show(secImage, false); show(secDtc, true); show(secSymptom, false);
+        if (tabBar) tabBar.classList.add('h5-hidden');
+        if (panelImage) {
+          panelImage.classList.remove('is-active');
+          panelImage.setAttribute('hidden', 'hidden');
+        }
+        if (panelSymptom) {
+          panelSymptom.classList.remove('is-active');
+          panelSymptom.setAttribute('hidden', 'hidden');
+        }
+        if (panelDtc) {
+          panelDtc.classList.add('is-active');
+          panelDtc.removeAttribute('hidden');
+        }
         if (desc) desc.textContent = '输入故障码（如 P0300），快速了解含义、风险提示与下一步建议。';
       } else if (entry === 'symptom') {
-        show(secImage, false); show(secDtc, false); show(secSymptom, true);
+        if (tabBar) tabBar.classList.add('h5-hidden');
+        if (panelImage) {
+          panelImage.classList.remove('is-active');
+          panelImage.setAttribute('hidden', 'hidden');
+        }
+        if (panelDtc) {
+          panelDtc.classList.remove('is-active');
+          panelDtc.setAttribute('hidden', 'hidden');
+        }
+        if (panelSymptom) {
+          panelSymptom.classList.add('is-active');
+          panelSymptom.removeAttribute('hidden');
+        }
         if (desc) desc.textContent = '用一句话描述故障现象，获取风险提示与下一步检查建议。';
       } else {
-        show(secImage, true); show(secDtc, true); show(secSymptom, true);
+        if (tabBar) tabBar.classList.remove('h5-hidden');
+        activateTab('image');
+        tabImage && tabImage.addEventListener('click', () => activateTab('image'));
+        tabDtc && tabDtc.addEventListener('click', () => activateTab('dtc'));
+        tabSymptom && tabSymptom.addEventListener('click', () => activateTab('symptom'));
       }
     })();
 
@@ -154,37 +225,73 @@
       return String(raw || '').split(/[\n,]/g).map((x) => x.trim()).filter(Boolean);
     }
 
+    function escapeHtml(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function severityBadge(sev) {
+      const t = String(sev || '').trim() || '-';
+      const low = /低|轻微|minor/i.test(t);
+      const cls = low ? 'h5-badge h5-badge--ok' : 'h5-badge h5-badge--risk';
+      return '<span class="' + cls + '">风险：' + escapeHtml(t) + '</span>';
+    }
+
     function renderDiagResult(data) {
       const card = document.getElementById('resultCard');
-      card.classList.remove('hidden');
+      const dock = document.getElementById('resultDock');
+      card.classList.remove('h5-hidden');
+      if (dock) dock.classList.remove('h5-hidden');
+      setBodyDock(true);
+
       const title = data.report_title || '损失报告（AI）';
+      const conf = Math.round((data.confidence || 0) * 100);
+      const range = Array.isArray(data.price_range) ? data.price_range.join(' - ') : '-';
       document.getElementById('resultHead').innerHTML =
-        '<h3>' + title + '</h3>' +
-        '<p>' + (data.problem_summary || '诊断完成') + '</p>' +
-        '<p>风险等级：' + (data.severity || '-') + '，置信度：' + Math.round((data.confidence || 0) * 100) + '%</p>';
+        '<h2 class="h5-card__title" style="margin-top:0">' + escapeHtml(title) + '</h2>' +
+        '<p class="h5-page-desc" style="margin-top:4px">' + escapeHtml(data.problem_summary || '诊断完成') + '</p>' +
+        '<div class="h5-meta-row">' +
+        severityBadge(data.severity) +
+        '<span class="h5-badge h5-badge--muted">置信度 ' + conf + '%</span>' +
+        '</div>' +
+        '<div class="h5-kpi"><div class="h5-kpi__label">费用区间参考（含税与否以到店为准）</div><div class="h5-kpi__value">' + escapeHtml(range) + '</div></div>';
+
       const sections = Array.isArray(data.report_sections) ? data.report_sections : [];
       const obvious = sections.find((x) => x && x.key === 'obvious_damage');
       const possible = sections.find((x) => x && x.key === 'possible_damage');
       const repair = sections.find((x) => x && x.key === 'repair_advice');
-      const obviousList = (obvious && Array.isArray(obvious.items) ? obvious.items : []).map((x) => '<li>' + x + '</li>').join('');
-      const possibleList = (possible && Array.isArray(possible.items) ? possible.items : []).map((x) => '<li>' + x + '</li>').join('');
-      const repairList = (repair && Array.isArray(repair.items) ? repair.items : []).map((x) => '<li>' + x + '</li>').join('');
-      const notes = (data.safety_notes || []).map((x) => '<li>' + x + '</li>').join('');
-      const range = Array.isArray(data.price_range) ? data.price_range.join(' - ') : '-';
+      const obviousList = (obvious && Array.isArray(obvious.items) ? obvious.items : []).map((x) => '<li>' + escapeHtml(x) + '</li>').join('');
+      const possibleList = (possible && Array.isArray(possible.items) ? possible.items : []).map((x) => '<li>' + escapeHtml(x) + '</li>').join('');
+      const repairList = (repair && Array.isArray(repair.items) ? repair.items : []).map((x) => '<li>' + escapeHtml(x) + '</li>').join('');
+      const notes = (data.safety_notes || []).map((x) => '<li>' + escapeHtml(x) + '</li>').join('');
       document.getElementById('resultBody').innerHTML =
-        '<p>费用区间参考：' + range + '</p>' +
-        '<p>明显损伤：</p><ul>' + (obviousList || '<li>暂无明显可见损伤</li>') + '</ul>' +
-        '<p>可能损伤：</p><ul>' + (possibleList || '<li>暂无待进一步确认项</li>') + '</ul>' +
-        '<p>维修建议：</p><ul>' + (repairList || '<li>暂无专项建议</li>') + '</ul>' +
-        '<p>安全提示：</p><ul>' + (notes || '<li>暂无</li>') + '</ul>';
+        '<div class="h5-list-title">明显损伤</div><ul class="h5-ul">' + (obviousList || '<li>暂无明显可见损伤</li>') + '</ul>' +
+        '<div class="h5-list-title">可能损伤</div><ul class="h5-ul">' + (possibleList || '<li>暂无待进一步确认项</li>') + '</ul>' +
+        '<div class="h5-list-title">维修建议</div><ul class="h5-ul">' + (repairList || '<li>暂无专项建议</li>') + '</ul>' +
+        '<div class="h5-list-title">安全提示</div><ul class="h5-ul">' + (notes || '<li>暂无</li>') + '</ul>';
       document.getElementById('resultDisclaimer').textContent = data.disclaimer || '';
       const shareUrl = new URL(location.href);
       shareUrl.searchParams.set('src', sourceChannel);
       document.getElementById('shareLink').value = shareUrl.toString();
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
       track('result_rendered', {
         severity: data.severity || '',
         confidence: Number(data.confidence || 0),
       });
+    }
+
+    function setLoading(btn, loading, label) {
+      if (!btn) return;
+      btn.disabled = !!loading;
+      if (loading) {
+        btn.dataset._old = btn.textContent;
+        btn.textContent = label || '分析中…';
+      } else if (btn.dataset._old) {
+        btn.textContent = btn.dataset._old;
+      }
     }
 
     async function setupWxOpenTag() {
@@ -203,7 +310,7 @@
             nonceStr: cfg.nonceStr,
             signature: cfg.signature,
             jsApiList: [],
-            openTagList: ['wx-open-launch-weapp']
+            openTagList: ['wx-open-launch-weapp'],
           });
           window.wx.ready(() => resolve(true));
           window.wx.error(() => resolve(false));
@@ -214,39 +321,61 @@
     }
 
     document.getElementById('btnImageDiag').addEventListener('click', async () => {
+      const btn = document.getElementById('btnImageDiag');
       try {
+        setLoading(btn, true);
         const urls = splitUrls(document.getElementById('imageUrls').value);
         const userDesc = (document.getElementById('imageDesc').value || '').trim();
         if (!urls.length) throw new Error('请先输入图片链接');
-        const data = await callPublic('/api/v1/public/diagnosis/image-analyze', { images: urls, user_description: userDesc, source_channel: sourceChannel });
+        const data = await callPublic('/api/v1/public/diagnosis/image-analyze', {
+          images: urls,
+          user_description: userDesc,
+          source_channel: sourceChannel,
+        });
         renderDiagResult(data);
         track('submit_image_diagnosis', { image_count: urls.length });
       } catch (e) {
         alert(e.message || '图片诊断失败');
+      } finally {
+        setLoading(btn, false);
       }
     });
 
     document.getElementById('btnDtcDiag').addEventListener('click', async () => {
+      const btn = document.getElementById('btnDtcDiag');
       try {
+        setLoading(btn, true);
         const code = (document.getElementById('dtcCode').value || '').trim();
         if (!code) throw new Error('请先输入故障码');
-        const data = await callPublic('/api/v1/public/diagnosis/dtc-interpret', { dtc_code: code, source_channel: sourceChannel });
+        const data = await callPublic('/api/v1/public/diagnosis/dtc-interpret', {
+          dtc_code: code,
+          source_channel: sourceChannel,
+        });
         renderDiagResult(data);
         track('submit_dtc_diagnosis', { dtc_code: code });
       } catch (e) {
         alert(e.message || '故障码诊断失败');
+      } finally {
+        setLoading(btn, false);
       }
     });
 
     document.getElementById('btnSymptomDiag').addEventListener('click', async () => {
+      const btn = document.getElementById('btnSymptomDiag');
       try {
+        setLoading(btn, true);
         const text = (document.getElementById('symptomText').value || '').trim();
         if (!text) throw new Error('请先输入症状描述');
-        const data = await callPublic('/api/v1/public/diagnosis/symptom-analyze', { symptom_text: text, source_channel: sourceChannel });
+        const data = await callPublic('/api/v1/public/diagnosis/symptom-analyze', {
+          symptom_text: text,
+          source_channel: sourceChannel,
+        });
         renderDiagResult(data);
         track('submit_symptom_diagnosis', { text_length: text.length });
       } catch (e) {
         alert(e.message || '症状诊断失败');
+      } finally {
+        setLoading(btn, false);
       }
     });
 
@@ -255,7 +384,7 @@
       const path = weappPath;
       track('cta_open_miniapp_click', { is_wechat: isWechat });
       if (isWechat) {
-        alert('若未自动拉起，请使用微信按钮打开小程序。');
+        alert('若未自动拉起，请点击上方蓝色按钮「获取维修商报价」打开小程序。');
       } else {
         alert('请在微信内打开此页后再拉起小程序。\nAppID=' + appId + '\npath=' + path);
       }
@@ -286,8 +415,11 @@
     setupWxOpenTag().then((ok) => {
       if (ok) {
         const wrap = document.getElementById('wxLaunchWrap');
-        if (wrap) wrap.classList.remove('hidden');
-        document.getElementById('fallbackOpen').style.display = 'none';
+        if (wrap) wrap.classList.remove('h5-hidden');
+        const fb = document.getElementById('fallbackOpen');
+        if (fb) fb.classList.add('h5-hidden');
+        const hint = document.getElementById('dockHint');
+        if (hint) hint.textContent = '点击上方按钮将打开「辙见」小程序，继续上传事故照片并获取多家维修商报价。';
       }
     });
 
@@ -295,4 +427,3 @@
   </script>
 </body>
 </html>
-

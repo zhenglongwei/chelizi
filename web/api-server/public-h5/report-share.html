@@ -5,79 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
     <title>损失报告（AI）摘要</title>
+    <link rel="stylesheet" href="/h5/ui.css" />
     <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
     <style>
-      :root { --bg:#0b1220; --card:#111a2b; --text:#e5e7eb; --muted:#9ca3af; --primary:#f59e0b; --border:rgba(255,255,255,.08); }
-      body { margin:0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-        background: radial-gradient(900px 500px at 20% 0%, rgba(245,158,11,.15), transparent 60%), var(--bg);
-        color: var(--text);
+      .h5-report-brand {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--space-md);
+        margin-bottom: var(--space-md);
       }
-      .wrap { max-width: 720px; margin: 0 auto; padding: 22px 14px 50px; }
-      .brand { display:flex; align-items:center; justify-content:space-between; margin: 6px 2px 16px; }
-      .brand h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing:.2px; }
-      .brand .hint { font-size: 12px; color: var(--muted); }
-      .card { background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015)); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
-      .section { margin-top: 12px; }
-      .section h2 { font-size: 14px; margin: 0 0 8px; }
-      ul { margin: 0; padding-left: 16px; }
-      li { margin: 6px 0; color: var(--text); line-height: 1.5; }
-      .muted { color: var(--muted); }
-      .actions { display:flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-      .btn { display:inline-flex; align-items:center; justify-content:center; height: 44px; border-radius: 12px; text-decoration:none; font-weight: 700; }
-      .btnPrimary { background: var(--primary); color: #111827; }
-      .btnGhost { border: 1px solid var(--border); color: var(--text); background: rgba(255,255,255,.02); }
-      .btnDisabled { opacity:.55; pointer-events:none; }
-      .footer { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.55; }
-      .error { color: #fca5a5; }
-      .spinner { width:16px;height:16px;border:2px solid rgba(255,255,255,.25);border-top-color:rgba(255,255,255,.8);border-radius:50%;display:inline-block;animation:spin 1s linear infinite;vertical-align:-3px;margin-right:8px;}
-      @keyframes spin { to { transform: rotate(360deg);} }
-      code { color: #fde68a; }
+      .h5-report-brand h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+      .h5-report-brand .hint {
+        font-size: 12px;
+        color: var(--text-hint);
+        white-space: nowrap;
+      }
+      .h5-report-section {
+        margin-top: var(--space-md);
+      }
+      .h5-report-section h2 {
+        font-size: 14px;
+        margin: 0 0 8px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .h5-report-section ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .h5-report-section li {
+        margin: 6px 0;
+        color: var(--text-secondary);
+        line-height: 1.55;
+      }
+      .h5-report-actions {
+        margin-top: var(--space-lg);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: sticky;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        padding-top: 10px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0), var(--bg-card) 28%);
+      }
+      .h5-footer-disclaimer {
+        margin-top: var(--space-md);
+        font-size: 12px;
+        color: var(--text-hint);
+        line-height: 1.6;
+      }
+      .h5-text-error {
+        color: var(--danger);
+        font-weight: 600;
+      }
     </style>
   </head>
-  <body>
-    <div class="wrap">
-      <div class="brand">
+  <body class="h5-tool">
+    <div class="h5-wrap">
+      <div class="h5-report-brand">
         <h1>事故车损失报告（AI）摘要</h1>
         <div class="hint">simplewin.cn</div>
       </div>
 
-      <div class="card">
-        <div id="status" class="muted"><span class="spinner"></span>加载中…</div>
+      <div class="h5-card">
+        <div id="status" class="h5-state h5-state--pending" role="status">
+          <span class="h5-spinner" aria-hidden="true"></span>
+          <div>加载中…</div>
+        </div>
 
-        <div id="content" style="display:none;">
-          <div class="section">
+        <div id="content" class="h5-hidden">
+          <div class="h5-report-section">
             <h2>明显损伤</h2>
             <ul id="obvious"></ul>
-            <div id="obviousEmpty" class="muted" style="display:none;">暂无明显可见损伤</div>
+            <div id="obviousEmpty" class="h5-muted h5-hidden">暂无明显可见损伤</div>
           </div>
-          <div class="section">
+          <div class="h5-report-section">
             <h2>可能损伤</h2>
             <ul id="possible"></ul>
-            <div id="possibleEmpty" class="muted" style="display:none;">暂无待进一步确认项</div>
+            <div id="possibleEmpty" class="h5-muted h5-hidden">暂无待进一步确认项</div>
           </div>
-          <div class="section">
+          <div class="h5-report-section">
             <h2>维修建议</h2>
             <ul id="advice"></ul>
-            <div id="adviceEmpty" class="muted" style="display:none;">暂无专项建议</div>
+            <div id="adviceEmpty" class="h5-muted h5-hidden">暂无专项建议</div>
           </div>
 
-          <div class="actions">
-            <div id="wxLaunchWrap" style="display:none;">
+          <div class="h5-report-actions">
+            <div id="wxLaunchWrap" class="h5-wx-launch-host h5-hidden">
               <wx-open-launch-weapp id="wxLaunch" username="__WEAPP_ORIGINAL_ID__" path="/pages/damage/upload/index">
                 <script type="text/wxtag-template">
                   <style>
-                    .wxbtn { display:flex; align-items:center; justify-content:center; height:44px; border-radius:12px; background: #f59e0b; color:#111827; font-weight:700; }
+                    .wxbtn {
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      min-height: 48px;
+                      border-radius: 12px;
+                      background: #2563eb;
+                      color: #fff;
+                      font-weight: 700;
+                      font-size: 15px;
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    }
                   </style>
                   <div class="wxbtn">我也要分析（打开小程序）</div>
                 </script>
               </wx-open-launch-weapp>
             </div>
-            <a class="btn btnPrimary" id="cta" href="#">我也要分析（打开小程序）</a>
-            <a class="btn btnGhost" id="copyLink" href="#">复制本页链接</a>
+            <a class="h5-btn h5-btn--primary h5-btn--block" id="cta" href="#">我也要分析（打开小程序）</a>
+            <a class="h5-btn h5-btn--ghost h5-btn--block" id="copyLink" href="#">复制本页链接</a>
           </div>
 
-          <div class="footer" id="footerDisclaimer">
-            本摘要仅供参考，不构成保险定损或责任认定；请以实车检测与正规维修厂意见为准。<br/>
+          <div class="h5-footer-disclaimer" id="footerDisclaimer">
+            本摘要仅供参考，不构成保险定损或责任认定；请以实车检测与正规维修厂意见为准。<br />
             若无法打开小程序：请在微信内打开本链接，或复制到微信聊天中再点开。
           </div>
         </div>
@@ -137,26 +183,30 @@
         }
 
         function showError(msg) {
-          statusEl.innerHTML = '<span class="error">' + (msg || "加载失败") + '</span>';
-          contentEl.style.display = "none";
+          statusEl.className = "h5-state h5-state--error";
+          statusEl.innerHTML = '<div class="h5-text-error">' + (msg || "加载失败") + '</div>';
+          statusEl.style.display = "flex";
+          contentEl.classList.add("h5-hidden");
         }
 
         function showPending(text) {
-          statusEl.innerHTML = '<span class="spinner"></span>' + (text || "AI 分析中…");
-          statusEl.style.display = "block";
-          contentEl.style.display = "none";
+          statusEl.className = "h5-state h5-state--pending";
+          statusEl.innerHTML = '<span class="h5-spinner" aria-hidden="true"></span><div>' + (text || "AI 分析中…") + '</div>';
+          statusEl.style.display = "flex";
+          contentEl.classList.add("h5-hidden");
         }
 
         function disableActions(disabled) {
           const wrap = document.getElementById("wxLaunchWrap");
           if (wrap) wrap.style.display = disabled ? "none" : wrap.style.display;
           if (cta) {
-            cta.className = disabled ? "btn btnPrimary btnDisabled" : "btn btnPrimary";
+            cta.className = disabled
+              ? "h5-btn h5-btn--primary h5-btn--block h5-btn--disabled"
+              : "h5-btn h5-btn--primary h5-btn--block";
             cta.href = disabled ? "javascript:void(0)" : cta.href;
           }
         }
 
-        // CTA 默认降级：非微信环境/签名失败时提示在微信内打开
         cta.href = "weixin://";
 
         function isWechat() {
@@ -165,7 +215,6 @@
 
         async function setupWxOpenTag() {
           if (!isWechat() || !window.wx) return;
-          // 使用当前完整URL（去掉 hash），向服务端请求签名
           const curUrl = location.href.split("#")[0];
           const r = await fetch("/api/v1/public/wechat/jssdk-config?url=" + encodeURIComponent(curUrl));
           const body = await r.json();
@@ -181,22 +230,15 @@
             openTagList: ["wx-open-launch-weapp"]
           });
           window.wx.ready(function () {
-            // 配置开放标签：跳到小程序分享摘要页
             const wrap = document.getElementById("wxLaunchWrap");
             const tag = document.getElementById("wxLaunch");
             if (tag) {
-              // 注意：无论 token 来源，B 看到报告后“我也要分析”应进入小程序分析入口，而不是复用 A 的 token。
-              // lead_token 仅用于“获取精确报价”的转化场景，避免 B 误用 A 的报告直接转化。
               tag.setAttribute("path", "/pages/damage/upload/index");
-              // username 需要填小程序原始ID（gh_xxx），这里通过运行时替换写入
             }
-            // 先不展示：必须等报告加载成功后再展示按钮，避免“跳过报告”
             if (wrap) wrap.style.display = "none";
             cta.style.display = "none";
           });
-          window.wx.error(function () {
-            // 失败则保留降级按钮
-          });
+          window.wx.error(function () {});
         }
 
         copyLink.addEventListener("click", async (e) => {
@@ -212,7 +254,6 @@
         });
 
         function fetchSummary() {
-          // lead token 优先走 lead 读取接口；否则走 share token 接口
           const primary = isLeadToken
             ? "/api/v1/public/lead/damage/report/" + encodeURIComponent(token)
             : "/api/v1/public/damage/report/share/" + encodeURIComponent(token);
@@ -224,7 +265,6 @@
             .catch(() => (fallback ? fetch(fallback, { method: "GET" }).then((r) => r.json()) : Promise.reject(new Error("加载失败"))));
         }
 
-        // 先禁用跳转按钮：必须先看到 A 的报告
         disableActions(true);
 
         let pollCount = 0;
@@ -243,24 +283,24 @@
           fillList(obviousEl, obvious);
           fillList(possibleEl, possible);
           fillList(adviceEl, advice);
-          obviousEmpty.style.display = obvious.length ? "none" : "block";
-          possibleEmpty.style.display = possible.length ? "none" : "block";
-          adviceEmpty.style.display = advice.length ? "none" : "block";
+          obviousEmpty.classList.toggle("h5-hidden", !!obvious.length);
+          possibleEmpty.classList.toggle("h5-hidden", !!possible.length);
+          adviceEmpty.classList.toggle("h5-hidden", !!advice.length);
 
           statusEl.style.display = "none";
-          contentEl.style.display = "block";
+          contentEl.classList.remove("h5-hidden");
           if (footerDisclaimer && vm && vm.disclaimer) {
             footerDisclaimer.textContent = String(vm.disclaimer || '').trim();
           }
 
-          // 报告已展示，才开放“我也要分析”入口
           disableActions(false);
           const wrap = document.getElementById("wxLaunchWrap");
           if (wrap) {
             wrap.style.display = "block";
+            wrap.classList.remove("h5-hidden");
             cta.style.display = "none";
           } else {
-            cta.style.display = "inline-flex";
+            cta.style.display = "flex";
           }
 
           track('report_rendered', {
@@ -282,7 +322,7 @@
                 throw new Error((body && body.message) || "接口返回异常");
               }
 
-              const reportStatus = body.data.status; // 0=queued/pending 1=done 3=irrelevant 4=manual_review
+              const reportStatus = body.data.status;
               const vm = body.data.display_vm || null;
               const ar = (body.data.analysis_result || {});
               const reason = ar.repair_related_reason || ar.reject_reason || (vm && Array.isArray(vm.risk_red_flags) && vm.risk_red_flags[0] ? vm.risk_red_flags[0] : "");
@@ -316,7 +356,6 @@
         showPending("AI 分析中…");
         loadOnce();
 
-        // 启用微信开放标签拉起小程序
         setupWxOpenTag().catch(() => {});
 
         track('page_view', { path: location.pathname });
@@ -330,4 +369,3 @@
     </script>
   </body>
 </html>
-

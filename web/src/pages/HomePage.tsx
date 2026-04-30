@@ -1,6 +1,6 @@
 import { Layout, Button, Card, Row, Col, Typography, Space } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
-import { RocketOutlined, BulbOutlined, TeamOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { RocketOutlined, BulbOutlined, TeamOutlined, AppstoreOutlined, MedicineBoxOutlined, WechatOutlined } from '@ant-design/icons';
 import './HomePage.css';
 
 const { Header, Content, Footer } = Layout;
@@ -106,6 +106,42 @@ export default function HomePage() {
               去查询
             </Button>
           </Card>
+        </section>
+
+        <section className="intro-section home-diagnosis-section">
+          <Row gutter={[24, 24]} align="top">
+            <Col xs={24} lg={14}>
+              <Title level={2} className="home-diagnosis-title">
+                AI 诊断助手
+              </Title>
+              <Paragraph className="home-diagnosis-lead">
+                面向车主与内容渠道：支持图片链接、故障码（DTC）、症状描述三种输入，输出风险提示、检查建议与费用区间参考。结果仅供参考，不构成定损或维修承诺。
+              </Paragraph>
+              <ul className="home-diagnosis-bullets">
+                <li>官网可直接打开；公众号内打开体验最佳（可一键拉起小程序继续报价）。</li>
+                <li>完成诊断后，建议在<strong>微信内</strong>进入小程序上传事故照片，获取多家维修商报价。</li>
+              </ul>
+            </Col>
+            <Col xs={24} lg={10}>
+              <Card className="home-diagnosis-card" bordered={false}>
+                <div className="home-diagnosis-card-head">
+                  <MedicineBoxOutlined className="home-diagnosis-card-icon" />
+                  <Text strong>立即使用</Text>
+                </div>
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Button type="primary" block size="large" href="/h5/diagnosis?src=pc_official" target="_blank" rel="noreferrer">
+                    打开 AI 诊断助手
+                  </Button>
+                  <Button block size="large" href="/h5/tools?src=pc_official_hub" target="_blank" rel="noreferrer">
+                    工具中心（诊断 + 验真）
+                  </Button>
+                  <Paragraph type="secondary" className="home-diagnosis-wechat-hint">
+                    <WechatOutlined /> 若需拉起小程序：请用手机微信打开上述链接，或使用公众号菜单挂载的同款入口。
+                  </Paragraph>
+                </Space>
+              </Card>
+            </Col>
+          </Row>
         </section>
 
         <section className="intro-section" style={{ paddingTop: 0 }}>

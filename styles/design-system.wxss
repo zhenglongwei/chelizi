@@ -24,6 +24,11 @@ page {
   --border: rgba(0, 0, 0, 0.06);
   --border-light: rgba(0, 0, 0, 0.04);
   --bg-placeholder: #E2E8F0;
+  /* 多行输入/表单浅底（与页面变量命名对齐，避免未定义 token） */
+  --bg-input: #f1f5f9;
+  /* 兼容历史命名：与 text-secondary 等价 */
+  --text-muted: var(--text-secondary);
+  --page-bg: var(--bg-page);
   /* 未登录头像占位：浅色主色背景，与登录入口呼应 */
   --avatar-placeholder-bg: #EFF6FF;
   --avatar-placeholder-border: rgba(37, 99, 235, 0.15);
@@ -238,6 +243,37 @@ page, view, scroll-view {
 .text-h3 { font-size: var(--fs-h3); font-weight: 600; color: var(--text-primary); }
 .text-body { font-size: var(--fs-body); color: var(--text-secondary); }
 .text-caption { font-size: var(--fs-cap); color: var(--text-hint); }
+
+/* ========== 10b. 提示条（信息/合规） ========== */
+.notice-info {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--primary-border-soft);
+  background: var(--primary-bg);
+  margin-bottom: var(--space-lg);
+}
+.notice-info__icon {
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #fff;
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.notice-info__body {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-cap);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
 
 /* ========== 11. 通用 ========== */
 ::-webkit-scrollbar {
