@@ -2,7 +2,7 @@
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
 const { getNavBarHeight, compressImageForUpload } = require('../../utils/util');
-const { merchantRegister, uploadImage, ocrBusinessLicense, setMerchantToken, setMerchantUser } = require('../../utils/api');
+const { merchantRegister, uploadMerchantImage, ocrBusinessLicense, setMerchantToken, setMerchantUser } = require('../../utils/api');
 
 const logger = getLogger('MerchantRegister');
 
@@ -92,7 +92,7 @@ Page({
           ui.showLoading('处理中');
           const toUpload = await compressImageForUpload(file.tempFilePath);
           ui.showLoading('上传中');
-          const url = await uploadImage(toUpload);
+          const url = await uploadMerchantImage(toUpload);
           this.setData({ licensePath: toUpload, licenseUrl: url, ocrSuccess: false });
           ui.showLoading('识别中');
           this.setData({ ocrLoading: true });

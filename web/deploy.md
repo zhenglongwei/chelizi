@@ -58,7 +58,8 @@ npm start
 
 **方式 B：使用 pm2（推荐）**
 ```bash
-pm2 start server.js --name zhejian-api
+# 推荐：用 ecosystem 固定 cwd，避免相对路径与 .env 读取问题
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup  # 开机自启
 ```

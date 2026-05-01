@@ -21,14 +21,15 @@
           <view class="notice-info__icon">i</view>
           <view class="notice-info__body">报告仅供决策参考；涉及维修范围、配件品质与价格以到店检测及书面报价为准。</view>
         </view>
+        <view class="notice-info" style="margin-top: var(--space-md);" wx:if="{{report && report.status === 0}}">
+          <view class="notice-info__icon">i</view>
+          <view class="notice-info__body">报告正在生成中，你可以稍后再来查看；也可下拉/返回再进入刷新。</view>
+        </view>
         <accident-report-view vm="{{reportVm}}" />
       </view>
       <view class="report-actions">
         <button class="report-btn btn-brand" bindtap="onGoBidding">
           <text class="fs-body fw-bold">获取维修商报价</text>
-        </button>
-        <button class="report-btn report-btn-secondary" plain bindtap="onRecreatePrequote">
-          <text class="fs-body fw-bold">重新预报价</text>
         </button>
         <button class="report-btn report-btn-secondary" open-type="share" bindtap="onPrepareShare" wx:if="{{!caps || (caps.map && caps.map['damage.report_share'])}}">
           <text class="fs-body fw-bold">分享报告</text>

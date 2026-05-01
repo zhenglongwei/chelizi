@@ -393,7 +393,7 @@ async function listReports(pool, userId, page = 1, limit = 10) {
     return {
       report_id: r.report_id,
       vehicle_info: vi,
-      images: JSON.parse(r.images || '[]'),
+      images: jsonColumn(r.images, []),
       damage_level: damageLevel,
       total_estimate: totalEst,
       status: r.status,

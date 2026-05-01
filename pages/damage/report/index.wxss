@@ -20,7 +20,7 @@
   border-top: 1rpx solid var(--border);
   line-height: 1.5;
 }
-.report-actions { margin-top: var(--space-lg); }
-.report-btn { display: block; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); }
-.report-btn-secondary { margin-top: var(--space-md); background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
+.report-actions { margin-top: var(--space-lg); display: flex; flex-direction: row; gap: var(--space-md); }
+.report-btn { flex: 1; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); margin: 0; }
+.report-btn-secondary { background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
 .report-bottom-pad { height: var(--space-2xl); }

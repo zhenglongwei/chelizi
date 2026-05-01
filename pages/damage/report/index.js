@@ -9,6 +9,7 @@ Page({
     scrollStyle: 'height: 600px',
     reportId: '',
     report: null,
+    reportVm: null,
     loading: true,
     error: '',
     pageRootStyle: 'padding-top: 88px',
@@ -47,6 +48,7 @@ Page({
       const focusId = viMeta.analysis_focus_vehicle_id || '';
       const report = {
         report_id: res.report_id,
+        status: res.status != null ? res.status : 0,
         damage_level: ar.damage_level,
         total_estimate: ar.total_estimate || res.total_estimate,
         warranty: ar.warranty,
@@ -84,17 +86,6 @@ Page({
     try {
       wx.setStorageSync('pendingReportId', reportId);
       wx.removeStorageSync('pendingRecreateMode');
-    } catch (_) {}
-    navigation.switchTab('/pages/damage/upload/index');
-  },
-
-  /** 重新预报价：带入历史材料，允许补充后重新提交（会重新入队 AI） */
-  onRecreatePrequote() {
-    const reportId = this.data.reportId;
-    if (!reportId) return;
-    try {
-      wx.setStorageSync('pendingReportId', reportId);
-      wx.setStorageSync('pendingRecreateMode', 1);
     } catch (_) {}
     navigation.switchTab('/pages/damage/upload/index');
   },

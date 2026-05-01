@@ -168,7 +168,8 @@ npm start
 
 ```bash
 npm install -g pm2
-pm2 start server.js --name zhejian-api
+# 推荐：用 ecosystem 固定 cwd（与 `/var/www/simplewin/web/api-server` 对齐）
+pm2 start ecosystem.config.cjs
 pm2 startup
 pm2 save
 ```

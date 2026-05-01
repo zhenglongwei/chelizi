@@ -222,6 +222,7 @@ module.exports = {
   /** 竞价自费单：维修款 JSAPI 预支付 */
   prepayUserRepairOrder: (orderId, code) =>
     api.post('/api/v1/user/orders/' + orderId + '/repair-prepay', { code }),
+  /** 车主端图片上传（需 token） */
   uploadImage: (filePath) => {
     const token = getToken();
     return new Promise((resolve, reject) => {
@@ -285,10 +286,10 @@ module.exports = {
       }
     }
 
-    const token = getMerchantToken();
+    const token = getToken();
     return new Promise((resolve, reject) => {
       wx.uploadFile({
-        url: BASE_URL + (BASE_URL.endsWith('/') ? '' : '/') + 'api/v1/merchant/upload/image',
+        url: BASE_URL + (BASE_URL.endsWith('/') ? '' : '/') + 'api/v1/upload/image',
         filePath: toUpload,
         name: 'image',
         header: token ? { Authorization: 'Bearer ' + token } : {},
@@ -309,7 +310,7 @@ module.exports = {
             const msg =
               body.message ||
               (res.statusCode === 401
-                ? '请先登录服务商端'
+                ? '请先登录'
                 : res.statusCode === 503
                   ? '图片上传功能暂不可用'
                   : res.statusCode >= 400
@@ -325,6 +326,88 @@ module.exports = {
         }
       });
     });
+  },
+
+  /** 服务商端图片上传（需 merchant_token） */
+  uploadMerchantImage: (filePath) => {
+    const MAX_SIZE = 5 * 1024 * 1024;
+    const getSize = (path) => new Promise((resolve, reject) => {
+      wx.getFileInfo({ filePath: path, success: (r) => resolve(r.size), fail: reject });
+    });
+    const getImageType = (path) => new Promise((resolve) => {
+      wx.getImageInfo({ src: path, success: (r) => resolve(r.type || ''), fail: () => resolve('') });
+    });
+    const compress = (src, quality, maxWidth) => new Promise((resolve, reject) => {
+      const opts = { src, quality, success: (r) => resolve(r.tempFilePath), fail: reject };
+      if (maxWidth) opts.compressedWidth = maxWidth;
+      wx.compressImage(opts);
+    });
+
+    return (async () => {
+      let toUpload = filePath;
+      const imgType = await getImageType(filePath);
+      if (imgType === 'png' || imgType === 'gif' || imgType === 'tiff') {
+        try {
+          toUpload = await compress(filePath, 90, 1920);
+        } catch (e) {
+          throw new Error('PNG 等格式暂不支持，请使用 JPG 格式图片上传');
+        }
+      }
+      let size = await getSize(toUpload);
+      if (size > MAX_SIZE) {
+        const qualities = [50, 40, 30];
+        for (const q of qualities) {
+          try {
+            toUpload = await compress(toUpload, q, 1920);
+            size = await getSize(toUpload);
+            if (size <= MAX_SIZE) break;
+          } catch (_) {}
+        }
+        if (size > MAX_SIZE) {
+          throw new Error('图片过大（超过 5MB），无法压缩到合适大小，请选择更小的图片');
+        }
+      }
+      const token = getMerchantToken();
+      return new Promise((resolve, reject) => {
+        wx.uploadFile({
+          url: BASE_URL + (BASE_URL.endsWith('/') ? '' : '/') + 'api/v1/merchant/upload/image',
+          filePath: toUpload,
+          name: 'image',
+          header: token ? { Authorization: 'Bearer ' + token } : {},
+          timeout: 120000,
+          success: (res) => {
+            let body = {};
+            try {
+              body = JSON.parse(res.data || '{}');
+            } catch (_) {}
+            if (res.statusCode >= 200 && res.statusCode < 300 && body.code === 200 && body.data && body.data.url) {
+              resolve(body.data.url);
+            } else {
+              const hint413 = res.statusCode === 413 ? '（请求体过大，请缩小图片或调高网关 client_max_body_size）' : '';
+              const rawPreview =
+                typeof res.data === 'string' && res.data.length > 0 && body.code == null
+                  ? ' ' + res.data.slice(0, 80).replace(/\s+/g, ' ')
+                  : '';
+              const msg =
+                body.message ||
+                (res.statusCode === 401
+                  ? '请先登录服务商端'
+                  : res.statusCode === 503
+                    ? '图片上传功能暂不可用'
+                    : res.statusCode >= 400
+                      ? `上传失败（HTTP ${res.statusCode}）`
+                      : '上传失败');
+              reject(new Error(String(msg) + hint413 + rawPreview));
+            }
+          },
+          fail: (err) => {
+            attachWechatDomainHint(err);
+            const extra = err && err.userHint ? ' ' + err.userHint : '';
+            reject(new Error((err.errMsg || err.message || '网络异常，请检查网络后重试') + extra));
+          }
+        });
+      });
+    })();
   },
   /** 定损 AI 走服务端再调 DashScope，大图/新模型易超 60s，单独放宽小程序等待 */
   analyzeDamage: (data) => request({ url: '/api/v1/damage/analyze', method: 'POST', data, timeout: 180000 }),
