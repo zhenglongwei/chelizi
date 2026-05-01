@@ -8,16 +8,30 @@
   </block>
   <block wx:elif="{{step === 1}}">
     <scroll-view class="damage-scroll" scroll-y show-scrollbar="{{false}}">
-      
+      <view class="damage-hero">
+        <view class="damage-hero-title fs-h3 fw-bold">发起人工预报价</view>
+        <view class="damage-hero-sub text-muted fs-sm">服务商会根据你提供的照片与描述给出人工预报价。到店进行现场评估（必要时拆检）后，才能确定最终价格。</view>
+      </view>
 
-      
+      <view class="damage-chips" wx:if="{{!analyzing}}">
+        <view class="damage-chip" data-text="低速追尾，前保险杠凹陷变形" bindtap="onPromptChip">追尾 · 前杠</view>
+        <view class="damage-chip" data-text="右前门刮蹭+轻微变形，需要钣金喷漆" bindtap="onPromptChip">刮蹭 · 钣喷</view>
+        <view class="damage-chip" data-text="故障灯亮，怠速抖动明显；有 P0300 故障码" bindtap="onPromptChip">故障码 · 抖动</view>
+      </view>
+
+      <view class="notice-info" style="margin-left: var(--page-padding-x); margin-right: var(--page-padding-x);">
+        <view class="notice-info__icon">i</view>
+        <view class="notice-info__body">
+          <text class="fw-medium text-primary">提示</text>：本次为服务商根据材料做的人工预报价，可能会因实际车况、配件价格、工艺方案变化而调整；到店现场评估（必要时拆检）后才是最终价。请勿在描述中填写身份证号、银行卡号等敏感信息。
+        </view>
+      </view>
 
       <!-- 主要输入区（对齐 AI 分析页） -->
       <view class="damage-composer card">
         <view class="damage-section-title fs-body fw-bold">照片与补充描述</view>
         <textarea
           class="damage-composer-input"
-          placeholder="可选：补充说明（泡水/异响/故障码/灯亮等）…"
+          placeholder="把情况简单说一下（可选）：例如 低速追尾前杠凹陷；或 故障灯亮+怠速抖动；或 P0300…"
           value="{{userDescription}}"
           bindinput="onDescInput"
           maxlength="-1"
@@ -28,7 +42,7 @@
           <view class="damage-tool-plus" bindtap="onChooseImage">
             <text class="damage-tool-plus-icon">+</text>
           </view>
-          <text class="damage-tool-hint text-muted fs-cap">事故照片必填，最多 8 张（{{images.length}}/8）</text>
+          <text class="damage-tool-hint text-muted fs-cap">上传事故照片（必填），最多 8 张（{{images.length}}/8）</text>
         </view>
         <view class="damage-thumb-strip" wx:if="{{images && images.length}}">
           <view class="damage-upload-item damage-upload-item--sm" wx:for="{{images}}" wx:key="index">
@@ -38,7 +52,7 @@
             </view>
           </view>
         </view>
-        <text class="damage-upload-hint text-weak fs-sm">至少 1 张，单张不超过 5MB；建议：45°全景 + 损伤特写</text>
+        <text class="damage-upload-hint text-weak fs-sm">至少 1 张，单张不超过 5MB；建议：45°全景 + 损伤特写（可加内饰/故障灯/仪表盘）</text>
       </view>
 
       <!-- 车辆信息（提交前预填，用于锁定车辆；避免多车选择） -->
@@ -65,7 +79,7 @@
       <button class="damage-dock-primary btn-brand" bindtap="onSubmitPreQuote" disabled="{{analyzing || dailyQuota.remaining <= 0}}">
         {{analyzing ? '提交中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '提交预报价')}}
       </button>
-      <view class="damage-dock-tip text-muted fs-cap">提交后后台分析，不用等待；你可以稍后回来看结果</view>
+      <view class="damage-dock-primary"></view>
     </view>
   </block>
 

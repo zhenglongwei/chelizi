@@ -93,6 +93,12 @@ Page({
     leadToken: ''
   },
 
+  onPromptChip(e) {
+    const text = (e.currentTarget.dataset.text || '').trim();
+    if (!text) return;
+    this.setData({ userDescription: text });
+  },
+
   onLoad(options) {
     /** 用于作废「加载历史报告」的异步请求，避免与「新照片重新定损」竞态覆盖结果 */
     this._reportLoadToken = 0;
@@ -302,7 +308,8 @@ Page({
   },
 
   onDescInput(e) {
-    this.setData({ userDescription: (e.detail.value || '').trim() });
+    // 不在输入过程中 trim，避免中文输入法/换行体验被截断；提交前再统一 trim
+    this.setData({ userDescription: e.detail.value || '' });
   },
   onPlateInput(e) {
     this.setData({ 'vehicleInfo.plate_number': (e.detail.value || '').trim() });
