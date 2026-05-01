@@ -1,6 +1,5 @@
 <!-- 预报价页（原 AI定损） - 02-AI定损页 -->
-<custom-nav-bar title="预报价" />
-<view class="page-root damage-page" style="{{pageRootStyle}}">
+<view class="page-root damage-page">
   <block wx:if="{{!hasToken}}">
     <view class="damage-empty card">
       <text class="text-muted fs-body">请先登录后再使用预报价</text>
@@ -8,51 +7,38 @@
     </view>
   </block>
   <block wx:elif="{{step === 1}}">
-    <scroll-view class="damage-scroll" scroll-y style="{{scrollStyle}}">
-      <!-- 拍摄引导 -->
-      <view class="damage-guide card">
-        <view class="damage-guide-title fs-body fw-bold">拍摄建议</view>
-        <view class="damage-guide-tips">
-          <text class="text-muted fs-cap">· 车身 45 度角全景</text>
-          <text class="text-muted fs-cap">· 损伤部位特写</text>
-        </view>
-      </view>
+    <scroll-view class="damage-scroll" scroll-y show-scrollbar="{{false}}">
+      
 
-      <view class="notice-info" style="margin-left: var(--page-padding-x); margin-right: var(--page-padding-x);">
-        <view class="notice-info__icon">i</view>
-        <view class="notice-info__body">
-          <text class="fw-medium text-primary">专业提示</text>：预报价为 AI 辅助判断，用于风险提示与区间参考；不代表维修商最终报价或保险合同认定。请勿在描述中填写身份证号、银行卡号等敏感信息。
-        </view>
-      </view>
+      
 
-      <!-- 照片上传 -->
-      <view class="damage-section card">
-        <view class="damage-section-title fs-body fw-bold">事故照片<text class="text-error">*</text></view>
-        <view class="damage-upload-grid">
-          <view
-            class="damage-upload-item"
-            wx:for="{{images}}"
-            wx:key="index"
-          >
+      <!-- 主要输入区（对齐 AI 分析页） -->
+      <view class="damage-composer card">
+        <view class="damage-section-title fs-body fw-bold">照片与补充描述</view>
+        <textarea
+          class="damage-composer-input"
+          placeholder="可选：补充说明（泡水/异响/故障码/灯亮等）…"
+          value="{{userDescription}}"
+          bindinput="onDescInput"
+          maxlength="-1"
+          auto-height
+          show-confirm-bar="{{false}}"
+        />
+        <view class="damage-composer-toolbar">
+          <view class="damage-tool-plus" bindtap="onChooseImage">
+            <text class="damage-tool-plus-icon">+</text>
+          </view>
+          <text class="damage-tool-hint text-muted fs-cap">事故照片必填，最多 8 张（{{images.length}}/8）</text>
+        </view>
+        <view class="damage-thumb-strip" wx:if="{{images && images.length}}">
+          <view class="damage-upload-item damage-upload-item--sm" wx:for="{{images}}" wx:key="index">
             <image class="damage-thumb" src="{{item}}" mode="aspectFill"/>
             <view class="damage-del" data-index="{{index}}" bindtap="onDelImage">
-              <image src="/images/icon/close.png" mode="aspectFit"/>
+              <text class="damage-del-x">×</text>
             </view>
           </view>
-          <block wx:if="{{images.length < 8}}">
-            <view class="damage-upload-btn" bindtap="onChooseImage">
-              <image class="damage-add-icon" src="/images/icon/add.png" mode="aspectFit"/>
-              <text class="text-muted fs-cap">添加照片</text>
-            </view>
-          </block>
         </view>
-        <text class="damage-upload-hint text-weak fs-sm">{{images.length}}/8 张，至少 1 张，单张不超过 5MB</text>
-      </view>
-
-      <!-- 情况描述（选填，用于泡水、异响等无法通过照片体现的问题） -->
-      <view class="damage-section card">
-        <view class="damage-section-title fs-body fw-bold">情况描述（选填）</view>
-        <textarea class="damage-desc-input" placeholder="如：地库泡水、车内进水约10cm；或发动机异响、故障灯亮等无法通过照片体现的问题" value="{{userDescription}}" bindinput="onDescInput" maxlength="-1"/>
+        <text class="damage-upload-hint text-weak fs-sm">至少 1 张，单张不超过 5MB；建议：45°全景 + 损伤特写</text>
       </view>
 
       <!-- 车辆信息（提交前预填，用于锁定车辆；避免多车选择） -->
@@ -72,19 +58,19 @@
         </view>
       </view>
 
-      <view class="damage-bottom-pad"></view>
     </scroll-view>
 
-    <view class="damage-footer">
-      <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
-      <view class="damage-btn btn-brand {{dailyQuota.remaining <= 0 ? 'damage-btn-disabled' : ''}}" bindtap="onSubmitPreQuote">
-        <text class="fs-body fw-bold">{{analyzing ? '提交中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '提交预报价（后台分析，不用等待）')}}</text>
-      </view>
+    <view class="damage-dock">
+      <view class="damage-dock-meta {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
+      <button class="damage-dock-primary btn-brand" bindtap="onSubmitPreQuote" disabled="{{analyzing || dailyQuota.remaining <= 0}}">
+        {{analyzing ? '提交中...' : (dailyQuota.remaining <= 0 ? '今日次数已用完' : '提交预报价')}}
+      </button>
+      <view class="damage-dock-tip text-muted fs-cap">提交后后台分析，不用等待；你可以稍后回来看结果</view>
     </view>
   </block>
 
   <block wx:elif="{{step === 2}}">
-    <scroll-view class="damage-scroll" scroll-y style="{{scrollStyle}}">
+    <scroll-view class="damage-scroll" scroll-y show-scrollbar="{{false}}">
       <!-- 预报价分析进度（可选） -->
       <view class="damage-progress card" wx:if="{{analyzing}}">
         <view class="damage-progress-bar">
@@ -244,14 +230,14 @@
         </view>
       </view>
 
-      <view class="damage-bottom-pad"></view>
     </scroll-view>
 
-    <view class="damage-footer">
-      <view class="damage-footer-quota {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
-      <view class="damage-btn btn-brand" bindtap="onCreateBidding">
-        <text class="fs-body fw-bold">{{submitting ? '提交中...' : '发起竞价'}}</text>
-      </view>
+    <view class="damage-dock">
+      <view class="damage-dock-meta {{dailyQuota.remaining <= 0 ? 'text-error' : ''}}">今日剩余 {{dailyQuota.remaining}}/{{dailyQuota.limit}} 次</view>
+      <button class="damage-dock-primary btn-brand" bindtap="onCreateBidding" disabled="{{submitting}}">
+        {{submitting ? '提交中...' : '发起竞价'}}
+      </button>
+      <view class="damage-dock-tip text-muted fs-cap">发起竞价后，附近维修商会给你报价；你可以在“我的竞价”里查看进度</view>
     </view>
   </block>
 </view>

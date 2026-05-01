@@ -3,7 +3,7 @@ const { getLogger } = require('../../../utils/logger');
 const ui = require('../../../utils/ui');
 const navigation = require('../../../utils/navigation');
 const { getToken, getUserId, uploadImage, analyzeDamage, createDamageReport, createBidding, getDamageReport, updateUserProfile, getUserProfile, getDamageDailyQuota, getUserVehicles, createDamageReportShareToken, getLeadDamageReport, claimDamageReportByToken } = require('../../../utils/api');
-const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
+// 注：本页已改为系统导航栏，滚动高度使用 flex 布局撑满；不再依赖自定义导航栏高度计算
 const { fetchAndApplyUnreadBadge } = require('../../../utils/message-badge');
 const { buildAccidentReportViewModel } = require('../../../utils/accident-report-presenter');
 
@@ -82,7 +82,7 @@ Page({
     locationAddress: '',
     locationLat: null,
     locationLng: null,
-    pageRootStyle: 'padding-top: 88px',
+    pageRootStyle: '',
     dailyQuota: { remaining: 3, used: 0, limit: 3 },
     /** 资料中绑定车牌（去重），供聚焦车牌输入时选择填入，非 AI 识别 */
     boundPlateList: [],
@@ -96,11 +96,8 @@ Page({
   onLoad(options) {
     /** 用于作废「加载历史报告」的异步请求，避免与「新照片重新定损」竞态覆盖结果 */
     this._reportLoadToken = 0;
-    const navH = getNavBarHeight();
-    this.setData({ pageRootStyle: 'padding-top: ' + navH + 'px' });
-    const sys = getSystemInfo();
-    const h = sys.windowHeight - navH - 140;
-    this.setData({ scrollHeight: h, scrollStyle: 'height: ' + h + 'px' });
+    // 预报价页已使用系统导航栏（非 custom-nav-bar），滚动区域用 flex 布局撑满，无需手动计算高度
+    this.setData({ pageRootStyle: '', scrollStyle: '' });
     this.checkToken();
     if (getToken()) this._loadDailyQuota();
     const reportId = options.id || options.report_id;

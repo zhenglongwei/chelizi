@@ -3,9 +3,11 @@
  * 以《设计规范.md》、design-system 为准
  */
 .damage-page {
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-page);
-  padding-bottom: calc(100rpx + env(safe-area-inset-bottom) + 140rpx);
+  box-sizing: border-box;
 }
 
 .damage-empty {
@@ -23,29 +25,32 @@
 }
 
 .damage-scroll {
-  padding-top: var(--space-lg);
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  box-sizing: border-box;
 }
 
-/* ========== 拍摄引导 ========== */
-.damage-guide {
-  margin: 0 var(--page-padding-x) var(--space-lg);
-  padding: var(--space-xl);
+/* ========== 顶部引导（对齐 AI 分析） ========== */
+.damage-hero {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md) var(--space-lg);
 }
 
-.damage-guide-title {
-  margin-bottom: var(--space-md);
-  color: var(--text-primary);
+.damage-hero-title {
+  margin-bottom: var(--space-sm);
+  letter-spacing: 0.02em;
 }
 
-.damage-guide-tips {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
+.damage-hero-sub {
+  line-height: 1.6;
+  max-width: 620rpx;
+  margin: 0 auto;
 }
 
 /* ========== 照片上传 ========== */
 .damage-section {
-  margin: 0 var(--page-padding-x) var(--space-lg);
+  margin: 0 0 var(--space-lg);
   padding: var(--space-xl);
 }
 
@@ -54,15 +59,61 @@
   color: var(--text-primary);
 }
 
-.damage-desc-input {
+/* ========== 大输入区（对齐 AI 分析页 Dock 风格） ========== */
+.damage-composer {
+  margin: 0 0 var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.damage-composer-input {
   width: 100%;
-  min-height: 120rpx;
-  padding: var(--space-md);
-  font-size: var(--fs-body);
+  min-height: 200rpx;
+  max-height: 360rpx;
+  padding: 16rpx 8rpx;
+  font-size: 30rpx;
+  line-height: 1.55;
   color: var(--text-primary);
-  background: var(--bg-input);
-  border-radius: var(--radius-md);
   box-sizing: border-box;
+}
+
+.damage-composer-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid rgba(148, 163, 184, 0.2);
+}
+
+.damage-tool-plus {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: rgba(37, 99, 235, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.damage-tool-plus-icon {
+  font-size: 44rpx;
+  font-weight: 600;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.damage-tool-hint {
+  flex: 1;
+  min-width: 0;
+}
+
+.damage-thumb-strip {
+  margin-top: var(--space-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .damage-location-block {
@@ -109,12 +160,6 @@
   flex-shrink: 0;
 }
 
-.damage-upload-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
-}
-
 .damage-upload-item {
   position: relative;
   width: 160rpx;
@@ -124,6 +169,11 @@
   background: var(--bg-placeholder);
 }
 
+.damage-upload-item--sm {
+  width: 72rpx;
+  height: 72rpx;
+}
+
 .damage-thumb {
   width: 100%;
   height: 100%;
@@ -131,38 +181,21 @@
 
 .damage-del {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 48rpx;
-  height: 48rpx;
+  top: 2rpx;
+  right: 2rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.damage-del image {
-  width: 24rpx;
-  height: 24rpx;
-  filter: brightness(0) invert(1);
-}
-
-.damage-upload-btn {
-  width: 160rpx;
-  height: 160rpx;
-  border: 2rpx dashed var(--border);
-  border-radius: var(--radius-md);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-}
-
-.damage-add-icon {
-  width: 48rpx;
-  height: 48rpx;
-  opacity: 0.6;
+.damage-del-x {
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1;
 }
 
 .damage-upload-hint {
@@ -523,48 +556,39 @@
 }
 
 /* ========== 底部 ========== */
-.damage-bottom-pad {
-  height: var(--space-2xl);
-}
 
-.damage-footer {
-  position: fixed;
-  bottom: calc(100rpx + env(safe-area-inset-bottom) + 20rpx);
-  left: 0;
-  right: 0;
+/* 新 Dock（对齐 AI 分析） */
+.damage-dock {
+  flex-shrink: 0;
   padding: var(--space-md) var(--page-padding-x);
   padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
-  background: var(--bg-card);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0) 0%, var(--bg-page) 18%);
   border-top: 1rpx solid var(--border);
-  z-index: 100;
 }
 
-.damage-footer-quota {
+.damage-dock-meta {
   font-size: 24rpx;
   color: var(--text-weak);
   text-align: right;
   margin-bottom: var(--space-xs);
 }
 
-.damage-btn {
+.damage-dock-primary {
   width: 100%;
   height: 88rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--primary);
-  color: #fff;
+  line-height: 88rpx;
+  border-radius: 999rpx;
+  font-size: var(--fs-body);
+  margin: 0;
 }
 
-.damage-btn-skip {
-  margin-top: 16rpx;
-  background: transparent;
-  color: var(--text-primary);
-  border: 2rpx solid var(--border);
+.damage-dock-primary::after {
+  border: none;
 }
 
-.damage-btn-disabled {
-  background: var(--text-weak);
-  opacity: 0.7;
+.damage-dock-tip {
+  margin-top: var(--space-sm);
+  text-align: center;
+  line-height: 1.45;
+  padding: 0 var(--space-sm);
 }

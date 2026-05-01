@@ -1,9 +1,7 @@
 {
   "navigationBarTitleText": "预报价",
   "enablePullDownRefresh": false,
-  "navigationStyle": "custom",
   "usingComponents": {
-    "custom-nav-bar": "/components/custom-nav-bar/index",
     "accident-report-view": "/components/accident-report-view/index"
   }
 }
