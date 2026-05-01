@@ -11,7 +11,7 @@ module.exports = {
     {
       name: 'zhejian-api',
       script: 'server.js',
-      cwd: '/var/www/simplewin/web/api-server',
+      cwd: __dirname,
       exec_mode: 'cluster',
       // 保持与当前线上一致（你们现在是 cluster_mode 且有 0/1 两个实例）
       instances: 2,
