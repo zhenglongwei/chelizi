@@ -3,6 +3,7 @@
     "pages/index/index",
     "pages/reputation/index",
     "pages/damage/upload/index",
+    "pages/ai-diagnosis/index",
     "pages/damage/history/index",
     "pages/damage/report/index",
     "pages/damage/share/index",
@@ -104,15 +105,9 @@
       },
       {
         "pagePath": "pages/damage/upload/index",
-        "text": "预报价",
+        "text": "报价",
         "iconPath": "images/icon/camera_tab.png",
         "selectedIconPath": "images/icon/camera_tab_active.png"
-      },
-      {
-        "pagePath": "pages/message/index",
-        "text": "消息",
-        "iconPath": "images/icon/message.png",
-        "selectedIconPath": "images/icon/message_active.png"
       },
       {
         "pagePath": "pages/user/index/index",

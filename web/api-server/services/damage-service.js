@@ -42,22 +42,30 @@ async function createReportAndEnqueue(pool, req, baseUrl) {
   const userId = req.userId;
   const vehicleInfo = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
 
-  if (!images || !Array.isArray(images) || images.length < 1) {
-    return { success: false, error: '请至少上传 1 张事故照片', statusCode: 400 };
-  }
-  const cleaned = images.map((u) => String(u || '').trim()).filter(Boolean);
-  const hasFakeHttpTmp = cleaned.some((u) => /^https?:\/\/tmp\//i.test(u) || /^https?:\/\/usr\//i.test(u));
-  if (hasFakeHttpTmp) {
+  const userDescTrim = typeof user_description === 'string' ? user_description.trim() : '';
+  const rawArr = Array.isArray(images) ? images : [];
+  const cleaned = rawArr.map((u) => String(u || '').trim()).filter(Boolean);
+  const hasText = userDescTrim.length >= 4;
+  if (cleaned.length < 1 && !hasText) {
     return {
       success: false,
-      error: '图片地址无效：检测到小程序本地临时路径（如 http://tmp/），请重新选择照片后再提交（须先上传到服务器成功）',
+      error: '请至少上传 1 张照片，或填写至少 4 个字的描述（事故外观、故障码、异响等均可）',
       statusCode: 400,
     };
+  }
+  if (cleaned.length >= 1) {
+    const hasFakeHttpTmp = cleaned.some((u) => /^https?:\/\/tmp\//i.test(u) || /^https?:\/\/usr\//i.test(u));
+    if (hasFakeHttpTmp) {
+      return {
+        success: false,
+        error: '图片地址无效：检测到小程序本地临时路径（如 http://tmp/），请重新选择照片后再提交（须先上传到服务器成功）',
+        statusCode: 400,
+      };
+    }
   }
 
   const reportId = 'RPT' + Date.now();
   const taskId = makeTaskId('DAT');
-  const userDescTrim = typeof user_description === 'string' ? user_description.trim() : '';
 
   await pool.execute(
     `INSERT INTO damage_reports (report_id, user_id, vehicle_info, images, user_description, analysis_result, analysis_relevance, analysis_attempts, analysis_error, status, created_at)
@@ -204,8 +212,14 @@ async function analyzeDamage(pool, req, baseUrl) {
   const userId = req.userId;
   const vehicleInfo = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
 
-  if (!images || images.length < 1) {
-    return { success: false, error: '请至少上传 1 张事故照片', statusCode: 400 };
+  const userDescTrimEarly = typeof user_description === 'string' ? user_description.trim() : '';
+  const imgList = Array.isArray(images) ? images : [];
+  if (imgList.length < 1 && userDescTrimEarly.length < 4) {
+    return {
+      success: false,
+      error: '请至少上传 1 张照片，或填写至少 4 个字的描述',
+      statusCode: 400,
+    };
   }
 
   const bodyUserId = user_id && String(user_id).trim();
@@ -239,7 +253,11 @@ async function analyzeDamage(pool, req, baseUrl) {
 
   const forceRealQwen = /^(1|true|yes)$/i.test(String(process.env.FORCE_REAL_QWEN_DAMAGE || '').trim());
   let useMock = shouldUseMockDamageAnalysis();
-  if (forceRealQwen && anyImageUrlNotPubliclyFetchableByQwen(absoluteImageUrls)) {
+  if (
+    forceRealQwen &&
+    absoluteImageUrls.length > 0 &&
+    anyImageUrlNotPubliclyFetchableByQwen(absoluteImageUrls)
+  ) {
     return {
       success: false,
       error:
@@ -307,7 +325,7 @@ async function analyzeDamage(pool, req, baseUrl) {
     !repairRelated
       ? (typeof enhanced.repair_related_reason === 'string' && enhanced.repair_related_reason.trim()
         ? enhanced.repair_related_reason.trim().slice(0, 200)
-        : '图片与修车无关')
+        : '与车辆维修场景无关')
       : null;
   if (!repairRelated && toStore && typeof toStore === 'object') {
     toStore.repair_related = false;
@@ -321,7 +339,7 @@ async function analyzeDamage(pool, req, baseUrl) {
       reportId,
       userId,
       JSON.stringify(vehicleInfo),
-      JSON.stringify(images),
+      JSON.stringify(Array.isArray(images) ? images : []),
       userDescTrim || null,
       JSON.stringify(toStore),
       relevance,
@@ -332,7 +350,7 @@ async function analyzeDamage(pool, req, baseUrl) {
   await recordAiCall(pool, userId, reportId);
 
   if (!repairRelated) {
-    return { success: false, error: `图片与修车无关：${rejectReason || '请重新上传'}`, statusCode: 400 };
+    return { success: false, error: `内容与修车场景不符：${rejectReason || '请调整后重试'}`, statusCode: 400 };
   }
 
   return {

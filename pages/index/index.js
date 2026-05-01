@@ -2,18 +2,14 @@
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
 const navigation = require('../../utils/navigation');
-const { getShopsNearby } = require('../../utils/api');
+const { getShopsNearby, getToken } = require('../../utils/api');
 const { fetchAndApplyUnreadBadge } = require('../../utils/message-badge');
 const { getNavBarHeight, getSystemInfo } = require('../../utils/util');
 const { showWechatShareMenu } = require('../../utils/show-share-menu');
 
 const logger = getLogger('Index');
 
-// 平台简介轮播（广告区静态项，intro-2 点击进入定损页）
-const INTRO_SLIDES = [
-  { id: 'intro-1', type: 'intro', title: '事故车维修平台', desc: '专业维修 · 透明报价', bgStyle: 'background: linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)' },
-  { id: 'intro-2', type: 'intro', action: 'damage', title: 'AI 智能定损', desc: '上传事故照片，获取专业分析报告', bgStyle: 'background: linear-gradient(135deg, #3B82F6 0%, #93C5FD 100%)' }
-];
+const AI_ENTRY_REDIRECT = '/pages/ai-diagnosis/index';
 
 // 快捷入口
 const QUICK_ENTRIES = [
@@ -84,7 +80,6 @@ Page({
   data: {
     loading: false,
     quickEntries: QUICK_ENTRIES,
-    adSlides: [],
     nearbyGoodShops: [],
     locationDenied: false,
     scrollHeight: 600,
@@ -138,11 +133,10 @@ Page({
     this.setData({ loading: true });
     try {
       await this.fetchNearbyGoodShops();
-      await this.fetchAdSlides();
     } catch (err) {
       logger.error('首页数据加载失败', err);
       ui.showError(err.message || '加载失败，请重试');
-      this.setData({ nearbyGoodShops: [], adSlides: [] });
+      this.setData({ nearbyGoodShops: [] });
     } finally {
       this.setData({ loading: false });
     }
@@ -218,28 +212,13 @@ Page({
       });
   },
 
-  async fetchAdSlides() {
-    try {
-      const adSlides = [...INTRO_SLIDES];
-      this.setData({ adSlides });
-      logger.info('广告区轮播加载成功', { count: adSlides.length });
-    } catch (err) {
-      logger.error('获取广告区轮播失败', err);
-      this.setData({ adSlides: INTRO_SLIDES });
+  onAiEntryTap() {
+    logger.info('点击 AI 分析入口（登录后进入独立页面）');
+    if (!getToken()) {
+      navigation.navigateTo('/pages/auth/login/index', { redirect: AI_ENTRY_REDIRECT });
+      return;
     }
-  },
-
-  onAdSlideTap(e) {
-    const { type, action, shopId } = e.currentTarget.dataset;
-    if (type === 'intro' && action === 'damage') {
-      logger.info('点击 AI 定损入口');
-      navigation.switchTab('/pages/damage/upload/index');
-    }
-  },
-
-  goToDamage() {
-    logger.info('点击 AI 定损入口');
-    navigation.navigateTo('/pages/damage/upload/index');
+    navigation.navigateTo(AI_ENTRY_REDIRECT);
   },
 
   onSearchTap() {

@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "AI分析",
+  "navigationBarBackgroundColor": "#ffffff",
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "accident-report-view": "/components/accident-report-view/index"
+  }
+}

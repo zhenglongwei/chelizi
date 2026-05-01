@@ -37,7 +37,7 @@ const MAX_VL_IMAGES_PER_REQUEST = Math.min(16, Math.max(1, parseInt(process.env.
 
 /**
  * 事故车定损分析（仅用图片 URL）
- * @param {string[]} imageUrls - 事故照片的完整 URL 数组（需公网可访问）
+ * @param {string[]} imageUrls - 事故照片完整 URL（公网）；可为空数组，此时须配合足够长的 userDescription 走纯文本分析
  * @param {Object} vehicleInfo - 车辆信息
  * @param {string} reportId - 报告 ID
  * @param {string} apiKey - API Key
@@ -45,14 +45,29 @@ const MAX_VL_IMAGES_PER_REQUEST = Math.min(16, Math.max(1, parseInt(process.env.
  * @returns {Promise<Object>} 定损分析结果
  */
 async function analyzeWithQwen(imageUrls, vehicleInfo, reportId, apiKey, userDescription) {
-  if (!imageUrls || imageUrls.length === 0) {
-    throw new Error('请提供事故照片');
-  }
-
   const urls = (imageUrls || [])
     .map((u) => String(u || '').trim())
     .filter((u) => u.startsWith('http'));
-  if (urls.length === 0) throw new Error('无有效图片 URL（需为 http(s) 公网可访问地址，供千问拉取）');
+  const descTrim = userDescription
+    ? String(userDescription).replace(/\r\n/g, ' ').replace(/\n/g, ' ').trim()
+    : '';
+
+  if (urls.length === 0) {
+    if (descTrim.length < 4) {
+      throw new Error('请提供公网可访问的事故照片，或至少 4 个字的文字描述');
+    }
+    const prompt = buildDamagePrompt(userDescription, { textOnly: true });
+    const systemPrompt = buildDamageSystemPrompt(userDescription);
+    const raw = await callQwenText(
+      systemPrompt && String(systemPrompt).trim()
+        ? systemPrompt
+        : '你是资深汽修与事故初判顾问。用户未上传照片，仅根据文字描述输出与「定损 JSON」说明一致的 JSON；禁止编造用户未写的损伤；与汽车维修/事故/故障无关时 repair_related=false。',
+      prompt,
+      apiKey
+    );
+    return mapQwenResponseToAnalysisResult(raw, reportId, vehicleInfo);
+  }
+
   if (urls.length > MAX_VL_IMAGES_PER_REQUEST) {
     console.warn(`[qwen-analyzer] 定损图片 ${urls.length} 张，仅取前 ${MAX_VL_IMAGES_PER_REQUEST} 张以避免接口限制`);
   }
@@ -83,7 +98,17 @@ function buildDamageSystemPrompt(userDescription) {
 硬性要求：**禁止**仅凭「照片未见碰撞/划痕」就用空 damages 或「未见损伤」占位敷衍**已写在上面**的现象；必须在 vehicles[].damages、vehicles[].damageSummary、repair_suggestions 中**逐条回应用户文字里可识别的诉求**（可写推断部位、待查项、检测工艺，type 可用「待实车确认」等），但**每条须能对应到用户原话中的具体现象或部件**，不得为用户未提及的系统追加「预防性检测」类凑数项。**repair_suggestions 每条必须带齐** \`vehicle_id\`、\`damage_part\`、\`repair_method\`（见用户消息 JSON 说明）：\`damage_part\` 仅写部位简称；\`repair_method\` 仅 \`换\` 或 \`修\`；**同一 vehicle_id + damage_part 只能输出一条**，须与知识库修换规则及该车 damages 自洽，**禁止**对同一部位同时给「修」与「换」两条。每辆车必须输出 **human_display**（明显损伤 / 可能损伤 / 维修建议），**禁止**在三段中出现「用户陈述」「照片显示」等来源词。**不要**输出与 vehicles 语义重复的孤立顶层 damages 数组。请严格按用户消息中的 JSON 格式输出。`;
 }
 
-function buildDamagePrompt(userDescription) {
+function buildDamagePrompt(userDescription, opts) {
+  const textOnly = !!(opts && opts.textOnly);
+  const modePrefix = textOnly
+    ? `## 本单：仅文字、无照片（必读）
+用户**未上传**车损/事故照片；你**只能**依据下方车主文字判断是否与「车辆事故、外观损伤、机械/电气故障、维修需求」相关，并输出与下文格式一致的 JSON。
+- **禁止**编造用户未写的外观碰撞、划痕、凹陷、漆面损伤等细节。
+- 用户写到的故障码、故障灯、异响、抖动、无法启动、涉水等，按文字给出**待查项与检修方向**，可标注「待实车确认」；不得凭空追加用户未提及的系统故障。
+- **repair_related**：文字明确属于车辆事故/维修/故障咨询场景则为 true；若为闲聊、与车无关内容则为 false，并说明原因。
+
+`
+    : '';
   const descEscaped = userDescription
     ? String(userDescription).replace(/\r\n/g, ' ').replace(/\n/g, ' ').trim().slice(0, 2000)
     : '';
@@ -108,7 +133,7 @@ function buildDamagePrompt(userDescription) {
 `
     : '';
 
-  return `你是一位熟悉国家与行业标准的资深汽修专家，拥有二十年以上的汽修经验。请依据**车主补充说明（若有）与事故照片**输出定损 JSON。**无补充说明时：只写照片能支撑的内容；有补充说明时：照片与文字都要看，但两者都不得臆造未出现的信息。**请为照片中**所有可见车辆**分别输出车辆信息与损伤/待查情况。用户将从中选择需要定损的车辆。
+  return `${modePrefix}你是一位熟悉国家与行业标准的资深汽修专家，拥有二十年以上的汽修经验。请依据**车主补充说明（若有）与事故照片**输出定损 JSON。**无补充说明时：只写照片能支撑的内容；有补充说明时：照片与文字都要看，但两者都不得臆造未出现的信息。**请为照片中**所有可见车辆**分别输出车辆信息与损伤/待查情况。用户将从中选择需要定损的车辆。
 ${descBlock}${descPriorityBlock}
 ## 证据与推断边界（核心，高于一切联想）
 - **无车主补充说明**：**严格按照片分析**。仅输出照片中**可直接或合理推断**的损伤与风险（外观碰撞、可见变形/开裂/脱落、可见油液渗漏等）。**禁止无中生有**：不得因「照片看不清内部」而在 damages、human_display.possible_damage、repair_advice、repair_suggestions、damageSummary 中写入**照片中无线索且用户未陈述**的内容，包括但不限于：泡水/进水、电路老化、线束隐性故障、ECU/模块故障、电瓶寿命、发动机内部损伤、内饰霉变等。**无照片依据时 possible_damage、repair_advice 须为 \`[]\`**；repair_suggestions 仅保留与**可见损伤及知识库修换规则**直接相关的项，且**仍须遵守**与有补充说明时相同的结构化规则（\`vehicle_id\`、\`damage_part\` 仅部位名、\`repair_method\` 仅换/修、**同一车同一部位一条**、item 勿写长句），禁止「全车电路预防性检测」等套话。

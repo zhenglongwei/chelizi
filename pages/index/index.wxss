@@ -12,104 +12,58 @@
   padding-bottom: var(--tab-bar-bottom-padding);
 }
 
-/* ========== 1. 广告区轮播（全屏宽、增高，独立于滚动区） ========== */
-.idx-ad-wrap {
+/* ========== 1. 顶部 AI 分析入口（固定卡片） ========== */
+.idx-ai-wrap {
   width: 100%;
   flex-shrink: 0;
-  overflow: hidden;
-  border-radius: 0 0 32rpx 32rpx;
+  padding: var(--space-lg) var(--page-padding-x);
+}
+
+.idx-ai-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl) var(--space-2xl);
+  background: linear-gradient(135deg, #2563EB 0%, #60A5FA 100%);
   box-shadow: var(--shadow);
 }
 
-.idx-ad-swiper {
-  height: 300rpx;
-  overflow: hidden;
-}
-
-.idx-ad-item {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  height: 100%;
-  padding: var(--space-2xl) 48rpx;
-  border-radius: 0;
-}
-
-.idx-ad-item.intro .idx-ad-title,
-.idx-ad-item.intro .idx-ad-desc {
-  color: #FFFFFF;
-}
-
-.idx-ad-intro-wrap {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  position: relative;
-  width: 100%;
-}
-
-.idx-ad-title {
-  display: block;
-  font-size: var(--fs-h2);
-}
-
-.idx-ad-desc {
-  display: block;
-  margin-top: var(--space-sm);
-  opacity: 0.9;
-}
-
-.idx-ad-camera {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 80rpx;
-  height: 80rpx;
-}
-
-.idx-ad-item.shop {
-  flex-direction: row;
-  align-items: center;
-}
-
-.idx-ad-shop-logo {
-  width: 100rpx;
-  height: 100rpx;
-  border-radius: var(--radius-md);
-  flex-shrink: 0;
-  margin-right: var(--space-xl);
-}
-
-.idx-ad-shop-ph {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.idx-ad-shop-info {
+.idx-ai-left {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.idx-ai-title {
+  color: #fff;
+}
+
+.idx-ai-desc {
+  color: rgba(255,255,255,0.92);
+}
+
+.idx-ai-cta {
+  margin-top: var(--space-md);
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  min-width: 0;
+  width: 220rpx;
+  height: 72rpx;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.16);
+  border: 2rpx solid rgba(255,255,255,0.35);
+  color: #fff;
+  font-weight: 600;
 }
 
-.idx-ad-shop-name {
-  color: #FFFFFF;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.idx-ad-shop-rating {
-  color: rgba(255, 255, 255, 0.9);
-  margin-top: var(--space-xs);
-}
-
-.idx-ad-shop-btn {
-  display: inline-block;
-  margin-top: var(--space-sm);
-  color: #EAB308;
-  font-weight: 500;
+.idx-ai-icon {
+  width: 88rpx;
+  height: 88rpx;
+  opacity: 0.95;
 }
 
 /* ========== 2. 搜索栏（更大、浮起+轻微阴影） ========== */

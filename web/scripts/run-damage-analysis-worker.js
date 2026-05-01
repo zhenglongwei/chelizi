@@ -142,7 +142,7 @@ async function runOne(pool) {
       !repairRelated
         ? (typeof enhanced.repair_related_reason === 'string' && enhanced.repair_related_reason.trim()
           ? enhanced.repair_related_reason.trim().slice(0, 200)
-          : '图片与修车无关')
+          : '与车辆维修场景无关')
         : null;
     if (!repairRelated && toStore && typeof toStore === 'object') {
       toStore.repair_related = false;

@@ -69,7 +69,7 @@ Page({
       this.refreshUnreadTabBadge();
     }
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 4 });
+      this.getTabBar().setData({ selected: 3 });
     }
   },
 

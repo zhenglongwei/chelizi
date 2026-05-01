@@ -1,0 +1,218 @@
+.ai-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+  box-sizing: border-box;
+}
+
+.ai-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-lg) var(--page-padding-x);
+  box-sizing: border-box;
+}
+
+.ai-hero {
+  text-align: center;
+  padding: var(--space-xl) var(--space-md) var(--space-lg);
+}
+
+.ai-hero-title {
+  margin-bottom: var(--space-sm);
+  letter-spacing: 0.02em;
+}
+
+.ai-hero-sub {
+  line-height: 1.6;
+  max-width: 620rpx;
+  margin: 0 auto;
+}
+
+.ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+  padding: 0 var(--space-sm);
+}
+
+.ai-chip {
+  padding: 12rpx 22rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.16);
+  border: 1rpx solid rgba(148, 163, 184, 0.35);
+}
+
+.ai-card {
+  margin-bottom: var(--space-lg);
+}
+
+.ai-section-title {
+  margin-bottom: var(--space-md);
+  color: var(--text-primary);
+}
+
+.ai-progress-bar {
+  width: 100%;
+  height: 16rpx;
+  border-radius: 999rpx;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+  margin: var(--space-md) 0;
+}
+
+.ai-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #60a5fa 60%, #eab308 100%);
+  border-radius: 999rpx;
+}
+
+.ai-actions {
+  margin-top: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.ai-btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.ai-scroll-spacer {
+  height: 32rpx;
+}
+
+.ai-dock {
+  flex-shrink: 0;
+  padding: var(--space-md) var(--page-padding-x);
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0) 0%, var(--bg-page) 18%);
+  border-top: 1rpx solid var(--border);
+}
+
+.ai-composer {
+  background: #fff;
+  border-radius: 28rpx;
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  box-shadow: 0 8rpx 40rpx rgba(37, 99, 235, 0.08), 0 2rpx 12rpx rgba(15, 23, 42, 0.06);
+  border: 1rpx solid rgba(148, 163, 184, 0.25);
+}
+
+.ai-composer-input {
+  width: 100%;
+  min-height: 200rpx;
+  max-height: 360rpx;
+  padding: 16rpx 8rpx;
+  font-size: 30rpx;
+  line-height: 1.55;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.ai-composer-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid rgba(148, 163, 184, 0.2);
+}
+
+.ai-tool-plus {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: rgba(37, 99, 235, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ai-tool-plus-icon {
+  font-size: 44rpx;
+  font-weight: 600;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.ai-tool-hint {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-thumb-strip {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  min-width: 0;
+  align-items: center;
+}
+
+.ai-upload-item {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-placeholder);
+}
+
+.ai-upload-item--sm {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.ai-thumb {
+  width: 100%;
+  height: 100%;
+}
+
+.ai-del {
+  position: absolute;
+  top: 2rpx;
+  right: 2rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-del-x {
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
+.ai-send {
+  flex-shrink: 0;
+  min-width: 120rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  margin: 0;
+}
+
+.ai-send::after {
+  border: none;
+}
+
+.ai-dock-tip {
+  margin-top: var(--space-sm);
+  text-align: center;
+  line-height: 1.45;
+  padding: 0 var(--space-sm);
+}

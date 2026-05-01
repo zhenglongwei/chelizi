@@ -1,0 +1,67 @@
+<view class="page-root ai-page">
+  <scroll-view class="ai-scroll" scroll-y show-scrollbar="{{false}}">
+    <view class="ai-hero">
+      <view class="ai-hero-title fs-h3 fw-bold">今天车况怎样？</view>
+      <view class="ai-hero-sub text-muted fs-sm">事故外观、故障码、异响灯亮都可以说。照片与文字<text class="fw-medium text-secondary">任选其一或同时提供</text>，我来帮你做初步梳理（仅供参考）。</view>
+    </view>
+
+    <view class="ai-chips" wx:if="{{step !== 'pending'}}">
+      <view class="ai-chip" data-text="低速追尾，前保险杠凹陷变形" bindtap="onPromptChip">追尾 · 前杠</view>
+      <view class="ai-chip" data-text="发动机故障灯亮，怠速时车身抖动明显" bindtap="onPromptChip">故障灯 · 抖动</view>
+      <view class="ai-chip" data-text="右前轮过坑后异响，打方向时更明显" bindtap="onPromptChip">异响 · 转向</view>
+    </view>
+
+    <view class="card ai-card" wx:if="{{step === 'pending'}}">
+      <view class="ai-section-title fs-body fw-bold">分析中</view>
+      <view class="ai-progress">
+        <view class="ai-progress-bar">
+          <view class="ai-progress-fill" style="{{progressStyle}}"></view>
+        </view>
+        <text class="text-muted fs-cap">正在生成分析报告…你也可以稍后再来查看</text>
+      </view>
+    </view>
+
+    <view class="card ai-card" wx:if="{{step === 'done' && reportVm}}">
+      <view class="ai-section-title fs-body fw-bold">分析报告</view>
+      <accident-report-view vm="{{reportVm}}" />
+      <view class="ai-actions">
+        <button class="btn-brand ai-btn" bindtap="onGoQuote">去获取维修商报价</button>
+        <button class="btn-secondary ai-btn" bindtap="onCopySummary">复制报告要点</button>
+      </view>
+    </view>
+
+    <view class="ai-scroll-spacer"></view>
+  </scroll-view>
+
+  <view class="ai-dock">
+    <view class="ai-composer">
+      <textarea
+        class="ai-composer-input"
+        placeholder="说说车况或故障现象，也可点下方「+」加照片…"
+        value="{{userDescription}}"
+        bindinput="onDescInput"
+        maxlength="-1"
+        auto-height
+        show-confirm-bar="{{false}}"
+      />
+      <view class="ai-composer-toolbar">
+        <view class="ai-tool-plus" bindtap="onChooseImage">
+          <text class="ai-tool-plus-icon">+</text>
+        </view>
+        <text class="ai-tool-hint text-muted fs-cap" wx:if="{{!images || !images.length}}">照片可选，最多 8 张</text>
+        <view class="ai-thumb-strip" wx:else>
+          <view class="ai-upload-item ai-upload-item--sm" wx:for="{{images}}" wx:key="index">
+            <image class="ai-thumb" src="{{item}}" mode="aspectFill" />
+            <view class="ai-del" data-index="{{index}}" bindtap="onDelImage">
+              <text class="ai-del-x">×</text>
+            </view>
+          </view>
+        </view>
+        <button class="ai-send btn-brand" bindtap="onStartAnalyze" disabled="{{submitting}}">
+          {{submitting ? '…' : (step === 'done' ? '重试' : '分析')}}
+        </button>
+      </view>
+    </view>
+    <view class="ai-dock-tip text-muted fs-cap">请勿填写身份证、银行卡等敏感信息。结果仅供参考。</view>
+  </view>
+</view>
