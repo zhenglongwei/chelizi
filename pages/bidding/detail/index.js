@@ -18,6 +18,10 @@ const SELECTION_CONFIRM_CLAUSES = [
   { id: 'prequote_only_visual', text: '预报价仅基于照片与描述，到店检测后可能调整。' },
   { id: 'final_may_change', text: '若出现增项/减项，将以订单内“待确认报价”发起确认。' },
   { id: 'can_refuse_if_unexpected', text: '如金额明显超预期或无法接受，可拒绝维修并按规则处理。' },
+  {
+    id: 'disassembly_offline_ack',
+    text: '我已查看本卡/弹窗中的「拆解检测费」或免费承诺；到店后若产生费用，由我直接向门店线下支付，平台不代收，可按订单上传凭证留痕。'
+  }
 ];
 
 // 07 文档：用户可选排序
@@ -34,6 +38,34 @@ const SORT_OPTIONS = [
 function formatAmount(v) {
   if (v == null || v === '' || isNaN(v)) return '0.00';
   return Number(v).toFixed(2);
+}
+
+function buildDisassemblyDisplay(q) {
+  const waived = q.disassembly_fee_waived == 1 || q.disassembly_fee_waived === true;
+  const note = String(q.disassembly_fee_note || '').trim();
+  const hasRow =
+    q.disassembly_fee != null ||
+    waived ||
+    (q.disassembly_fee_waived != null && q.disassembly_fee_waived !== 0 && q.disassembly_fee_waived !== false) ||
+    !!note;
+  if (!hasRow) {
+    return { legacy: true, hasDisclosure: false, summaryLine: '', noteLine: '' };
+  }
+  if (waived) {
+    return {
+      legacy: false,
+      hasDisclosure: true,
+      summaryLine: '拆解检测费：本次免费（到店履约以双方约定为准）',
+      noteLine: note
+    };
+  }
+  const fee = formatAmount(q.disassembly_fee);
+  return {
+    legacy: false,
+    hasDisclosure: true,
+    summaryLine: `拆解检测费 ¥${fee}（到店后线下支付，平台不代收）`,
+    noteLine: note
+  };
 }
 
 function isExpireAtPassed(expireAt) {
@@ -315,7 +347,8 @@ Page({
           validityText,
           previewRewardText,
           hasRewardPreview: !!(q.preview_complexity_level || previewRewardText),
-          ownerVaDisplay: buildOwnerValueAddedDisplay(q.value_added_services || [])
+          ownerVaDisplay: buildOwnerValueAddedDisplay(q.value_added_services || []),
+          disassemblyDisplay: buildDisassemblyDisplay(q)
         };
       });
       if (sortType === 'price_asc' && list.length > 1) {

@@ -99,7 +99,10 @@ Page({
     reportHasAnalysisSection: false,
     reportVm: null,
     vaChosenLabels: [],
-    myQuoteVaDisplay: null
+    myQuoteVaDisplay: null,
+    disassembly_fee: '',
+    disassembly_fee_note: '',
+    disassembly_fee_waived: false
   },
 
   onLoad(options) {
@@ -137,6 +140,12 @@ Page({
       });
       const reportHasAnalysisSection = analysisHasReportSection(ar, reportHumanDisplay, reportDamagesDisplay);
       const myQuoteVaDisplay = buildOwnerValueAddedDisplay((res.my_quote && res.my_quote.value_added_services) || []);
+      if (res.my_quote) {
+        const mq = { ...res.my_quote };
+        const df = mq.disassembly_fee != null && mq.disassembly_fee !== '' ? parseFloat(mq.disassembly_fee) : null;
+        mq.disassembly_fee_display = df != null && !Number.isNaN(df) ? df.toFixed(2) : '';
+        res.my_quote = mq;
+      }
       this.setData({
         bidding: res,
         hasAiSuggestions: hasAi,
@@ -289,6 +298,19 @@ Page({
 
   onRemarkInput(e) {
     this.setData({ remark: (e.detail.value || '').trim() });
+  },
+
+  onDisassemblyWaivedChange(e) {
+    const waived = !!(e.detail && e.detail.value);
+    this.setData({ disassembly_fee_waived: waived, disassembly_fee: waived ? '' : this.data.disassembly_fee });
+  },
+
+  onDisassemblyFeeInput(e) {
+    this.setData({ disassembly_fee: (e.detail.value || '').trim() });
+  },
+
+  onDisassemblyNoteInput(e) {
+    this.setData({ disassembly_fee_note: e.detail.value || '' });
   },
 
   onQuoteValidityChange(e) {
@@ -499,6 +521,35 @@ Page({
       value_added_services.push({ name: n });
     }
 
+    const { disassembly_fee_waived, disassembly_fee, disassembly_fee_note } = this.data;
+    const noteTrim = String(disassembly_fee_note || '').trim();
+    if (noteTrim.length < 4) {
+      ui.showWarning('请填写拆解检测费说明（至少 4 个字）');
+      return;
+    }
+    if (!disassembly_fee_waived) {
+      const df = parseFloat(disassembly_fee);
+      if (Number.isNaN(df)) {
+        ui.showWarning('请填写拆解检测费（元），或勾选「本次拆解检测免费」');
+        return;
+      }
+      const cap = Math.round(amt * 0.1 * 100) / 100;
+      if (df < 50 || df > 500) {
+        ui.showWarning('拆解检测费须在 50～500 元之间');
+        return;
+      }
+      if (df > cap + 0.005) {
+        ui.showWarning('拆解检测费不得超过维修总价的 10%（当前上限约 ¥' + cap.toFixed(2) + '）');
+        return;
+      }
+    } else if (disassembly_fee && String(disassembly_fee).trim() !== '') {
+      const df = parseFloat(disassembly_fee);
+      if (!Number.isNaN(df) && df > 0.01) {
+        ui.showWarning('勾选免费时请勿填写拆检费金额');
+        return;
+      }
+    }
+
     this.setData({ submitting: true });
     try {
       await submitQuote({
@@ -508,6 +559,9 @@ Page({
         value_added_services,
         duration: dur,
         remark: remark || null,
+        disassembly_fee_waived: !!disassembly_fee_waived,
+        disassembly_fee: disassembly_fee_waived ? 0 : parseFloat(disassembly_fee),
+        disassembly_fee_note: noteTrim,
         // 有效期固定 24 小时；服务端将忽略该字段（保留兼容，避免旧包体报错）
         quote_validity_days: 1
       });

@@ -48,7 +48,7 @@
       <!-- 预报价参考（与预报价页一致：明显/可能/维修建议，仅供参考） -->
       <view class="bid-report card" wx:if="{{bidding && reportHasAnalysisSection}}">
         <view class="bid-report-head" bindtap="toggleReport">
-          <text class="fs-body fw-bold">预报价参考</text>
+          <text class="fs-body fw-bold">AI参考</text>
           <image class="bid-report-arrow" src="/images/icon/zhedie.png" mode="aspectFit" style="transform: rotate({{reportExpanded ? 180 : 0}}deg);"/>
         </view>
         <view class="bid-report-body" wx:if="{{reportExpanded}}">
@@ -134,6 +134,13 @@
                 <text wx:if="{{item.preview_complexity_level && item.previewRewardText}}"> · </text>
                 <text wx:if="{{item.previewRewardText}}">评价奖励预估约 ¥{{item.previewRewardText}}（税前）</text>
               </view>
+              <view class="bid-quote-disassembly fs-cap text-muted" wx:if="{{item.disassemblyDisplay && item.disassemblyDisplay.hasDisclosure}}">
+                <text class="bid-quote-disassembly-line">{{item.disassemblyDisplay.summaryLine}}</text>
+                <text wx:if="{{item.disassemblyDisplay.noteLine}}" class="bid-quote-disassembly-note">{{item.disassemblyDisplay.noteLine}}</text>
+              </view>
+              <view class="bid-quote-disassembly fs-cap text-muted" wx:elif="{{item.disassemblyDisplay && item.disassemblyDisplay.legacy}}">
+                <text class="bid-quote-disassembly-line">本报价未单独披露拆解检测费，到店请与门店确认。</text>
+              </view>
               <view class="bid-quote-items-wrap" wx:if="{{(item.items && item.items.length > 0) || (item.value_added_services && item.value_added_services.length > 0)}}">
                 <view class="bid-quote-items-btn" bindtap="onOpenQuoteSheet" data-index="{{index}}">
                   <text class="bid-quote-items-btn-text fs-body fw-medium">查看报价明细</text>
@@ -182,6 +189,13 @@
         <text class="bid-quote-sheet-title fs-body fw-bold">{{sheetQuote.shop_name}}</text>
         <text class="bid-quote-sheet-amount fs-h3 fw-bold text-gold">¥{{sheetQuote.amountText}}</text>
         <text class="fs-cap text-muted">工期 {{sheetQuote.duration}}天<text wx:if="{{sheetQuote.validityText}}"> · {{sheetQuote.validityText}}</text></text>
+        <view class="bid-sheet-disassembly fs-cap text-muted" wx:if="{{sheetQuote.disassemblyDisplay && sheetQuote.disassemblyDisplay.hasDisclosure}}">
+          <text>{{sheetQuote.disassemblyDisplay.summaryLine}}</text>
+          <text wx:if="{{sheetQuote.disassemblyDisplay.noteLine}}" class="bid-sheet-disassembly-note">{{sheetQuote.disassemblyDisplay.noteLine}}</text>
+        </view>
+        <view class="bid-sheet-disassembly fs-cap text-muted" wx:elif="{{sheetQuote.disassemblyDisplay && sheetQuote.disassemblyDisplay.legacy}}">
+          <text>本报价未单独披露拆解检测费，到店请与门店确认。</text>
+        </view>
         <text class="fs-cap text-muted bid-quote-sheet-preview" wx:if="{{sheetQuote.hasRewardPreview}}">
           <text wx:if="{{sheetQuote.preview_complexity_level}}">维修复杂度 {{sheetQuote.preview_complexity_level}}</text>
           <text wx:if="{{sheetQuote.preview_complexity_level && sheetQuote.previewRewardText}}"> · </text>
@@ -240,43 +254,52 @@
       </view>
     </view>
 
-    <!-- 选择确认弹窗 -->
+    <!-- 选择确认弹窗（中间区域 scroll-view，避免长内容顶出屏外无法阅读） -->
     <view class="bid-modal-mask" wx:if="{{showConfirm}}" bindtap="onCloseConfirm"></view>
-    <view class="bid-modal card" wx:if="{{showConfirm}}">
+    <view class="bid-modal card bid-modal-confirm" wx:if="{{showConfirm}}">
       <view class="bid-modal-title fs-h3 fw-bold">确认选择</view>
-      <view class="bid-modal-shop" wx:if="{{confirmQuote}}">
-        <text class="fs-body fw-bold">{{confirmQuote.shop_name}}</text>
-        <text class="fs-body text-gold">¥{{confirmQuote.amountText}}</text>
-        <text class="text-muted fs-cap">工期 {{confirmQuote.duration}}天（分项质保见明细）</text>
-        <text class="text-muted fs-cap" wx:if="{{confirmQuote.hasRewardPreview}}">
+      <scroll-view scroll-y class="bid-modal-scroll" show-scrollbar="{{true}}">
+        <view class="bid-modal-shop" wx:if="{{confirmQuote}}">
+          <text class="fs-body fw-bold">{{confirmQuote.shop_name}}</text>
+          <text class="fs-body text-gold">¥{{confirmQuote.amountText}}</text>
+          <text class="text-muted fs-cap">工期 {{confirmQuote.duration}}天（分项质保见明细）</text>
+          <text class="text-muted fs-cap" wx:if="{{confirmQuote.hasRewardPreview}}">
           <text wx:if="{{confirmQuote.preview_complexity_level}}">维修复杂度 {{confirmQuote.preview_complexity_level}}</text>
           <text wx:if="{{confirmQuote.preview_complexity_level && confirmQuote.previewRewardText}}"> · </text>
           <text wx:if="{{confirmQuote.previewRewardText}}">奖励预估约 ¥{{confirmQuote.previewRewardText}}（税前）</text>
         </text>
-        <view class="bid-modal-items" wx:if="{{confirmQuote.items && confirmQuote.items.length > 0}}">
-          <text class="fs-cap fw-bold">报价明细</text>
-          <view class="bid-modal-item" wx:for="{{confirmQuote.items}}" wx:key="index">
-            <text class="fs-sm">{{item.damage_part || item.name || item.item}}</text>
-            <view class="bid-modal-item-detail fs-sm text-muted">
-              <text>{{item.repair_type || '维修'}}</text>
-              <block wx:if="{{item.repair_type === '换' && item.parts_type}}">
-                <text> · </text>
-                <text class="bid-sheet-parts-link" catchtap="onOpenPartsHelp" data-type="{{item.parts_type}}">{{item.parts_type}}</text>
-              </block>
-              <text>{{item.price != null ? ' · ¥' + item.price : ''}}{{item.warranty_months != null ? ' · 质保' + item.warranty_months + '月' : ''}}</text>
+          <view class="bid-modal-disassembly fs-cap text-muted" wx:if="{{confirmQuote.disassemblyDisplay && confirmQuote.disassemblyDisplay.hasDisclosure}}">
+            <text class="bid-modal-disassembly-line">{{confirmQuote.disassemblyDisplay.summaryLine}}</text>
+            <text wx:if="{{confirmQuote.disassemblyDisplay.noteLine}}" class="bid-modal-disassembly-note">{{confirmQuote.disassemblyDisplay.noteLine}}</text>
+          </view>
+          <view class="bid-modal-disassembly fs-cap text-muted" wx:elif="{{confirmQuote.disassemblyDisplay && confirmQuote.disassemblyDisplay.legacy}}">
+            <text class="bid-modal-disassembly-line">本报价未单独披露拆解检测费，到店请与门店确认。</text>
+          </view>
+          <view class="bid-modal-items" wx:if="{{confirmQuote.items && confirmQuote.items.length > 0}}">
+            <text class="fs-cap fw-bold">报价明细</text>
+            <view class="bid-modal-item" wx:for="{{confirmQuote.items}}" wx:key="index">
+              <text class="fs-sm">{{item.damage_part || item.name || item.item}}</text>
+              <view class="bid-modal-item-detail fs-sm text-muted">
+                <text>{{item.repair_type || '维修'}}</text>
+                <block wx:if="{{item.repair_type === '换' && item.parts_type}}">
+                  <text> · </text>
+                  <text class="bid-sheet-parts-link" catchtap="onOpenPartsHelp" data-type="{{item.parts_type}}">{{item.parts_type}}</text>
+                </block>
+                <text>{{item.price != null ? ' · ¥' + item.price : ''}}{{item.warranty_months != null ? ' · 质保' + item.warranty_months + '月' : ''}}</text>
+              </view>
             </view>
           </view>
-        </view>
-        <view class="bid-modal-items" wx:if="{{confirmQuote.ownerVaDisplay && confirmQuote.ownerVaDisplay.show}}">
-          <text class="fs-cap fw-bold">增值服务</text>
-          <view class="bid-va-owner-wrap bid-va-owner-wrap--compact">
-            <text class="bid-va-owner-intro fs-body fw-bold">{{confirmQuote.ownerVaDisplay.intro}}</text>
-            <view class="bid-va-owner-block" wx:for="{{confirmQuote.ownerVaDisplay.blocks}}" wx:for-item="blk" wx:key="headline">
-              <text class="bid-va-owner-headline fs-body fw-medium">{{blk.headline}}</text>
-              <text class="bid-va-owner-line fs-cap text-muted" wx:for="{{blk.lines}}" wx:for-item="ln" wx:for-index="li" wx:key="li">· {{ln}}</text>
-            </view>
-            <view class="bid-va-disclaimer">
-              <text class="bid-va-disclaimer-line text-weak fs-cap" wx:for="{{confirmQuote.ownerVaDisplay.disclaimerLines}}" wx:for-item="dln" wx:for-index="di" wx:key="di">{{dln}}</text>
+          <view class="bid-modal-items" wx:if="{{confirmQuote.ownerVaDisplay && confirmQuote.ownerVaDisplay.show}}">
+            <text class="fs-cap fw-bold">增值服务</text>
+            <view class="bid-va-owner-wrap bid-va-owner-wrap--compact">
+              <text class="bid-va-owner-intro fs-body fw-bold">{{confirmQuote.ownerVaDisplay.intro}}</text>
+              <view class="bid-va-owner-block" wx:for="{{confirmQuote.ownerVaDisplay.blocks}}" wx:for-item="blk" wx:key="headline">
+                <text class="bid-va-owner-headline fs-body fw-medium">{{blk.headline}}</text>
+                <text class="bid-va-owner-line fs-cap text-muted" wx:for="{{blk.lines}}" wx:for-item="ln" wx:for-index="li" wx:key="li">· {{ln}}</text>
+              </view>
+              <view class="bid-va-disclaimer">
+                <text class="bid-va-disclaimer-line text-weak fs-cap" wx:for="{{confirmQuote.ownerVaDisplay.disclaimerLines}}" wx:for-item="dln" wx:for-index="di" wx:key="di">{{dln}}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -284,6 +307,7 @@
           <text class="fs-cap fw-medium">请您知悉</text>
           <text class="fs-cap text-muted bid-modal-prequote-line">· 当前为{{quoteNm.biddingPrequoteShort}}：到店后将有二次报价及{{quoteNm.finalPendingConfirm}}环节。</text>
           <text class="fs-cap text-muted bid-modal-prequote-line">· 配件类型含义见「报价与配件说明」页（竞价页顶部入口或明细中点击配件类型）。</text>
+          <text class="fs-cap text-muted bid-modal-prequote-line">· 拆解检测费见上方披露（若有）；到店后实际费用线下支付，平台不代收，订单内可按规则上传留痕凭证。</text>
         </view>
         <view class="bid-modal-confirm-block">
           <view class="bid-modal-dwell text-muted fs-cap" wx:if="{{confirmDwellLeft > 0}}">请阅读并停留 {{confirmDwellLeft}} 秒后方可确认</view>
@@ -294,12 +318,13 @@
           </view>
         </view>
         <text class="bid-modal-subscribe-hint text-muted fs-cap">确认后将申请订阅消息，以便接收维修方案更新等通知</text>
-      </view>
-      <view class="bid-modal-actions">
+        <view class="bid-modal-scroll-pad"/>
+      </scroll-view>
+      <view class="bid-modal-actions bid-modal-actions--confirm">
         <view class="btn-secondary bid-modal-cancel" bindtap="onCloseConfirm">取消</view>
         <button
           class="btn-primary bid-modal-ok"
-          disabled="{{selecting || confirmDwellLeft > 0 || !confirmChecks.prequote_only_visual || !confirmChecks.final_may_change || !confirmChecks.can_refuse_if_unexpected}}"
+          disabled="{{selecting || confirmDwellLeft > 0 || !confirmChecks.prequote_only_visual || !confirmChecks.final_may_change || !confirmChecks.can_refuse_if_unexpected || !confirmChecks.disassembly_offline_ack}}"
           loading="{{selecting}}"
           bindtap="onConfirmSelect"
         >确认</button>

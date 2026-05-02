@@ -436,16 +436,7 @@ Page({
     this._onSelectVehicleIndex(idx);
   },
 
-  /** 根据车牌号、车型、颜色等匹配车辆索引（车牌可能识别错误，综合匹配） */
-  onPlateMatchInput(e) {
-    const input = (e.detail.value || '').trim();
-    if (!input) return;
-    const { vehiclesList } = this.data;
-    const idx = this._matchVehicleByInput(input, vehiclesList);
-    if (idx >= 0) {
-      this._onSelectVehicleIndex(idx, { plateMatchInput: input });
-    }
-  },
+
 
   _normalizePlate(s) {
     return (s || '').replace(/[\s·\-]/g, '').toUpperCase();

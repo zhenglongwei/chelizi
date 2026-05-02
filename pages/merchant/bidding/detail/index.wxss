@@ -411,6 +411,69 @@
   line-height: 1.6;
 }
 
+.mqf-disassembly-section {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.mqf-disassembly-intro {
+  line-height: 1.55;
+}
+.mqf-disassembly-waive-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xs) 0;
+}
+.mqf-disassembly-fee-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.mqf-disassembly-fee-hint {
+  line-height: 1.45;
+}
+.mqf-disassembly-fee-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.mqf-disassembly-note-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.mqf-disassembly-textarea {
+  width: 100%;
+  min-height: 160rpx;
+  padding: var(--space-md);
+  box-sizing: border-box;
+  font-size: var(--fs-body);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-page);
+}
+
+.quoted-disassembly {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+  border: 1rpx solid var(--border-light);
+}
+.quoted-disassembly-title {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+}
+.quoted-disassembly-note {
+  display: block;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .quote-submit-btn {
   width: 100%;
   padding: var(--space-lg);

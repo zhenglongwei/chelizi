@@ -99,9 +99,7 @@
         <view class="damage-report-header">
           <text class="damage-report-title fs-h3 fw-bold">{{report ? '损失报告（AI）' : '发起竞价'}}</text>
           <view class="damage-report-actions-inline">
-            <button class="damage-report-share-btn" open-type="share" bindtap="onPrepareShare">
-              <text class="fs-body">分享报告</text>
-            </button>
+            
             <view class="damage-report-close" bindtap="onCloseReport">
               <text class="damage-report-close-text">关闭</text>
             </view>
@@ -113,9 +111,7 @@
           <text class="fs-body fw-bold">请选择您的车辆</text>
           <text class="text-muted fs-sm">根据车牌号、车型、颜色等综合判断（车牌号可能识别有误）</text>
         </view>
-        <view class="damage-plate-match" wx:if="{{vehiclesList.length > 1}}">
-          <input class="damage-input-inline" placeholder="输入车牌号或车型匹配" value="{{plateMatchInput}}" bindinput="onPlateMatchInput"/>
-        </view>
+
         <view class="damage-vehicle-tabs" wx:if="{{vehiclesList.length > 1}}">
           <view
             class="damage-vehicle-tab {{selectedVehicleIndex === index ? 'selected' : ''}}"
@@ -251,7 +247,7 @@
       <button class="damage-dock-primary btn-brand" bindtap="onCreateBidding" disabled="{{submitting}}">
         {{submitting ? '提交中...' : '发起竞价'}}
       </button>
-      <view class="damage-dock-tip text-muted fs-cap">发起竞价后，附近维修商会给你报价；你可以在“我的竞价”里查看进度</view>
+      <view class="damage-dock-primary"></view>
     </view>
   </block>
 </view>

@@ -1222,7 +1222,7 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
     } catch (_) {}
 
     const [quoted] = await pool.execute(
-      'SELECT quote_id, amount, items, value_added_services, duration, remark, quote_status, quote_valid_until FROM quotes WHERE bidding_id = ? AND shop_id = ?',
+      'SELECT quote_id, amount, disassembly_fee, disassembly_fee_waived, disassembly_fee_note, items, value_added_services, duration, remark, quote_status, quote_valid_until FROM quotes WHERE bidding_id = ? AND shop_id = ?',
       [id, shopId]
     );
 
@@ -1282,6 +1282,9 @@ app.get('/api/v1/merchant/bidding/:id', authenticateMerchant, async (req, res) =
       myQuote = {
         quote_id: q0.quote_id,
         amount: q0.amount,
+        disassembly_fee: q0.disassembly_fee,
+        disassembly_fee_waived: q0.disassembly_fee_waived,
+        disassembly_fee_note: q0.disassembly_fee_note,
         items: qItems,
         value_added_services: qVa,
         duration: q0.duration,
@@ -1317,6 +1320,7 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
   try {
     const { bidding_id, amount, items, value_added_services, duration, remark } = req.body;
     const shopId = req.shopId;
+    const { validateDisassemblyForQuote } = require('./utils/quote-disassembly-fee');
 
     if (!bidding_id || !amount || amount <= 0) {
       return res.status(400).json(errorResponse('请填写有效报价金额'));
@@ -1336,6 +1340,10 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
       return res.status(400).json(
         errorResponse(`分项金额合计 ¥${sanitized.sumPrice} 与总报价 ¥${amtNum} 不一致，请核对`)
       );
+    }
+    const disRes = validateDisassemblyForQuote(req.body, amtNum);
+    if (!disRes.ok) {
+      return res.status(400).json(errorResponse(disRes.error));
     }
     const war = sanitized.maxWarranty;
 
@@ -1381,9 +1389,22 @@ app.post('/api/v1/merchant/quote', authenticateMerchant, requireQualification, a
     const quoteId = 'QUO' + Date.now();
     // 有效期与 NOW() 比较一致，避免 toISOString(UTC) 写入 DATETIME 导致与库时区错位、提前判过期
     await pool.execute(
-      `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
-      [quoteId, bidding_id, shopId, amount, JSON.stringify(sanitized.items), JSON.stringify(value_added_services || []), dur, war, remark || null]
+      `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, disassembly_fee, disassembly_fee_waived, disassembly_fee_note, items, value_added_services, duration, warranty, remark, quote_valid_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+      [
+        quoteId,
+        bidding_id,
+        shopId,
+        amount,
+        disRes.fee,
+        disRes.waived ? 1 : 0,
+        disRes.note,
+        JSON.stringify(sanitized.items),
+        JSON.stringify(value_added_services || []),
+        dur,
+        war,
+        remark || null
+      ]
     );
 
     try {
@@ -4527,13 +4548,16 @@ if (process.env.NODE_ENV !== 'production') {
         const duration = 3 + (i % 3);
         const warranty = 12;
         await pool.execute(
-          `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark, quote_valid_until)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+          `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, disassembly_fee, disassembly_fee_waived, disassembly_fee_note, items, value_added_services, duration, warranty, remark, quote_valid_until)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
           [
             quoteId,
             bidding_id,
             shopId,
             amount,
+            0,
+            1,
+            '测试种子：本次到店拆解检测免费（仅用于联调/演示）',
             JSON.stringify([{ name: '钣金喷漆', price: amount * 0.6 }, { name: '工时费', price: amount * 0.4 }]),
             JSON.stringify([]),
             duration,
@@ -6234,9 +6258,22 @@ if (process.env.NODE_ENV !== 'production') {
       const quoteAmount = 3500;
       const quoteId = 'QUO' + Date.now();
       await pool.execute(
-        `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, items, value_added_services, duration, warranty, remark)
-         VALUES (?, ?, ?, ?, ?, ?, 3, 12, '模拟报价')`,
-        [quoteId, biddingId, shopId, quoteAmount, JSON.stringify([{ name: '钣金喷漆', price: 2100 }, { name: '工时费', price: 1400 }]), JSON.stringify([])]
+        `INSERT INTO quotes (quote_id, bidding_id, shop_id, amount, disassembly_fee, disassembly_fee_waived, disassembly_fee_note, items, value_added_services, duration, warranty, remark)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          quoteId,
+          biddingId,
+          shopId,
+          quoteAmount,
+          200,
+          0,
+          '拆前外观检查、举升初检底盘',
+          JSON.stringify([{ name: '钣金喷漆', price: 2100 }, { name: '工时费', price: 1400 }]),
+          JSON.stringify([]),
+          3,
+          12,
+          '模拟报价'
+        ]
       );
       addStep('4-生成报价', { shop_id: shopId, amount: quoteAmount });
 

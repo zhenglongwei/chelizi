@@ -457,7 +457,12 @@ async function selectQuote(pool, req) {
     return { success: false, error: id ? '维修厂ID不能为空' : '竞价ID不能为空', statusCode: 400 };
   }
   // 选厂“三重确认”强约束：停留 5 秒 + 勾选条款 + 生成确认书落库（服务端兜底，避免绕过客户端）
-  const REQUIRED_CLAUSE_IDS = ['prequote_only_visual', 'final_may_change', 'can_refuse_if_unexpected'];
+  const REQUIRED_CLAUSE_IDS = [
+    'prequote_only_visual',
+    'final_may_change',
+    'can_refuse_if_unexpected',
+    'disassembly_offline_ack'
+  ];
   const sc = selection_confirmation && typeof selection_confirmation === 'object' ? selection_confirmation : null;
   const dwellSeconds = sc && sc.dwell_seconds != null ? parseInt(sc.dwell_seconds, 10) : 0;
   const checkedIds = sc && Array.isArray(sc.checked_clause_ids) ? sc.checked_clause_ids.map((s) => String(s)) : [];
@@ -522,12 +527,20 @@ async function selectQuote(pool, req) {
   // 竞价流程：用户确认报价后自动接单，订单直接 status=1，无需服务商手动接单
   const items = typeof quote.items === 'string' ? JSON.parse(quote.items || '[]') : (quote.items || []);
   const valueAdded = typeof quote.value_added_services === 'string' ? JSON.parse(quote.value_added_services || '[]') : (quote.value_added_services || []);
-  const repairPlanJson = JSON.stringify({
+  const repairPlanObj = {
     items,
     value_added_services: valueAdded,
     amount: parseFloat(quote.amount) || 0,
     duration: parseInt(quote.duration, 10) || 3
-  });
+  };
+  const noteTrim = quote.disassembly_fee_note != null ? String(quote.disassembly_fee_note).trim() : '';
+  const waived = quote.disassembly_fee_waived === 1 || quote.disassembly_fee_waived === true;
+  if (noteTrim || waived || quote.disassembly_fee != null) {
+    repairPlanObj.disassembly_fee_waived = !!waived;
+    repairPlanObj.disassembly_fee = waived ? 0 : (parseFloat(quote.disassembly_fee) || 0);
+    repairPlanObj.disassembly_fee_note = noteTrim || null;
+  }
+  const repairPlanJson = JSON.stringify(repairPlanObj);
 
   const preQuoteSnapshotJson = repairPlanJson;
 

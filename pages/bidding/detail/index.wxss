@@ -28,6 +28,47 @@
   margin-top: var(--space-xs);
   line-height: 1.5;
 }
+.bid-quote-disassembly {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--primary-bg);
+  border-radius: var(--radius-sm);
+  border: 1rpx solid var(--border-light);
+}
+.bid-quote-disassembly-line {
+  display: block;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.bid-quote-disassembly-note {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.bid-sheet-disassembly {
+  margin-top: var(--space-sm);
+  line-height: 1.5;
+}
+.bid-sheet-disassembly-note {
+  display: block;
+  margin-top: var(--space-xs);
+  white-space: pre-wrap;
+}
+.bid-modal-disassembly {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+.bid-modal-disassembly-line {
+  display: block;
+  line-height: 1.45;
+}
+.bid-modal-disassembly-note {
+  display: block;
+  margin-top: var(--space-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
 .bid-quote-sheet-preview {
   display: block;
   margin-top: var(--space-xs);
@@ -557,6 +598,32 @@
   bottom: 100rpx;
   z-index: 999;
   padding: var(--space-xl);
+}
+/* 选厂确认：纵向 flex + 中间 scroll-view，避免明细/增值服务过长时无法滚动 */
+.bid-modal-confirm {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(88vh - env(safe-area-inset-bottom));
+  padding-bottom: var(--space-md);
+  overflow: hidden;
+}
+.bid-modal-confirm .bid-modal-title {
+  flex-shrink: 0;
+}
+.bid-modal-scroll {
+  height: 52vh;
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 1;
+}
+.bid-modal-scroll-pad {
+  height: var(--space-md);
+}
+.bid-modal-actions--confirm {
+  flex-shrink: 0;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1rpx solid var(--border-light);
 }
 .bid-modal-title {
   margin-bottom: var(--space-lg);

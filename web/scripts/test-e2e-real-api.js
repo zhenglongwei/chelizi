@@ -209,19 +209,23 @@ async function main() {
 
   // ========== 7. 服务商报价 ==========
   console.log('\n--- 7. 服务商报价 ---');
+  const quoteBodyBase = {
+    bidding_id: biddingId,
+    amount: 3600,
+    items: [
+      { damage_part: '钣金喷漆', repair_type: '修', price: 2200, warranty_months: 12 },
+      { damage_part: '工时费', repair_type: '修', price: 1400, warranty_months: 12 },
+    ],
+    value_added_services: [],
+    duration: 3,
+    remark: 'E2E测试报价',
+    disassembly_fee: 200,
+    disassembly_fee_waived: false,
+    disassembly_fee_note: '拆前外观检查、举升初检底盘（E2E）',
+  };
   let quoteRes = await request('POST', '/api/v1/merchant/quote', {
     headers: { Authorization: `Bearer ${merchantToken}` },
-    body: {
-      bidding_id: biddingId,
-      amount: 3600,
-      items: [
-        { damage_part: '钣金喷漆', repair_type: '修', price: 2200, warranty_months: 12 },
-        { damage_part: '工时费', repair_type: '修', price: 1400, warranty_months: 12 },
-      ],
-      value_added_services: [],
-      duration: 3,
-      remark: 'E2E测试报价',
-    },
+    body: quoteBodyBase,
   });
   if (!ok('7.1 提交报价', quoteRes)) {
     if (quoteRes.data?.message?.includes('未邀请')) {
@@ -232,17 +236,7 @@ async function main() {
         console.log('  ○ 7.2 通过 dev 将本店加入邀请名单，重试报价');
         quoteRes = await request('POST', '/api/v1/merchant/quote', {
           headers: { Authorization: `Bearer ${merchantToken}` },
-          body: {
-            bidding_id: biddingId,
-            amount: 3600,
-            items: [
-              { damage_part: '钣金喷漆', repair_type: '修', price: 2200, warranty_months: 12 },
-              { damage_part: '工时费', repair_type: '修', price: 1400, warranty_months: 12 },
-            ],
-            value_added_services: [],
-            duration: 3,
-            remark: 'E2E测试报价',
-          },
+          body: { ...quoteBodyBase },
         });
         if (!ok('7.3 提交报价', quoteRes)) process.exit(1);
       } else {
@@ -257,9 +251,31 @@ async function main() {
 
   // ========== 8. 用户选厂 ==========
   console.log('\n--- 8. 用户选厂 ---');
+  const clauseIds = [
+    'prequote_only_visual',
+    'final_may_change',
+    'can_refuse_if_unexpected',
+    'disassembly_offline_ack',
+  ];
+  const clausesTextMap = {
+    prequote_only_visual: '预报价仅基于照片与描述，到店检测后可能调整。',
+    final_may_change: '若出现增项/减项，将以订单内「待确认报价」发起确认。',
+    can_refuse_if_unexpected: '如金额明显超预期或无法接受，可拒绝维修并按规则处理。',
+    disassembly_offline_ack:
+      '我已查看本页展示的「拆解检测费」或免费承诺；到店后若产生费用，由我直接向门店线下支付，平台不代收，可按订单上传凭证留痕。',
+  };
   const selectRes = await request('POST', `/api/v1/bidding/${biddingId}/select`, {
     headers: { Authorization: `Bearer ${userToken}` },
-    body: { shop_id: shopId },
+    body: {
+      shop_id: shopId,
+      selection_confirmation: {
+        dwell_seconds: 5,
+        checked_clause_ids: clauseIds,
+        clauses_text_map: clausesTextMap,
+        client_confirmed_at_ms: Date.now(),
+        client_meta: { from: 'e2e_real_api' },
+      },
+    },
   });
   if (!ok('8.1 选择维修厂', selectRes)) process.exit(1);
   orderId = selectRes.data?.data?.order_id;
