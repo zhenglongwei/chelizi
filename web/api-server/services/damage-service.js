@@ -34,11 +34,32 @@ function makeTaskId(prefix) {
   return String(prefix || 'T').toUpperCase() + Date.now() + Math.floor(Math.random() * 1000);
 }
 
+/** 与 damage_analysis_tasks.queue_priority 一致：数值越大 worker 越优先拉取 */
+const DAMAGE_TASK_PRIORITY_INTERACTIVE = 100;
+const DAMAGE_TASK_PRIORITY_BACKGROUND = 10;
+
+/**
+ * 从创建请求体解析队列优先级（仅允许白名单，防滥用抬权）
+ * - 预报价页：`queue_priority: 10` 或 `analysis_queue: "background"`
+ * - 独立 AI 报告、OpenAPI、缺省：100
+ */
+function parseDamageTaskQueuePriority(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const tag = String(b.analysis_queue || b.analysisQueue || '').trim().toLowerCase();
+  if (tag === 'background' || tag === 'low' || tag === 'prequote') {
+    return DAMAGE_TASK_PRIORITY_BACKGROUND;
+  }
+  const n = parseInt(b.queue_priority ?? b.analysis_queue_priority, 10);
+  if (n === DAMAGE_TASK_PRIORITY_BACKGROUND) return DAMAGE_TASK_PRIORITY_BACKGROUND;
+  return DAMAGE_TASK_PRIORITY_INTERACTIVE;
+}
+
 /**
  * 创建定损报告（pending）并入队异步 AI 分析任务
  */
 async function createReportAndEnqueue(pool, req, baseUrl) {
   const { images, vehicle_info, user_description } = req.body || {};
+  const queuePriority = parseDamageTaskQueuePriority(req.body);
   const userId = req.userId;
   const vehicleInfo = vehicle_info && typeof vehicle_info === 'object' ? vehicle_info : {};
 
@@ -74,9 +95,9 @@ async function createReportAndEnqueue(pool, req, baseUrl) {
   );
 
   await pool.execute(
-    `INSERT INTO damage_analysis_tasks (task_id, report_id, status, attempts, last_error, locked_at, locked_by, created_at)
-     VALUES (?, ?, 'queued', 0, NULL, NULL, NULL, NOW())`,
-    [taskId, reportId]
+    `INSERT INTO damage_analysis_tasks (task_id, report_id, status, queue_priority, attempts, last_error, locked_at, locked_by, created_at)
+     VALUES (?, ?, 'queued', ?, 0, NULL, NULL, NULL, NOW())`,
+    [taskId, reportId, queuePriority]
   );
 
   return { success: true, data: { report_id: reportId } };

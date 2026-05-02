@@ -359,6 +359,8 @@ Page({
           brand: String(this.data.vehicleInfo?.brand || '').trim() || undefined,
           model: String(this.data.vehicleInfo?.model || '').trim() || undefined,
         },
+        // 与「独立 AI 分析报告」分流：预报价仅后台排队，worker 空闲时处理即可
+        analysis_queue: 'background',
       });
       // 创建竞价：定损异步执行（pending），待 worker 判断 relevant 后自动分发
       const { locationLat, locationLng } = this.data;

@@ -1104,6 +1104,7 @@ CREATE TABLE IF NOT EXISTS damage_analysis_tasks (
   task_id VARCHAR(32) NOT NULL UNIQUE COMMENT '任务ID',
   report_id VARCHAR(32) NOT NULL COMMENT '定损报告ID',
   status VARCHAR(20) NOT NULL DEFAULT 'queued' COMMENT 'queued/running/done/failed/manual_review',
+  queue_priority TINYINT UNSIGNED NOT NULL DEFAULT 100 COMMENT '100=用户立即查看报告优先 10=预报价等后台分析',
   attempts TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
   last_error VARCHAR(255) DEFAULT NULL COMMENT '最近一次错误（截断）',
   locked_at DATETIME DEFAULT NULL COMMENT '锁定时间（worker claim）',
@@ -1113,6 +1114,7 @@ CREATE TABLE IF NOT EXISTS damage_analysis_tasks (
 
   INDEX idx_report (report_id),
   INDEX idx_status_locked (status, locked_at),
+  INDEX idx_dat_status_priority_created (status, queue_priority, created_at),
   CONSTRAINT fk_dat_report FOREIGN KEY (report_id) REFERENCES damage_reports(report_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI定损异步分析任务';
 

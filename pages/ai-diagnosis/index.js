@@ -114,7 +114,8 @@ Page({
 
       const created = await createDamageReport({
         images: imageUrls,
-        user_description: desc || undefined
+        user_description: desc || undefined,
+        queue_priority: 100,
       });
       const reportId = created && created.report_id ? String(created.report_id) : '';
       if (!reportId) throw new Error('创建报告失败');

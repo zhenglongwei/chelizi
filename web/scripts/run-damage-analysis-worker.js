@@ -39,11 +39,11 @@ function sleep(ms) {
 
 async function claimOneTask(pool) {
   const [rows] = await pool.execute(
-    `SELECT id, task_id, report_id, status, attempts
+    `SELECT id, task_id, report_id, status, attempts, queue_priority
      FROM damage_analysis_tasks
      WHERE status IN ('queued','failed')
        AND (locked_at IS NULL OR locked_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE))
-     ORDER BY created_at ASC
+     ORDER BY queue_priority DESC, created_at ASC
      LIMIT 1`
   );
   if (!rows.length) return null;
