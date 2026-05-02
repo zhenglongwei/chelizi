@@ -13,6 +13,43 @@
 
 const { extractDamagePartFromAiSuggestionItem } = require('./extract-ai-damage-part');
 
+function stripVehiclePrefixFromText(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  // 常见前缀：(车辆1) / （车辆1） / 车辆1- / 车辆1：
+  return t
+    .replace(/^[（(]\s*车辆\s*\d+\s*[)）]\s*/i, '')
+    .replace(/^车辆\s*\d+\s*[-：]\s*/i, '')
+    .trim();
+}
+
+function normalizeGuidance(g) {
+  if (!g || typeof g !== 'object') return null;
+  const scriptRaw = typeof g.communication_script === 'string' ? g.communication_script.trim() : '';
+  // 读时兜底裁剪到 50-200（AI 端也会被 prompt 约束；这里保证历史/异常数据不炸 UI）
+  let script = scriptRaw.replace(/车辆\s*\d+|车\s*\d+/g, '').trim();
+  if (script.length > 200) script = script.slice(0, 200).trim();
+  if (script.length > 0 && script.length < 50) {
+    // 太短也保留（避免把有效话术清空），UI 端可提示“偏短”
+  }
+  const notesIn = Array.isArray(g.arrival_notes) ? g.arrival_notes : [];
+  const notes = notesIn.map(stripVehiclePrefixFromText).filter(Boolean);
+  return {
+    communication_script: script || undefined,
+    arrival_notes: notes,
+  };
+}
+
+function sanitizeHumanDisplay(hd) {
+  if (!hd || typeof hd !== 'object') return hd;
+  const out = { ...hd };
+  for (const k of ['obvious_damage', 'possible_damage', 'repair_advice']) {
+    const arr = Array.isArray(out[k]) ? out[k] : [];
+    out[k] = arr.map(stripVehiclePrefixFromText).filter(Boolean);
+  }
+  return out;
+}
+
 function damagePartTypeKey(d) {
   const part = String(d.part || '')
     .trim()
@@ -172,7 +209,9 @@ function mergeDuplicateVehiclesInArray(vehicles) {
       map.set(vid, {
         ...v,
         vehicleId: vid,
-        damages: dedupeDamagesWithinList(raw)
+        damages: dedupeDamagesWithinList(raw),
+        human_display: sanitizeHumanDisplay(v.human_display),
+        guidance: normalizeGuidance(v.guidance),
       });
     } else {
       const ex = map.get(vid);
@@ -186,6 +225,16 @@ function mergeDuplicateVehiclesInArray(vehicles) {
       if (v.plate_number && !ex.plate_number) ex.plate_number = v.plate_number;
       if (v.brand && !ex.brand) ex.brand = v.brand;
       if (v.model && !ex.model) ex.model = v.model;
+      if (!ex.human_display && v.human_display) ex.human_display = sanitizeHumanDisplay(v.human_display);
+      if (!ex.guidance && v.guidance) ex.guidance = normalizeGuidance(v.guidance);
+      if (ex.guidance && v.guidance) {
+        const g2 = normalizeGuidance(v.guidance);
+        if (g2 && g2.communication_script && !ex.guidance.communication_script) ex.guidance.communication_script = g2.communication_script;
+        if (g2 && Array.isArray(g2.arrival_notes) && g2.arrival_notes.length) {
+          const merged = [...new Set([...(ex.guidance.arrival_notes || []), ...g2.arrival_notes])];
+          ex.guidance.arrival_notes = merged;
+        }
+      }
     }
   }
   return order.map((id) => map.get(id));
@@ -228,7 +277,9 @@ function sanitizeAnalysisResultForRead(ar) {
   const repair_suggestions = dedupeRepairSuggestionsByItem(
     normalizeRepairSuggestionsStructured(ar.repair_suggestions || [])
   );
-  return { ...ar, damages: flat, repair_suggestions };
+
+  const vehicles = Array.isArray(ar.vehicles) ? mergeDuplicateVehiclesInArray(ar.vehicles) : undefined;
+  return { ...ar, damages: flat, repair_suggestions, vehicles };
 }
 
 module.exports = {

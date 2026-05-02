@@ -21,15 +21,6 @@
       </view>
     </view>
 
-    <view class="card ai-card" wx:if="{{step === 'done' && reportVm}}">
-      <view class="ai-section-title fs-body fw-bold">分析报告</view>
-      <accident-report-view vm="{{reportVm}}" />
-      <view class="ai-actions">
-        <button class="btn-brand ai-btn" bindtap="onGoQuote">去获取维修商报价</button>
-        <button class="btn-secondary ai-btn" bindtap="onCopySummary">复制报告要点</button>
-      </view>
-    </view>
-
     <view class="ai-scroll-spacer"></view>
   </scroll-view>
 

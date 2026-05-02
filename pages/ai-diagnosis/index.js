@@ -2,9 +2,7 @@
 const { getLogger } = require('../../utils/logger');
 const ui = require('../../utils/ui');
 const navigation = require('../../utils/navigation');
-const { getToken, uploadImage, createDamageReport, getDamageReport } = require('../../utils/api');
-const { buildAccidentReportViewModel } = require('../../utils/accident-report-presenter');
-
+const { getToken, uploadImage, createDamageReport } = require('../../utils/api');
 const logger = getLogger('AiDiagnosis');
 
 function isRemoteImageUrl(pathOrUrl) {
@@ -24,7 +22,6 @@ Page({
     analyzeProgress: 0,
     progressStyle: 'width: 0%',
     reportId: '',
-    reportVm: null,
     _lastCopiedText: ''
   },
 
@@ -121,25 +118,14 @@ Page({
       });
       const reportId = created && created.report_id ? String(created.report_id) : '';
       if (!reportId) throw new Error('创建报告失败');
-
-      const body = await this._pollReport(reportId);
-      const report = body && body.data ? body.data : null;
-      const vm = buildAccidentReportViewModel({
-        mode: 'miniapp',
-        analysis_result: report && report.analysis_result,
-        damages: report && report.damages,
-        human_display: report && report.analysis_result && report.analysis_result.human_display
-      });
+      // 不在本页等待轮询，直接跳转报告详情页（报告页会自行轮询刷新）
       this.setData({
         reportId,
-        reportVm: vm,
-        step: 'done',
-        analyzeProgress: 100,
-        progressStyle: 'width: 100%',
+        step: 'idle',
+        analyzeProgress: 0,
+        progressStyle: 'width: 0%',
         submitting: false
       });
-      ui.showSuccess('分析完成');
-      // 分析完成后进入「报告页」（历史页同入口），便于统一分享/后续动作
       wx.navigateTo({ url: '/pages/damage/report/index?id=' + encodeURIComponent(reportId) });
     } catch (err) {
       logger.error('AI分析失败', err);
@@ -148,48 +134,5 @@ Page({
     }
   },
 
-  async _pollReport(reportId) {
-    let tries = 0;
-    while (tries < 20) {
-      tries++;
-      const res = await getDamageReport(reportId);
-      const report = res && res.status !== undefined ? res : (res && res.report ? res.report : res);
-      const status = report && report.status != null ? report.status : null;
-      if (status === 1 || status === 3 || status === 4) {
-        return { data: report };
-      }
-      await new Promise((r) => setTimeout(r, tries < 8 ? 1200 : 2000));
-    }
-    return { data: await getDamageReport(reportId) };
-  },
-
-  onGoQuote() {
-    const reportId = String(this.data.reportId || '').trim();
-    if (reportId) {
-      try {
-        wx.setStorageSync('pendingReportId', reportId);
-        wx.removeStorageSync('pendingRecreateMode');
-      } catch (_) {}
-    }
-    navigation.switchTab('/pages/damage/upload/index');
-  },
-
-  onCopySummary() {
-    const vm = this.data.reportVm;
-    const sections = vm && Array.isArray(vm.sections) ? vm.sections : [];
-    const lines = [];
-    sections.forEach((sec) => {
-      if (!sec) return;
-      lines.push(String(sec.title || '').trim());
-      (sec.items || []).slice(0, 6).forEach((t) => lines.push('· ' + String(t || '').trim()));
-      lines.push('');
-    });
-    const text = lines.join('\n').trim() || '暂无可复制内容';
-    wx.setClipboardData({
-      data: text,
-      success: () => ui.showSuccess('已复制'),
-      fail: () => ui.showError('复制失败')
-    });
-  }
 });
 

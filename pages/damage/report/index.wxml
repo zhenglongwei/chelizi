@@ -23,9 +23,46 @@
         </view>
         <view class="notice-info" style="margin-top: var(--space-md);" wx:if="{{report && report.status === 0}}">
           <view class="notice-info__icon">i</view>
-          <view class="notice-info__body">报告正在生成中，你可以稍后再来查看；也可下拉/返回再进入刷新。</view>
+          <view class="notice-info__body">报告正在生成中，你可以稍后再来查看；也可在本页等待自动刷新。</view>
         </view>
+      </view>
+
+      <!-- 多车：Tab 切换 -->
+      <view class="report-card card" wx:if="{{vehiclesTabs && vehiclesTabs.length > 1}}">
+        <view class="report-tabs">
+          <view
+            class="report-tab {{selectedVehicleId === item.vehicleId ? 'selected' : ''}}"
+            wx:for="{{vehiclesTabs}}"
+            wx:key="vehicleId"
+            data-id="{{item.vehicleId}}"
+            bindtap="onVehicleTabTap"
+          >
+            <text class="fs-body fw-bold">{{item.title}}</text>
+            <text class="text-muted fs-sm" wx:if="{{item.subtitle}}">{{item.subtitle}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="report-card card">
+        <view class="fs-body fw-bold report-section-title">损失与维修</view>
         <accident-report-view vm="{{reportVm}}" />
+      </view>
+
+      <view class="report-card card" wx:if="{{communicationScript}}">
+        <view class="report-comm-header">
+          <view class="fs-body fw-bold report-section-title">到店沟通话术</view>
+          <view class="report-comm-copy text-primary fs-sm" bindtap="onCopyCommunication">复制</view>
+        </view>
+        <view class="report-comm-body fs-body text-primary">{{communicationScript}}</view>
+        <view class="report-fixed-hint text-muted fs-sm">仅供参考，最终仍应该以服务商的意见为准。</view>
+      </view>
+
+      <view class="report-card card" wx:if="{{arrivalNotes && arrivalNotes.length}}">
+        <view class="fs-body fw-bold report-section-title">到店注意事项</view>
+        <view class="report-note-item" wx:for="{{arrivalNotes}}" wx:key="*this">
+          <text class="fs-body">· {{item}}</text>
+        </view>
+        <view class="report-fixed-hint text-muted fs-sm">仅供参考，最终仍应该以服务商的意见为准。</view>
       </view>
       <view class="report-actions">
         <button class="report-btn btn-brand" bindtap="onGoBidding">

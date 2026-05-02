@@ -5,6 +5,15 @@ function normalizeList(arr) {
   return arr.map((x) => String(x || '').trim()).filter(Boolean);
 }
 
+function stripVehiclePrefixFromText(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  return t
+    .replace(/^[（(]\s*车辆\s*\d+\s*[)）]\s*/i, '')
+    .replace(/^车辆\s*\d+\s*[-：]\s*/i, '')
+    .trim();
+}
+
 function buildSectionsFromHumanDisplay(hd) {
   const obvious = normalizeList(hd && hd.obvious_damage);
   const possible = normalizeList(hd && hd.possible_damage);
@@ -33,6 +42,7 @@ function buildSectionsFromDamages(damages) {
       if (part && type) return part + '：' + type;
       return part || type || '';
     })
+    .map(stripVehiclePrefixFromText)
     .filter(Boolean);
   if (!lines.length) return [];
   return [
@@ -62,6 +72,11 @@ function buildAccidentReportViewModel(opts = {}) {
     hd = mergeHumanDisplayFromAnalysis(opts.analysis_result, focusId);
   }
   hd = hd && typeof hd === 'object' ? hd : {};
+  // 去掉多车时模型常见的“车辆1/车辆2”前缀，避免正文出现标签
+  for (const k of ['obvious_damage', 'possible_damage', 'repair_advice']) {
+    const arr = Array.isArray(hd[k]) ? hd[k] : [];
+    hd[k] = arr.map(stripVehiclePrefixFromText).filter(Boolean);
+  }
 
   let sections = buildSectionsFromHumanDisplay(hd);
   if (!hasAnyItems(sections)) {

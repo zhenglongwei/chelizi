@@ -5188,11 +5188,16 @@ function publicBaseUrlForUpload(req) {
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
     .split(',')[0]
     .trim();
-  // 非生产：始终以本次请求的 Host 为准（避免 .env 里 BASE_URL=https://simplewin.cn 时本机仍返回公网地址）
-  if (!isProd && host) {
+  const envForce = /^(1|true|yes)$/i.test(String(process.env.FORCE_UPLOAD_PUBLIC_BASE_URL || '').trim());
+  const fromEnv = (process.env.BASE_URL || '').trim().replace(/\/$/, '');
+
+  // 线上若 BASE_URL 与小程序实际请求域名不一致，会导致：
+  // 1) 小程序 <image> 域名不在白名单 → 图片无法展示
+  // 2) 千问拉图域名不一致/不可达 → 分析结果为空
+  // 因此：默认优先使用本次请求 Host（在 nginx 后需带 x-forwarded-proto），除非显式强制用 BASE_URL。
+  if (!envForce && host) {
     return `${proto}://${host}`;
   }
-  const fromEnv = (process.env.BASE_URL || '').trim().replace(/\/$/, '');
   if (fromEnv) return fromEnv;
   return `${proto}://${host || 'localhost:3000'}`;
 }

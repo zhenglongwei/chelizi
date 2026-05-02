@@ -24,3 +24,26 @@
 .report-btn { flex: 1; height: 88rpx; line-height: 88rpx; text-align: center; border-radius: var(--radius-md); margin: 0; }
 .report-btn-secondary { background: transparent; color: var(--text-primary); border: 2rpx solid var(--border); }
 .report-bottom-pad { height: var(--space-2xl); }
+
+.report-section-title { margin-bottom: var(--space-md); color: var(--text-primary); }
+
+.report-tabs { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.report-tab {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--bg-page);
+  border: 2rpx solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  max-width: 320rpx;
+}
+.report-tab.selected { background: rgba(37, 99, 235, 0.06); border-color: var(--primary); }
+
+.report-comm-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm); }
+.report-comm-copy { padding: 8rpx 16rpx; border-radius: 999rpx; background: rgba(37, 99, 235, 0.08); }
+.report-comm-body { line-height: 1.65; }
+
+.report-note-item { margin-top: var(--space-sm); color: var(--text-secondary); }
+
+.report-fixed-hint { margin-top: var(--space-md); line-height: 1.55; }

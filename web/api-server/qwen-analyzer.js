@@ -129,6 +129,7 @@ function buildDamagePrompt(userDescription, opts) {
   - **可能损伤**：仅列**照片有疑点**或**用户文字明确提出了待查现象**的项；无照片与文字依据则 \`[]\`；禁止写用户未提的电路老化、隐性 ECU 故障、进水泡水等。
   - **维修建议**：与上述及 repair_suggestions 一致，**禁止出现价格**；禁止无依据的「全面体检」套话。
   - **禁止**在三段中出现「用户陈述」「照片显示」等来源词。
+  - **多车约束（新增，强制）**：在 human_display、damageSummary、guidance 中 **禁止**写入「车辆1/车辆2/车1/车2」等标签；这些标签只用于 vehicleId 字段本身，展示端会用 Tab 切换车辆。
 
 `
     : '';
@@ -179,6 +180,10 @@ ${KNOWLEDGE_PROMPT_TEXT}
         "obvious_damage": ["面向车主的可读短句，写照片上能认定的损伤；无则 []"],
         "possible_damage": ["仅写照片疑点或用户文字已写明现象的待查项；无依据则 []；禁止电路老化/进水等无证据臆测"],
         "repair_advice": ["可读短句，写建议采取的检修或处理步骤；勿含价格；可与 repair_suggestions 对应"]
+      },
+      "guidance": {
+        "communication_script": "到店后沟通话术（必须 50-200 字；可直接复制给维修厂/前台；围绕本车损伤与待查点，不得出现“车辆1/车辆2”等标签）",
+        "arrival_notes": ["到店注意事项短句1", "短句2（建议 4-8 条；围绕本车损伤与待查点）"]
       }
     }
   ],
@@ -327,6 +332,8 @@ function mapQwenResponseToAnalysisResult(raw, reportId, vehicleInfo) {
   return {
     report_id: reportId,
     vehicle_info: vehicleInfoArray.length > 0 ? vehicleInfoArray : vehicleInfo || {},
+    // 新格式：保留 vehicles（含 guidance），用于前端按车 Tab 展示；历史数据缺失时前端会兜底
+    vehicles,
     damages,
     repair_suggestions: repairSuggestions,
     total_estimate: totalEstimate,
