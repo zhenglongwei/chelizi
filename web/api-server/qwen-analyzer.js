@@ -95,7 +95,7 @@ function buildDamageSystemPrompt(userDescription) {
 车主补充说明如下：
 「${short}」
 
-硬性要求：**禁止**仅凭「照片未见碰撞/划痕」就用空 damages 或「未见损伤」占位敷衍**已写在上面**的现象；必须在 vehicles[].damages、vehicles[].damageSummary、repair_suggestions 中**逐条回应用户文字里可识别的诉求**（可写推断部位、待查项、检测工艺，type 可用「待实车确认」等），但**每条须能对应到用户原话中的具体现象或部件**，不得为用户未提及的系统追加「预防性检测」类凑数项。**repair_suggestions 每条必须带齐** \`vehicle_id\`、\`damage_part\`、\`repair_method\`（见用户消息 JSON 说明）：\`damage_part\` 仅写部位简称；\`repair_method\` 仅 \`换\` 或 \`修\`；**同一 vehicle_id + damage_part 只能输出一条**，须与知识库修换规则及该车 damages 自洽，**禁止**对同一部位同时给「修」与「换」两条。每辆车必须输出 **human_display**（明显损伤 / 可能损伤 / 维修建议），**禁止**在三段中出现「用户陈述」「照片显示」等来源词。**不要**输出与 vehicles 语义重复的孤立顶层 damages 数组。请严格按用户消息中的 JSON 格式输出。`;
+硬性要求：**禁止**仅凭「照片未见碰撞/划痕」就用空 damages 或「未见损伤」占位敷衍**已写在上面**的现象；必须在 vehicles[].damages、vehicles[].damageSummary、repair_suggestions 中**逐条回应用户文字里可识别的诉求**（可写推断部位、待查项、检测工艺，type 可用「待实车确认」等），但**每条须能对应到用户原话中的具体现象或部件**，不得为用户未提及的系统追加「预防性检测」类凑数项。**repair_suggestions 每条必须带齐** \`vehicle_id\`、\`damage_part\`、\`repair_method\`（见用户消息 JSON 说明）：\`damage_part\` 仅写部位简称；\`repair_method\` 仅 \`换\` 或 \`修\`；**同一 vehicle_id + damage_part 只能输出一条**，须与知识库修换规则及该车 damages 自洽，**禁止**对同一部位同时给「修」与「换」两条。每辆车必须输出 **human_display**（明显损伤 / 可能损伤 / 维修建议），**禁止**在三段中出现「用户陈述」「照片显示」等来源词。**每车还须输出 vehicles[].guidance**（到店沟通话术、到店注意事项）：须在完成该车定损结论**之后**撰写，**仅展开本车已写明的损伤与待查点**，不得引入 damages 中未出现的臆断。**不要**输出与 vehicles 语义重复的孤立顶层 damages 数组。请严格按用户消息中的 JSON 格式输出。`;
 }
 
 function buildDamagePrompt(userDescription, opts) {
@@ -144,7 +144,7 @@ ${descBlock}${descPriorityBlock}
 ## 必须完成
 1. **信息源规则**：**无**用户文字 → 输出以**照片客观可见**为唯一依据，禁止编造任何照片不可见故障。**有**用户文字 → **照片与文字双源**，但**仅**输出双源中**各自能支撑**的项；**禁止**把行业常识当「用户没说也要写」的理由。
 2. **识别多张照片中的每一辆车（须按下面「内化分析顺序」执行，再落笔 JSON）**：用户通常会上传多张照片，每张可能包含一辆或多辆车的局部信息。请根据各照片中车辆的**外形、颜色、部位、损伤特征**等综合判断，将同一辆车在不同照片中的信息归并，确定每一辆独立车辆并编号（车辆1、车辆2…）。
-3. **每辆车必须输出**：车牌号（可见则识别，不可见或无法识别则为空字符串）、品牌/车型（能识别则填）、颜色、损伤部位列表、损伤类型、整体严重程度、本车 damageSummary（无用户文字时**只写照片结论**；有用户文字时写照片结论 + **仅用户已写明**的对应推断）、**human_display**（见上双源规则）。
+3. **每辆车必须输出**：车牌号（可见则识别，不可见或无法识别则为空字符串）、品牌/车型（能识别则填）、颜色、损伤部位列表、损伤类型、整体严重程度、本车 damageSummary（无用户文字时**只写照片结论**；有用户文字时写照片结论 + **仅用户已写明**的对应推断）、**human_display**（见上双源规则）、**guidance**（\`communication_script\` + \`arrival_notes\`；见「内化分析顺序」第 6 步；\`repair_related=true\` 时 vehicles 中**每一辆车**均须给出完整 guidance，**不得省略或填空占位**）。
 
 ## 内化分析顺序（不要求输出中间过程，但必须按此顺序思考后再写 JSON）
 与人工定损一致，避免**同一辆车、同一损失部位**在 damages / damagedParts / repair_suggestions 中重复出现：
@@ -153,6 +153,7 @@ ${descBlock}${descPriorityBlock}
 3. **归类与去重**：在已确定的每辆 \`vehicleId\` 下，把各张照片中属于该车的损伤**全部归入**该车的 \`damages\`、\`damagedParts\`、\`damageTypes\` 等；**同一车辆、同一零部件名称（如「前保险杠」「引擎盖」）在 damages 中只保留一条**：多张照片、多种表述角度须**合并**为一条（在 type、severity、area、material 中综合表述），**禁止**因换角度拍摄或措辞不同而拆成多条同 part；\`repair_suggestions\` 与 damages 一一对应部位，**同一 vehicle_id + damage_part 仅一条**（见上文结构化规则）。
 4. **车型价格档次**：根据 brand/model 推断该车官方指导价档次，用于奖励金车价系数。输出 vehicle_price_tier：low（10万及以下）、mid（10-30万）、high（30万以上）；同时输出 vehicle_price_range：该车型官方指导价区间（万元），如 [35, 45] 表示 35-45 万，取上限用于精确查表。常见品牌参考：沃尔沃 XC60 约 35-45 万、宝马 3 系约 30-40 万、丰田凯美瑞约 18-25 万。
 5. **损伤与维修方案**须参考以下知识库规则，明确修/换判定。知识库用于**已有损伤部位**的修换判断，**不得**用知识库条目替代「用户与照片的证据」，去虚构用户未描述、照片无显示的故障。
+6. **到店沟通与注意事项（每车必做，与上文同一证据链）**：在完成该车 \`damages\`、\`human_display\`、\`repair_suggestions\` 与 \`damageSummary\` 后，**基于已写定的结论**撰写 \`guidance.communication_script\` 与 \`guidance.arrival_notes\`。话术须帮助车主向维修厂/前台**说清楚本车已识别损伤、待查点、希望对方配合的检测顺序**；注意事项须为**可执行的短句**（如拆检前拍照留证、异响路试复现、涉及气囊/安全带须说明等），**须与本车已输出条目一致**，禁止与 damages 矛盾或引入前文未出现的臆断故障。
 
 ${KNOWLEDGE_PROMPT_TEXT}
 
@@ -209,7 +210,8 @@ ${KNOWLEDGE_PROMPT_TEXT}
 - damageSummary 须具体可执行，禁止「根据AI分析建议」等空泛用语；有用户描述时须点明**用户已写明的风险**与对应处置建议，**不得**混入用户未写的风险。
 - **repair_suggestions（结构化，强制）**：每条必有 \`vehicle_id\`、\`damage_part\`、\`repair_method\`（\`换\`|\`修\`）；\`item\` 建议为「车辆N-」+ \`damage_part\` 原文，与 vehicle_id、damage_part 一致，**不要**写成「车辆1-更换前保险杠（…）」这类把修换与损伤程度写进 item 的长句。可选 \`process_note\` 写工艺补充。**同一 vehicle_id + damage_part 严禁两条**（不得对同一部位同时输出修与换）。禁止任何价格、费用字段或文案。
 - vehicle_price_range 为 [min, max] 数组，单位万元，如沃尔沃 XC60 填 [35, 45]、丰田凯美瑞填 [18, 25]，无法推断时可为 null。
-- 每辆车的 **human_display** 必须与该车 damages / damageSummary、以及 **属于该车的** repair_suggestions（按 vehicle_id 归属）**一致**；三数组均允许为空数组，但不得缺失字段名。`;
+- 每辆车的 **human_display** 必须与该车 damages / damageSummary、以及 **属于该车的** repair_suggestions（按 vehicle_id 归属）**一致**；三数组均允许为空数组，但不得缺失字段名。
+- **guidance（强制）**：\`repair_related=true\` 时，vehicles 中**每一辆**须含完整 \`guidance\` 对象：\`communication_script\` 50–200 字；\`arrival_notes\` 建议 4–8 条非空短句。内容**仅复述或展开本车 JSON 中已有依据**（损伤、待查、修换倾向），**禁止**编造未在 damages / damageSummary / human_display 中出现的故障或维修项目；多车时**禁止**在话术与条目中写「车辆1/车辆2」等标签（用「本车」「当前这辆车」等或直述部位即可）。`;
 }
 
 /** 按车辆 ID 汇总维修建议费用（item 格式：车辆1-xxx 或 车辆1：xxx） */
