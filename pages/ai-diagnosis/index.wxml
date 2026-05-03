@@ -14,10 +14,12 @@
     <view class="card ai-card" wx:if="{{step === 'pending'}}">
       <view class="ai-section-title fs-body fw-bold">分析中</view>
       <view class="ai-progress">
-        <view class="ai-progress-bar">
+        <view class="ai-progress-bar ai-progress-bar--active">
           <view class="ai-progress-fill" style="{{progressStyle}}"></view>
         </view>
-        <text class="text-muted fs-cap">正在生成分析报告…你也可以稍后再来查看</text>
+        <text class="ai-phase-text fs-body text-primary">{{analyzePhaseText}}</text>
+        <text class="text-muted fs-cap" wx:if="{{waitElapsedSec > 0}}">已等待 {{waitElapsedSec}} 秒 · 完成后将自动打开报告</text>
+        <text class="text-muted fs-cap" wx:else>完成后将自动打开报告详情</text>
       </view>
     </view>
 
@@ -31,25 +33,26 @@
         placeholder="说说车况或故障现象，也可点下方「+」加照片…"
         value="{{userDescription}}"
         bindinput="onDescInput"
+        disabled="{{submitting}}"
         maxlength="-1"
         auto-height
         show-confirm-bar="{{false}}"
       />
       <view class="ai-composer-toolbar">
-        <view class="ai-tool-plus" bindtap="onChooseImage">
+        <view class="ai-tool-plus {{submitting ? 'ai-tool-plus--disabled' : ''}}" bindtap="onChooseImage">
           <text class="ai-tool-plus-icon">+</text>
         </view>
         <text class="ai-tool-hint text-muted fs-cap" wx:if="{{!images || !images.length}}">照片可选，最多 8 张</text>
         <view class="ai-thumb-strip" wx:else>
           <view class="ai-upload-item ai-upload-item--sm" wx:for="{{images}}" wx:key="index">
             <image class="ai-thumb" src="{{item}}" mode="aspectFill" />
-            <view class="ai-del" data-index="{{index}}" bindtap="onDelImage">
+            <view class="ai-del" wx:if="{{!submitting}}" data-index="{{index}}" bindtap="onDelImage">
               <text class="ai-del-x">×</text>
             </view>
           </view>
         </view>
         <button class="ai-send btn-brand" bindtap="onStartAnalyze" disabled="{{submitting}}">
-          {{submitting ? '…' : (step === 'done' ? '重试' : '分析')}}
+          {{submitting ? '分析中…' : '分析'}}
         </button>
       </view>
     </view>
