@@ -102,6 +102,16 @@
   margin-bottom: var(--space-lg);
 }
 
+.bidding-card-main-hover {
+  opacity: 0.92;
+}
+
+.bidding-list-hint {
+  display: block;
+  margin-top: var(--space-sm);
+  line-height: 1.55;
+}
+
 .bidding-card-thumb {
   flex-shrink: 0;
   width: 160rpx;

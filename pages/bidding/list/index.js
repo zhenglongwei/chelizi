@@ -16,6 +16,23 @@ function isExpireAtPassed(expireAt) {
   return t > 0 && t <= Date.now();
 }
 
+/** 列表页辅助说明：预报价/分发/定位与商户可见性关系 */
+function buildBiddingListHint(item) {
+  const drs = item.damage_report_status;
+  const dist = (item.distribution_status || '').trim();
+  const locOk = item.owner_location_ok !== false;
+  if (drs === 0) return '预报价处理中，请稍候';
+  if (drs === 4) return '预报价待人工审核，服务商暂不可报价';
+  if (drs === 3) return '预报价未通过，未向服务商分发';
+  if (!locOk) return '未获取到您的位置，周边服务商无法在本单待报价列表中看到（请授权定位后重新发起或联系客服）';
+  if (drs === 1 && !dist) return '等待系统向周边服务商分发，请稍候';
+  if (dist === 'pending') return '正在分发给周边服务商，请稍候';
+  if (dist === 'manual_review') return '分发待人工确认，服务商暂不可报价';
+  if (dist === 'rejected') return '本单未向服务商分发';
+  if (dist === 'done') return '已通知周边服务商，等待报价';
+  return '';
+}
+
 Page({
   data: {
     scrollStyle: 'height: 600px',
@@ -73,6 +90,8 @@ Page({
         const badgeVariant = isQuoteOngoing ? 'quote-ongoing' : 'quote-ended';
         const quoteCount = parseInt(item.quote_count, 10);
         const hasQuotes = !Number.isNaN(quoteCount) && quoteCount > 0;
+        const viewBtnText = hasQuotes ? '查看报价' : '查看详情';
+        const listHint = buildBiddingListHint(item);
         const canRecreate =
           (item.status === 1 || (item.status === 0 && timeExpired)) && !item.selected_shop_id;
         return {
@@ -83,6 +102,8 @@ Page({
           expire_at_fmt: formatDate(item.expire_at),
           badgeVariant,
           hasQuotes,
+          viewBtnText,
+          listHint,
           recreateBtnClass: hasQuotes ? 'bidding-btn-secondary' : 'bidding-btn-primary',
           canRecreate
         };

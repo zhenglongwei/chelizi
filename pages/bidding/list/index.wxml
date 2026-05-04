@@ -31,7 +31,7 @@
     <scroll-view wx:else class="bidding-scroll" scroll-y style="{{scrollStyle}}" bindscrolltolower="onLoadMore">
       <view class="bidding-list">
         <view class="bidding-card card" wx:for="{{list}}" wx:key="bidding_id">
-          <view class="bidding-card-main">
+          <view class="bidding-card-main" bindtap="onItemTap" data-id="{{item.bidding_id}}" hover-class="bidding-card-main-hover">
             <view class="bidding-card-thumb">
               <image class="bidding-thumb-img" src="/images/icon/compete_active.png" mode="aspectFit"/>
             </view>
@@ -53,17 +53,17 @@
                   <text class="bidding-meta-value">{{item.quote_count || 0}}家</text>
                 </view>
               </view>
+              <text wx:if="{{item.listHint}}" class="text-muted fs-cap bidding-list-hint">{{item.listHint}}</text>
             </view>
           </view>
           <view class="bidding-card-actions">
             <button
               plain
-              class="bidding-btn {{item.hasQuotes ? 'bidding-btn-primary' : 'bidding-btn-primary bidding-btn-primary--disabled'}}"
-              disabled="{{!item.hasQuotes}}"
+              class="bidding-btn bidding-btn-primary"
               data-id="{{item.bidding_id}}"
               catchtap="onViewQuotesTap"
               hover-class="bidding-btn-hover"
-            >查看报价</button>
+            >{{item.viewBtnText}}</button>
             <button
               wx:if="{{item.canRecreate}}"
               plain

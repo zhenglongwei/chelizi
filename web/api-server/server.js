@@ -2995,12 +2995,14 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
 
     const [list] = await pool.execute(
       `SELECT b.bidding_id, b.report_id, b.vehicle_info, b.status, b.expire_at, b.created_at,
-        b.selected_shop_id, b.range_km,
-        dr.analysis_result,
+        b.selected_shop_id, b.range_km, b.distribution_status,
+        dr.analysis_result, dr.status AS damage_report_status,
+        (u.latitude IS NOT NULL AND u.longitude IS NOT NULL) AS owner_location_ok,
         (SELECT COUNT(*) FROM quotes q WHERE q.bidding_id = b.bidding_id) as quote_count,
         (SELECT order_id FROM orders o WHERE o.bidding_id = b.bidding_id AND o.status != 4 LIMIT 1) as order_id
        FROM biddings b
        LEFT JOIN damage_reports dr ON b.report_id = dr.report_id
+       LEFT JOIN users u ON b.user_id = u.user_id
        ${where}
        ORDER BY b.created_at DESC
        LIMIT ${lim} OFFSET ${off}`,
@@ -3017,6 +3019,11 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
       try {
         vehicleInfo = typeof row.vehicle_info === 'string' ? JSON.parse(row.vehicle_info) : (row.vehicle_info || {});
       } catch (_) {}
+      const drs = row.damage_report_status != null ? parseInt(row.damage_report_status, 10) : null;
+      const ownerLoc =
+        row.owner_location_ok === 1 ||
+        row.owner_location_ok === true ||
+        row.owner_location_ok === '1';
       return {
         bidding_id: row.bidding_id,
         report_id: row.report_id,
@@ -3026,6 +3033,9 @@ app.get('/api/v1/user/biddings', authenticateToken, async (req, res) => {
         created_at: row.created_at,
         selected_shop_id: row.selected_shop_id,
         range_km: row.range_km,
+        distribution_status: row.distribution_status || null,
+        damage_report_status: Number.isNaN(drs) ? null : drs,
+        owner_location_ok: !!ownerLoc,
         quote_count: row.quote_count || 0,
         order_id: row.order_id || null,
         analysis_result: row.analysis_result
@@ -5462,12 +5472,23 @@ app.get('/api/v1/admin/damage-analysis/manual-review', authenticateAdmin, async 
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
     const [rows] = await pool.execute(
-      `SELECT dr.report_id, dr.user_id, dr.images, dr.user_description, dr.analysis_error, dr.analysis_attempts, dr.created_at,
-              t.task_id, t.status AS task_status, t.last_error, t.updated_at AS task_updated_at
+      `SELECT dr.report_id, dr.user_id, dr.images, dr.user_description, dr.analysis_error, dr.analysis_attempts,
+              dr.created_at AS report_created_at, dr.updated_at AS report_updated_at,
+              u.nickname AS user_nickname, u.phone AS user_phone,
+              t.task_id, t.status AS task_status, t.attempts AS task_attempts, t.last_error AS task_last_error,
+              t.created_at AS task_created_at, t.updated_at AS task_updated_at
        FROM damage_reports dr
-       LEFT JOIN damage_analysis_tasks t ON t.report_id = dr.report_id
+       LEFT JOIN users u ON u.user_id = dr.user_id
+       LEFT JOIN damage_analysis_tasks t
+         ON t.report_id = dr.report_id
+        AND t.id = (
+          SELECT t2.id FROM damage_analysis_tasks t2
+          WHERE t2.report_id = dr.report_id
+          ORDER BY t2.updated_at DESC, t2.id DESC
+          LIMIT 1
+        )
        WHERE dr.status = 4
-       ORDER BY dr.created_at DESC
+       ORDER BY COALESCE(t.updated_at, dr.updated_at) DESC, dr.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -5475,17 +5496,37 @@ app.get('/api/v1/admin/damage-analysis/manual-review', authenticateAdmin, async 
     const list = (rows || []).map((r) => {
       let images = [];
       try { images = typeof r.images === 'string' ? JSON.parse(r.images || '[]') : (r.images || []); } catch (_) {}
+      const nick = (r.user_nickname || '').trim();
+      const phone = (r.user_phone || '').trim();
+      const userDisplay = nick && phone ? `${nick}（${phone}）` : (nick || phone || r.user_id || '');
+      const taskErr = (r.task_last_error || '').trim();
+      const repErr = (r.analysis_error || '').trim();
+      const failureParts = [];
+      if (taskErr) failureParts.push(`任务：${taskErr}`);
+      if (repErr && repErr !== taskErr) failureParts.push(`报告：${repErr}`);
+      const failureReason = failureParts.length ? failureParts.join('；') : '（未记录具体原因，常见为模型超时、解析失败或网络异常）';
+      const enteredAt = r.task_updated_at || r.report_updated_at || r.report_created_at || null;
       return {
         report_id: r.report_id,
         user_id: r.user_id,
+        user_nickname: nick || null,
+        user_phone: phone || null,
+        user_display: userDisplay,
         images,
         user_description: r.user_description || '',
         analysis_attempts: r.analysis_attempts || 0,
-        analysis_error: r.analysis_error || r.last_error || '',
+        task_attempts: r.task_attempts != null ? parseInt(r.task_attempts, 10) : null,
+        analysis_error: repErr || taskErr || '',
+        failure_reason: failureReason,
+        entered_review_at: enteredAt,
+        report_created_at: r.report_created_at || null,
+        report_updated_at: r.report_updated_at || null,
         task_id: r.task_id || null,
         task_status: r.task_status || null,
-        created_at: r.created_at,
-        updated_at: r.task_updated_at || null,
+        task_created_at: r.task_created_at || null,
+        task_updated_at: r.task_updated_at || null,
+        created_at: r.report_created_at,
+        updated_at: r.task_updated_at || r.report_updated_at || null,
       };
     });
     res.json(successResponse({ list, total: cnt[0]?.c || 0, page, limit }));

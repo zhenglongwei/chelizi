@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Table, Button, message, Typography, Space, Image, Tag } from 'antd';
+import { Card, Table, Button, message, Typography, Space, Image, Tag, Tooltip } from 'antd';
+import dayjs from 'dayjs';
 import api from '../utils/api';
 
 const { Title, Text } = Typography;
@@ -7,10 +8,18 @@ const { Title, Text } = Typography;
 type Row = {
   report_id: string;
   user_id: string;
+  user_display?: string;
+  user_nickname?: string | null;
+  user_phone?: string | null;
   images: string[];
   user_description: string;
   analysis_attempts: number;
+  task_attempts?: number | null;
   analysis_error: string;
+  failure_reason?: string;
+  entered_review_at?: string | null;
+  report_created_at?: string | null;
+  task_updated_at?: string | null;
   created_at: string;
 };
 
@@ -69,8 +78,28 @@ export default function DamageAnalysisManualReview() {
     }
   };
 
+  const fmtTime = (s?: string | null) => {
+    if (!s) return '—';
+    const d = dayjs(s);
+    return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(s);
+  };
+
   const columns = useMemo(
     () => [
+      {
+        title: '入队时间',
+        dataIndex: 'entered_review_at',
+        key: 'entered_review_at',
+        width: 168,
+        render: (_: any, r: Row) => (
+          <div>
+            <div>{fmtTime(r.entered_review_at)}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              报告创建 {fmtTime(r.report_created_at || r.created_at)}
+            </Text>
+          </div>
+        ),
+      },
       {
         title: '报告ID',
         dataIndex: 'report_id',
@@ -80,15 +109,36 @@ export default function DamageAnalysisManualReview() {
       },
       {
         title: '用户',
-        dataIndex: 'user_id',
-        key: 'user_id',
-        width: 140,
-        render: (v: string) => <Text code>{v}</Text>,
+        key: 'user',
+        width: 200,
+        render: (_: any, r: Row) => (
+          <div>
+            <div>{r.user_display || r.user_id}</div>
+            <Text type="secondary" code style={{ fontSize: 12 }}>
+              {r.user_id}
+            </Text>
+          </div>
+        ),
+      },
+      {
+        title: '不通过原因',
+        key: 'failure_reason',
+        width: 320,
+        ellipsis: true,
+        render: (_: any, r: Row) => {
+          const full = (r.failure_reason || r.analysis_error || '').trim() || '—';
+          return (
+            <Tooltip title={<span style={{ whiteSpace: 'pre-wrap' }}>{full}</span>}>
+              <Text type="secondary">{full.length > 80 ? `${full.slice(0, 80)}…` : full}</Text>
+            </Tooltip>
+          );
+        },
       },
       {
         title: '图片',
         dataIndex: 'images',
         key: 'images',
+        width: 280,
         render: (urls: string[]) => {
           const list = Array.isArray(urls) ? urls : [];
           if (!list.length) return <Text type="secondary">无</Text>;
@@ -113,15 +163,19 @@ export default function DamageAnalysisManualReview() {
         },
       },
       {
-        title: '尝试/错误',
+        title: '尝试次数',
         key: 'err',
-        width: 260,
+        width: 120,
         render: (_: any, r: Row) => (
           <div>
             <div>
-              <Tag color="orange">{r.analysis_attempts || 0} 次</Tag>
+              <Tag color="orange">报告 {r.analysis_attempts || 0}</Tag>
             </div>
-            <Text type="secondary">{(r.analysis_error || '').slice(0, 120) || '—'}</Text>
+            {r.task_attempts != null && !Number.isNaN(r.task_attempts) ? (
+              <div style={{ marginTop: 4 }}>
+                <Tag>任务 {r.task_attempts}</Tag>
+              </div>
+            ) : null}
           </div>
         ),
       },
