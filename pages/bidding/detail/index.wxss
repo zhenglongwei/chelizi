@@ -18,7 +18,7 @@
 }
 .bid-empty-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: no-wrap;
   justify-content: center;
   gap: var(--space-md);
   margin-top: var(--space-xl);

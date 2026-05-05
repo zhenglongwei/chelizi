@@ -61,14 +61,6 @@
         <text class="bid-sort-label text-muted fs-cap">支付方式</text>
         <text class="bid-sort-value fs-body fw-medium">{{bidding.insurance_info && bidding.insurance_info.is_insurance ? '保险支付' : '自费'}}</text>
       </view>
-
-      <view class="card" wx:if="{{bidding.insurance_info && bidding.insurance_info.is_insurance}}">
-        <text class="text-muted fs-cap">理赔款一般由保险公司与维修厂结算，选厂时可重点看资质、案例、质保与店铺综合分，不必单纯追求最低价。</text>
-      </view>
-      <view class="card" wx:elif="{{bidding}}">
-        <text class="text-muted fs-cap">自费维修建议核对报价明细与质保；在维修厂搜索中可选「性价比优先」或「价格最低」排序。</text>
-      </view>
-
       <!-- 预报价轻量提示 + 跳转说明页 -->
       <view class="bid-edu-compact card">
         <view class="bid-edu-prequote-bar"/>
@@ -169,11 +161,9 @@
         <text class="text-muted fs-body" wx:else>暂无报价，请等待维修厂报价</text>
         <text class="text-muted fs-cap bid-expand-hint" wx:if="{{!isDistributionPending && bidding.invited_count > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">选定范围内服务商较少，建议扩大搜索范围后重新发起以获得更多报价</text>
         <view class="bid-empty-actions" wx:if="{{bidding.status === 0}}">
-          <button class="bid-empty-action-btn btn-secondary" bindtap="onRefreshQuotesEmpty">刷新报价</button>
-          <button class="bid-empty-action-btn btn-secondary" bindtap="onGoMyBiddings">我的竞价</button>
-          <button class="bid-empty-action-btn btn-secondary" bindtap="onBackToQuoteTab">返回报价</button>
+          <button class="bid-empty-action-btn btn-secondary" bindtap="onRefreshQuotesEmpty">刷新</button>
+          <button class="bid-empty-action-btn btn-secondary" bindtap="onGoMyBiddings">我的询价单</button>
         </view>
-        <text class="text-muted fs-cap bid-empty-poll-hint" wx:if="{{bidding.status === 0}}">下拉页面可立即刷新；无报价时每约 8 秒自动检查一次。</text>
       </view>
 
       <view class="bid-bottom-pad {{showOwnerActionsFooter ? 'bid-bottom-pad-owner-footer' : ''}}"></view>
