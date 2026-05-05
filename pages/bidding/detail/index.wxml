@@ -168,7 +168,12 @@
         <text class="text-muted fs-body" wx:elif="{{bidding.range_km > 0 && bidding.range_km < 100}}">您选择的范围内暂无服务商，建议扩大搜索范围（如选择全市）后重新发起竞价</text>
         <text class="text-muted fs-body" wx:else>暂无报价，请等待维修厂报价</text>
         <text class="text-muted fs-cap bid-expand-hint" wx:if="{{!isDistributionPending && bidding.invited_count > 0 && bidding.invited_count < 3 && bidding.range_km > 0 && bidding.range_km < 100}}">选定范围内服务商较少，建议扩大搜索范围后重新发起以获得更多报价</text>
-        
+        <view class="bid-empty-actions" wx:if="{{bidding.status === 0}}">
+          <button class="bid-empty-action-btn btn-secondary" bindtap="onRefreshQuotesEmpty">刷新报价</button>
+          <button class="bid-empty-action-btn btn-secondary" bindtap="onGoMyBiddings">我的竞价</button>
+          <button class="bid-empty-action-btn btn-secondary" bindtap="onBackToQuoteTab">返回报价</button>
+        </view>
+        <text class="text-muted fs-cap bid-empty-poll-hint" wx:if="{{bidding.status === 0}}">下拉页面可立即刷新；无报价时每约 8 秒自动检查一次。</text>
       </view>
 
       <view class="bid-bottom-pad {{showOwnerActionsFooter ? 'bid-bottom-pad-owner-footer' : ''}}"></view>

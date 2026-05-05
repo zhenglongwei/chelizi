@@ -13,7 +13,18 @@ Component({
   },
   methods: {
     onBack() {
-      wx.navigateBack();
+      // 从 Tab 页 redirectTo 子包页后栈深可能为 1，navigateBack 无效，需兜底
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+      if (pages.length > 1) {
+        wx.navigateBack({
+          delta: 1,
+          fail: () => {
+            wx.switchTab({ url: '/pages/index/index' });
+          }
+        });
+      } else {
+        wx.switchTab({ url: '/pages/index/index' });
+      }
     }
   },
   data: {

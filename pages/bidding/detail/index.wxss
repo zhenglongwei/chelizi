@@ -16,6 +16,24 @@
   margin-top: var(--space-md);
   display: block;
 }
+.bid-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+}
+.bid-empty-action-btn {
+  margin: 0;
+  font-size: var(--fs-cap);
+  padding: 0 var(--space-lg);
+  line-height: 2.2;
+}
+.bid-empty-poll-hint {
+  display: block;
+  margin-top: var(--space-lg);
+  line-height: 1.5;
+}
 .bid-expand-hint-wrap {
   padding: var(--space-md);
 }

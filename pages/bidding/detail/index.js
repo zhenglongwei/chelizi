@@ -145,6 +145,7 @@ Page({
   _timer: null,
   _notifiedTimer: null,
   _confirmTimer: null,
+  _quotesPollTimer: null,
 
   onLoad(options) {
     const id = (options.id || options.bidding_id || '').trim();
@@ -175,6 +176,66 @@ Page({
     if (this._timer) clearInterval(this._timer);
     if (this._notifiedTimer) clearInterval(this._notifiedTimer);
     if (this._confirmTimer) clearInterval(this._confirmTimer);
+    this._stopQuotesPoll();
+  },
+
+  onHide() {
+    this._stopQuotesPoll();
+  },
+
+  async onPullDownRefresh() {
+    try {
+      if (!this.data.biddingId || !getToken()) return;
+      await this.loadBidding('silent');
+    } catch (_) {
+      // loadBidding 内部已处理错误提示
+    } finally {
+      try {
+        wx.stopPullDownRefresh();
+      } catch (_) {}
+    }
+  },
+
+  _stopQuotesPoll() {
+    if (this._quotesPollTimer) {
+      clearInterval(this._quotesPollTimer);
+      this._quotesPollTimer = null;
+    }
+  },
+
+  /** 无报价且竞价进行中时定时拉取，避免页面「冻住」 */
+  _reconcileQuotesPoll() {
+    const { bidding, quotes, hasToken, isDistributionRejected } = this.data;
+    if (!hasToken || !bidding) {
+      this._stopQuotesPoll();
+      return;
+    }
+    if (bidding.status !== 0 || isDistributionRejected) {
+      this._stopQuotesPoll();
+      return;
+    }
+    const list = quotes || [];
+    if (list.length > 0) {
+      this._stopQuotesPoll();
+      return;
+    }
+    this._stopQuotesPoll();
+    this._quotesPollTimer = setInterval(() => {
+      if (!this.data.biddingId || !getToken()) {
+        this._stopQuotesPoll();
+        return;
+      }
+      if ((this.data.quotes || []).length > 0) {
+        this._stopQuotesPoll();
+        return;
+      }
+      const b = this.data.bidding;
+      if (!b || b.status !== 0 || this.data.isDistributionRejected) {
+        this._stopQuotesPoll();
+        return;
+      }
+      this.loadBidding('silent');
+    }, 8000);
   },
 
   _resetSelectionConfirmState() {
@@ -292,12 +353,13 @@ Page({
       });
       this.startCountdown();
       this.startNotifiedCountUpdate();
-      this.loadQuotes(sortType);
+      await this.loadQuotes(sortType);
       // 订阅消息须在用户手势下调用更可靠；自动请求在真机可能被拒，见 onTapSubscribeBiddingQuote
       if (bidding.status === 0) requestUserSubscribe('bidding_quote');
     } catch (err) {
       logger.error('加载竞价失败', err);
       this.setData({ loading: false, error: err.message || '加载失败' });
+      this._stopQuotesPoll();
     }
   },
 
@@ -362,6 +424,8 @@ Page({
     } catch (err) {
       logger.error('加载报价失败', err);
       ui.showError(err.message || '加载报价失败');
+    } finally {
+      this._reconcileQuotesPoll();
     }
   },
 
@@ -529,7 +593,28 @@ Page({
   },
 
   onBack() {
-    wx.navigateBack();
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      wx.navigateBack({ delta: 1, fail: () => navigation.switchTab('/pages/index/index') });
+    } else {
+      navigation.switchTab('/pages/index/index');
+    }
+  },
+
+  /** 无报价卡片区：手动刷新（与下拉刷新一致） */
+  onRefreshQuotesEmpty() {
+    if (!this.data.biddingId || !getToken()) return;
+    this.loadBidding('silent');
+  },
+
+  /** 回到 Tab「报价」预报价入口 */
+  onBackToQuoteTab() {
+    navigation.switchTab('/pages/damage/upload/index');
+  },
+
+  /** 我的竞价列表 */
+  onGoMyBiddings() {
+    navigation.navigateTo('/pages/bidding/list/index');
   },
 
   onEndBiddingFromDetail() {
