@@ -101,7 +101,6 @@ Page({
     vaChosenLabels: [],
     myQuoteVaDisplay: null,
     disassembly_fee: '',
-    disassembly_fee_note: '',
     disassembly_fee_waived: false
   },
 
@@ -309,9 +308,7 @@ Page({
     this.setData({ disassembly_fee: (e.detail.value || '').trim() });
   },
 
-  onDisassemblyNoteInput(e) {
-    this.setData({ disassembly_fee_note: e.detail.value || '' });
-  },
+
 
   onQuoteValidityChange(e) {
     const idx = parseInt(e.detail.value, 10);
@@ -521,12 +518,8 @@ Page({
       value_added_services.push({ name: n });
     }
 
-    const { disassembly_fee_waived, disassembly_fee, disassembly_fee_note } = this.data;
-    const noteTrim = String(disassembly_fee_note || '').trim();
-    if (noteTrim.length < 4) {
-      ui.showWarning('请填写拆解检测费说明（至少 4 个字）');
-      return;
-    }
+    const { disassembly_fee_waived, disassembly_fee } = this.data;
+   
     if (!disassembly_fee_waived) {
       const df = parseFloat(disassembly_fee);
       if (Number.isNaN(df)) {
@@ -538,10 +531,7 @@ Page({
         ui.showWarning('拆解检测费须在 50～500 元之间');
         return;
       }
-      if (df > cap + 0.005) {
-        ui.showWarning('拆解检测费不得超过维修总价的 10%（当前上限约 ¥' + cap.toFixed(2) + '）');
-        return;
-      }
+      
     } else if (disassembly_fee && String(disassembly_fee).trim() !== '') {
       const df = parseFloat(disassembly_fee);
       if (!Number.isNaN(df) && df > 0.01) {
@@ -561,7 +551,6 @@ Page({
         remark: remark || null,
         disassembly_fee_waived: !!disassembly_fee_waived,
         disassembly_fee: disassembly_fee_waived ? 0 : parseFloat(disassembly_fee),
-        disassembly_fee_note: noteTrim,
         // 有效期固定 24 小时；服务端将忽略该字段（保留兼容，避免旧包体报错）
         quote_validity_days: 1
       });

@@ -267,7 +267,7 @@ Page({
       } catch (_) {
         images = [];
       }
-      // 历史图为网络 URL：放入 imageUrls 预览；images 也用 URL（onSubmitPreQuote 已支持 isRemoteImageUrl 不再重复上传）
+    
       const imageUrls = images.filter(Boolean);
 
       const vi = (res && res.vehicle_info && typeof res.vehicle_info === 'object') ? res.vehicle_info : {};

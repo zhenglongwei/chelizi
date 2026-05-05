@@ -177,26 +177,15 @@
       <view class="mqf-disassembly-section">
         <text class="mqf-section-title fs-body fw-bold">拆解检测费（预报价披露）*</text>
         <text class="mqf-disassembly-intro text-muted fs-cap">与维修总价分列展示，保障车主选厂知情权；到店后线下支付，平台不代收。</text>
+        
+        <view wx:if="{{!disassembly_fee_waived}}" class="mqf-disassembly-fee-row">
+          <text class="mqf-extra-label text-muted fs-cap">金额（元）*</text>
+          <input class="mqf-extra-input mqf-disassembly-fee-input" type="digit" placeholder="如 200" value="{{disassembly_fee}}" bindinput="onDisassemblyFeeInput"/>
+        </view>  
         <view class="mqf-disassembly-waive-row">
           <switch checked="{{disassembly_fee_waived}}" bindchange="onDisassemblyWaivedChange"/>
           <text class="fs-cap text-muted">本店承诺本次到店拆解检测免费</text>
-        </view>
-        <view wx:if="{{!disassembly_fee_waived}}" class="mqf-disassembly-fee-row">
-          <text class="mqf-extra-label text-muted fs-cap">金额（元）*</text>
-          <text class="mqf-disassembly-fee-hint text-weak fs-cap">50～500，且不超过上方维修总价的 10%</text>
-          <input class="mqf-extra-input mqf-disassembly-fee-input" type="digit" placeholder="如 200" value="{{disassembly_fee}}" bindinput="onDisassemblyFeeInput"/>
-        </view>
-        <view class="mqf-disassembly-note-row">
-          <text class="mqf-extra-label text-muted fs-cap">费用说明*</text>
-          <textarea
-            class="mqf-disassembly-textarea"
-            placeholder="列明检测项目（如拆杠、举升查底盘）；若勾选免费，请写原因（如新店引流）"
-            value="{{disassembly_fee_note}}"
-            maxlength="600"
-            auto-height
-            bindinput="onDisassemblyNoteInput"
-          />
-        </view>
+        </view>     
       </view>
       <view class="quote-submit-tip">
         <text class="quote-submit-tip-text">预报价仅供参考，不代表最终服务与价格。预报价越接近最终成交价，在平台推荐时排名越靠前。</text>
@@ -217,11 +206,9 @@
     </view>
     <view class="quoted-disassembly fs-cap text-muted" wx:if="{{bidding.my_quote.disassembly_fee_waived == 1}}">
       <text class="quoted-disassembly-title fw-medium">拆解检测费：本次免费</text>
-      <text wx:if="{{bidding.my_quote.disassembly_fee_note}}" class="quoted-disassembly-note">{{bidding.my_quote.disassembly_fee_note}}</text>
     </view>
     <view class="quoted-disassembly fs-cap text-muted" wx:elif="{{bidding.my_quote.disassembly_fee != null && bidding.my_quote.disassembly_fee !== ''}}">
       <text class="quoted-disassembly-title fw-medium">拆解检测费 ¥{{bidding.my_quote.disassembly_fee_display}}</text>
-      <text wx:if="{{bidding.my_quote.disassembly_fee_note}}" class="quoted-disassembly-note">{{bidding.my_quote.disassembly_fee_note}}</text>
     </view>
     <view class="quoted-items" wx:if="{{bidding.my_quote.items && bidding.my_quote.items.length}}">
       <view class="quoted-item-block" wx:for="{{bidding.my_quote.items}}" wx:key="index">
