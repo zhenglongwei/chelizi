@@ -27,6 +27,11 @@
         </view>
       </view>
 
+      <view class="notice-info" wx:if="{{userPlateMismatchHint}}" style="margin-left: var(--page-padding-x); margin-right: var(--page-padding-x);">
+        <view class="notice-info__icon">!</view>
+        <view class="notice-info__body">{{userPlateMismatchHint}}</view>
+      </view>
+
       <!-- 多车：Tab 切换 -->
       <view class="report-card card" wx:if="{{vehiclesTabs && vehiclesTabs.length > 1}}">
         <view class="report-tabs">
@@ -41,6 +46,18 @@
             <text class="text-muted fs-sm" wx:if="{{item.subtitle}}">{{item.subtitle}}</text>
           </view>
         </view>
+      </view>
+
+      <!-- 折叠态：仅展示主车，提供「查看其它车辆」入口 -->
+      <view class="report-card card" wx:if="{{collapsedToFocus && vehiclesAllCount > 1}}">
+        <view class="report-section-title fs-body fw-bold">已锁定您的车辆</view>
+        <text class="text-muted fs-sm" style="display:block;margin-top:8rpx;">仅展示与您填写信息一致的车辆；如需查看 AI 识别出的其它车辆，可展开。</text>
+        <view class="report-comm-copy text-primary fs-sm" style="margin-top:16rpx;" bindtap="onToggleAllVehicles">查看其它车辆 ({{vehiclesAllCount - 1}})</view>
+      </view>
+
+      <!-- 展开态：在多车 tabs 下方提供「收起」入口 -->
+      <view class="report-card card" wx:if="{{!collapsedToFocus && expandedAllVehicles && focusVehicleId && vehiclesAllCount > 1}}">
+        <view class="report-comm-copy text-primary fs-sm" bindtap="onToggleAllVehicles">收起，仅展示您的车辆</view>
       </view>
 
       <view class="report-card card">

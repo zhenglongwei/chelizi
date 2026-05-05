@@ -1,6 +1,7 @@
 const { getUserOrderWarrantyCard, getMerchantOrderWarrantyCard } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
+const { formatBeijingDateTimeShort, formatBeijingDateTimeFull } = require('../../../utils/beijing-time');
 
 Page({
   data: {
@@ -42,9 +43,10 @@ Page({
       };
       const themeClass = themeMap[theme] || 'warranty-card--gold';
       const ws = data.warranty_start_at;
-      data.warranty_start_at_display = ws ? String(ws).slice(0, 10) : '';
+      const wsShort = formatBeijingDateTimeShort(ws);
+      data.warranty_start_at_display = wsShort ? wsShort.slice(0, 10) : '';
       const gen = data.generated_at;
-      data.generated_at_display = gen ? String(gen).slice(0, 19).replace('T', ' ') : '';
+      data.generated_at_display = formatBeijingDateTimeFull(gen);
       const useSampleItems = data.card_phase === 'style_preview';
       this.setData({ card: data, themeClass, useSampleItems, loading: false });
     } catch (e) {

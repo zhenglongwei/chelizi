@@ -72,6 +72,52 @@
         </view>
       </view>
 
+      <view class="damage-section card">
+        <view class="damage-section-title fs-body fw-bold">维修费用渠道<text class="text-error">*</text></view>
+        <text class="text-muted fs-sm" style="display:block;margin-bottom:12rpx;">请选择自费或走保险（必选），将影响服务商匹配与材料要求。</text>
+        <view class="damage-range-options">
+          <view
+            class="damage-range-item {{insuranceChoice === 'self' ? 'selected' : ''}}"
+            data-choice="self"
+            bindtap="onInsuranceChoiceTap"
+          >自费</view>
+          <view
+            class="damage-range-item {{insuranceChoice === 'insurance' ? 'selected' : ''}}"
+            data-choice="insurance"
+            bindtap="onInsuranceChoiceTap"
+          >走保险</view>
+        </view>
+
+        <view class="damage-insurance-block" wx:if="{{insuranceChoice === 'insurance'}}">
+          <view class="damage-insurance-tip">
+            <text class="damage-insurance-tip-icon">!</text>
+            <text class="damage-insurance-tip-text">请先选择事故类型，再选择对应保险公司</text>
+          </view>
+          <view class="damage-insurance-hint">
+            <text class="fs-body">{{accidentTypes[accidentTypeIndex].hint}}</text>
+            <text class="damage-insurance-main-note" wx:if="{{accidentTypes[accidentTypeIndex].mainNote}}">{{accidentTypes[accidentTypeIndex].mainNote}}</text>
+          </view>
+          <view class="damage-field-row-inline">
+            <text class="damage-label-inline fs-body">事故类型</text>
+            <picker mode="selector" range="{{accidentTypes}}" range-key="label" value="{{accidentTypeIndex}}" bindchange="onAccidentChange">
+              <view class="damage-input-inline damage-picker-inline">{{accidentTypes[accidentTypeIndex].label}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needSelf}}">
+            <text class="damage-label-inline fs-body">自家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyIndex}}" bindchange="onInsuranceCompanyChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyIndex]}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needOther}}">
+            <text class="damage-label-inline fs-body">对家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyOtherIndex}}" bindchange="onInsuranceCompanyOtherChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyOtherIndex]}}</view>
+            </picker>
+          </view>
+        </view>
+      </view>
+
     </scroll-view>
 
     <view class="damage-dock">
@@ -106,13 +152,26 @@
           </view>
         </view>
 
-        <!-- 多车时：提示选择车辆 -->
-        <view class="damage-vehicle-select-hint" wx:if="{{vehiclesList.length > 1}}">
+        <!-- 折叠态：仅展示主车，提示已锁定 -->
+        <view class="damage-vehicle-select-hint" wx:if="{{collapsedToFocus && vehiclesAllCount > 1}}">
+          <text class="fs-body fw-bold">已锁定您的车辆</text>
+          <text class="text-muted fs-sm">仅展示与您填写信息一致的车辆；如需查看 AI 识别出的其它车辆，可展开核对。</text>
+          <text class="text-primary fs-sm" style="display:block;margin-top:8rpx;" bindtap="onToggleAllVehicles">查看其它车辆 ({{vehiclesAllCount - 1}})</text>
+        </view>
+
+        <!-- 入口 A 进入但未声明车牌：引导填写 -->
+        <view class="damage-vehicle-select-hint" wx:if="{{declarePlatePromptHint}}">
+          <text class="fs-body fw-bold">请先填写您的车牌</text>
+          <text class="text-muted fs-sm">{{declarePlatePromptHint}}</text>
+        </view>
+
+        <!-- 多车展开态：提示选择车辆 -->
+        <view class="damage-vehicle-select-hint" wx:if="{{!collapsedToFocus && vehiclesList.length > 1}}">
           <text class="fs-body fw-bold">请选择您的车辆</text>
           <text class="text-muted fs-sm">根据车牌号、车型、颜色等综合判断（车牌号可能识别有误）</text>
         </view>
 
-        <view class="damage-vehicle-tabs" wx:if="{{vehiclesList.length > 1}}">
+        <view class="damage-vehicle-tabs" wx:if="{{!collapsedToFocus && vehiclesList.length > 1}}">
           <view
             class="damage-vehicle-tab {{selectedVehicleIndex === index ? 'selected' : ''}}"
             wx:for="{{vehiclesList}}"
@@ -125,10 +184,16 @@
           </view>
         </view>
 
+        <!-- 展开态且已识别主车：提供「收起」入口 -->
+        <view class="damage-vehicle-collapse-hint" wx:if="{{!collapsedToFocus && expandedAllVehicles && focusVehicleId && vehiclesAllCount > 1}}">
+          <text class="text-primary fs-sm" bindtap="onToggleAllVehicles">收起，仅展示您的车辆</text>
+        </view>
+
         <!-- 车辆信息（AI 完成后展示，识别结果预填，可改） -->
         <view class="damage-vehicle-info" wx:if="{{vehiclesList.length}}">
           <view class="damage-section-title fs-body fw-bold">车辆信息</view>
-          <text class="text-muted fs-sm" style="display:block;margin-bottom:12rpx;">品牌、车型等为 AI 识别结果，请核对；缺项请手工填写（发起竞价前须填车牌号）。车牌可手输；若已在资料中绑定车辆，点击车牌输入框时可在下方选择绑定车牌填入（与 AI 识别区分）。</text>
+          <text class="text-muted fs-sm" style="display:block;margin-bottom:12rpx;">品牌、车型等为 AI 识别结果，请核对；缺项请手工填写（发起竞价前须填车牌号）。发起竞价时以您填写的车牌为准（可与 AI 识别不一致）。若已在资料中绑定车辆，点击车牌输入框时可在下方选择绑定车牌填入。</text>
+          <view class="damage-plate-mismatch-hint text-warning fs-sm" wx:if="{{userDeclaredPlateHint}}">{{userDeclaredPlateHint}}</view>
           <view class="damage-plate-mismatch-hint text-warning fs-sm" wx:if="{{verifiedPlateMismatchHint}}">{{verifiedPlateMismatchHint}}</view>
           <view wx:for="{{vehiclesList}}" wx:key="index" wx:if="{{selectedVehicleIndex === index}}">
             <view class="damage-field-row-inline">
@@ -153,6 +218,53 @@
         </view>
 
         <accident-report-view vm="{{reportVm}}" />
+      </view>
+
+      <!-- 维修费用渠道：紧接在报告后，减少被默认自费漏选 -->
+      <view class="damage-section card" wx:if="{{reportId}}">
+        <view class="damage-section-title fs-body fw-bold">维修费用渠道<text class="text-error">*</text></view>
+        <text class="text-muted fs-sm" style="display:block;margin-bottom:12rpx;">请选择自费或走保险（必选），将影响服务商匹配与材料要求。</text>
+        <view class="damage-range-options">
+          <view
+            class="damage-range-item {{insuranceChoice === 'self' ? 'selected' : ''}}"
+            data-choice="self"
+            bindtap="onInsuranceChoiceTap"
+          >自费</view>
+          <view
+            class="damage-range-item {{insuranceChoice === 'insurance' ? 'selected' : ''}}"
+            data-choice="insurance"
+            bindtap="onInsuranceChoiceTap"
+          >走保险</view>
+        </view>
+
+        <view class="damage-insurance-block" wx:if="{{insuranceChoice === 'insurance'}}">
+          <view class="damage-insurance-tip">
+            <text class="damage-insurance-tip-icon">!</text>
+            <text class="damage-insurance-tip-text">请先选择事故类型，再选择对应保险公司</text>
+          </view>
+          <view class="damage-insurance-hint">
+            <text class="fs-body">{{accidentTypes[accidentTypeIndex].hint}}</text>
+            <text class="damage-insurance-main-note" wx:if="{{accidentTypes[accidentTypeIndex].mainNote}}">{{accidentTypes[accidentTypeIndex].mainNote}}</text>
+          </view>
+          <view class="damage-field-row-inline">
+            <text class="damage-label-inline fs-body">事故类型</text>
+            <picker mode="selector" range="{{accidentTypes}}" range-key="label" value="{{accidentTypeIndex}}" bindchange="onAccidentChange">
+              <view class="damage-input-inline damage-picker-inline">{{accidentTypes[accidentTypeIndex].label}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needSelf}}">
+            <text class="damage-label-inline fs-body">自家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyIndex}}" bindchange="onInsuranceCompanyChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyIndex]}}</view>
+            </picker>
+          </view>
+          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needOther}}">
+            <text class="damage-label-inline fs-body">对家保险公司</text>
+            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyOtherIndex}}" bindchange="onInsuranceCompanyOtherChange">
+              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyOtherIndex]}}</view>
+            </picker>
+          </view>
+        </view>
       </view>
 
       <!-- 询价位置（用于邀请附近服务商，必填） -->
@@ -192,51 +304,6 @@
             data-value="{{0}}"
             bindtap="onRangeTap"
           >全市</view>
-        </view>
-      </view>
-
-      <view class="damage-section card">
-        <view class="damage-section-title fs-body fw-bold">是否走保险</view>
-        <view class="damage-range-options">
-          <view
-            class="damage-range-item {{isInsurance === false ? 'selected' : ''}}"
-            data-value="{{false}}"
-            bindtap="onInsuranceTap"
-          >自费</view>
-          <view
-            class="damage-range-item {{isInsurance === true ? 'selected' : ''}}"
-            data-value="{{true}}"
-            bindtap="onInsuranceTap"
-          >走保险</view>
-        </view>
-
-        <view class="damage-insurance-block" wx:if="{{isInsurance}}">
-          <view class="damage-insurance-tip">
-            <text class="damage-insurance-tip-icon">!</text>
-            <text class="damage-insurance-tip-text">请先选择事故类型，再选择对应保险公司</text>
-          </view>
-          <view class="damage-insurance-hint">
-            <text class="fs-body">{{accidentTypes[accidentTypeIndex].hint}}</text>
-            <text class="damage-insurance-main-note" wx:if="{{accidentTypes[accidentTypeIndex].mainNote}}">{{accidentTypes[accidentTypeIndex].mainNote}}</text>
-          </view>
-          <view class="damage-field-row-inline">
-            <text class="damage-label-inline fs-body">事故类型</text>
-            <picker mode="selector" range="{{accidentTypes}}" range-key="label" value="{{accidentTypeIndex}}" bindchange="onAccidentChange">
-              <view class="damage-input-inline damage-picker-inline">{{accidentTypes[accidentTypeIndex].label}}</view>
-            </picker>
-          </view>
-          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needSelf}}">
-            <text class="damage-label-inline fs-body">自家保险公司</text>
-            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyIndex}}" bindchange="onInsuranceCompanyChange">
-              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyIndex]}}</view>
-            </picker>
-          </view>
-          <view class="damage-field-row-inline" wx:if="{{accidentTypes[accidentTypeIndex].needOther}}">
-            <text class="damage-label-inline fs-body">对家保险公司</text>
-            <picker mode="selector" range="{{insuranceCompanies}}" value="{{insuranceCompanyOtherIndex}}" bindchange="onInsuranceCompanyOtherChange">
-              <view class="damage-input-inline damage-picker-inline">{{insuranceCompanies[insuranceCompanyOtherIndex]}}</view>
-            </picker>
-          </view>
         </view>
       </view>
 

@@ -3,19 +3,9 @@ const { getToken, getUserOrders, getUserProductOrders } = require('../../../util
 const navigation = require('../../../utils/navigation');
 const ui = require('../../../utils/ui');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
+const { formatBeijingDateTimeShort, formatBeijingDateTimeFull } = require('../../../utils/beijing-time');
 
 const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认', 3: '已完成', 4: '已取消' };
-
-function formatDate(str) {
-  if (!str) return '';
-  const d = new Date(str);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function formatTime(s) {
-  if (!s) return '';
-  return typeof s === 'string' ? s.replace('T', ' ').slice(0, 19) : s;
-}
 
 Page({
   data: {
@@ -106,7 +96,7 @@ Page({
             : st === 'completed' && item.status === 3
               ? '已评价'
               : STATUS_MAP[item.status] || '未知',
-        created_at: formatDate(item.created_at)
+        created_at: formatBeijingDateTimeShort(item.created_at)
       }));
       const prevList = refresh ? [] : this.data.repairList;
       const newList = [...prevList, ...list];
@@ -148,7 +138,7 @@ Page({
         statusLabel:
           r.payment_status === 'paid' ? '已支付' : r.payment_status === 'pending_pay' ? '待支付' : r.payment_status,
         amountText: parseFloat(r.amount_total).toFixed(2),
-        paidAtText: formatTime(r.paid_at)
+        paidAtText: formatBeijingDateTimeFull(r.paid_at)
       }));
       this.setData({ productList, productLoading: false });
     } catch (e) {

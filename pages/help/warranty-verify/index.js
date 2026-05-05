@@ -1,6 +1,7 @@
 const { verifyWarrantyCard } = require('../../../utils/api');
 const { getNavBarHeight } = require('../../../utils/util');
 const ui = require('../../../utils/ui');
+const { formatBeijingDateTimeFull } = require('../../../utils/beijing-time');
 
 Page({
   data: {
@@ -34,7 +35,7 @@ Page({
     try {
       const data = await verifyWarrantyCard({ order_id: orderId, anti_fake_code: antiFakeCode });
       const gen = data.generated_at;
-      if (gen) data.generated_at = String(gen).slice(0, 19).replace('T', ' ');
+      if (gen) data.generated_at = formatBeijingDateTimeFull(gen);
       this.setData({
         loading: false,
         result: { ok: true, ...data }

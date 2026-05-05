@@ -20,6 +20,7 @@ const { QUOTE_LABELS, getShopNthQuoteLabel, getShopRoundStageCode } = require('.
 const { prependPreQuoteProposalToList } = require('../../../utils/quote-proposal-public-list');
 const { buildOwnerValueAddedDisplay } = require('../../../utils/value-added-services');
 const { computeOwnerRepairPhaseProgress } = require('../../../utils/repair-phase-progress');
+const { formatBeijingDateTimeShort, formatBeijingDateTimeFull } = require('../../../utils/beijing-time');
 
 const STATUS_MAP = { 0: '待接单', 1: '维修中', 2: '待确认完成', 3: '待评价', 4: '已取消' };
 
@@ -124,8 +125,7 @@ function normalizePlanSnapForDiff(snap) {
 /** 多轮报价协商记录（含相对上一轮的结构化差异） */
 function formatMilestoneForDisplay(m) {
   if (!m || typeof m !== 'object') return m;
-  let t = m.created_at != null ? String(m.created_at) : '';
-  if (t.length >= 16) t = t.slice(0, 16).replace('T', ' ');
+  const t = formatBeijingDateTimeShort(m.created_at);
   return { ...m, created_at_display: t };
 }
 
@@ -158,6 +158,8 @@ function buildQuoteProposalDisplayList(raw, preQuoteSnap) {
       status_text: p.status_text || '',
       submitted_at: p.submitted_at,
       resolved_at: p.resolved_at,
+      submitted_at_display: formatBeijingDateTimeFull(p.submitted_at) || p.submitted_at || '',
+      resolved_at_display: formatBeijingDateTimeFull(p.resolved_at) || p.resolved_at || '',
       amount: snap.amount,
       duration: snap.duration,
       supplement_note: (ev.supplement_note || '').trim(),

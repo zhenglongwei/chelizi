@@ -3,6 +3,7 @@ const ui = require('../../../../utils/ui');
 const navigation = require('../../../../utils/navigation');
 const { getMerchantToken, getMerchantProductOrders } = require('../../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../../utils/util');
+const { formatBeijingDateTimeFull } = require('../../../../utils/beijing-time');
 
 const logger = getLogger('MerchantProductOrders');
 
@@ -39,7 +40,7 @@ Page({
         paid: r.payment_status === 'paid',
         statusLabel: r.payment_status === 'paid' ? '已支付' : r.payment_status === 'pending_pay' ? '待支付' : r.payment_status,
         amountText: parseFloat(r.amount_total).toFixed(2),
-        createdText: r.created_at ? String(r.created_at).replace('T', ' ').slice(0, 19) : ''
+        createdText: formatBeijingDateTimeFull(r.created_at)
       }));
       this.setData({ list, loading: false });
     } catch (e) {

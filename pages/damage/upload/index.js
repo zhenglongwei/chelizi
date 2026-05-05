@@ -72,7 +72,8 @@ Page({
     reportVm: null,
     currentTotalEstimate: [0, 0],
     rangeKm: 5,
-    isInsurance: false,
+    /** 步骤 1/2 必选：'' | 'self' | 'insurance'，禁止默认自费 */
+    insuranceChoice: '',
     accidentTypes: ACCIDENT_TYPES,
     accidentTypeIndex: 0,
     insuranceCompanies: INSURANCE_COMPANIES,
@@ -87,6 +88,22 @@ Page({
     /** 资料中绑定车牌（去重），供聚焦车牌输入时选择填入，非 AI 识别 */
     boundPlateList: [],
     verifiedPlateMismatchHint: '',
+    /** 用户在上传/报告 meta 中声明的车牌（发起竞价以该为准，可与 AI 识别不一致） */
+    userDeclaredPlate: '',
+    /** AI 多车车牌均与用户声明不一致时的强提示 */
+    userDeclaredPlateHint: '',
+    /** 入口 A 进入 step2 但用户尚未声明车牌时的引导文案 */
+    declarePlatePromptHint: '',
+    /** AI 识别到的全部车辆（折叠态时仅在 vehiclesList 暴露主车） */
+    vehiclesListAll: [],
+    /** 全量车辆数量；> 1 且处于折叠态时显示「查看其它车辆」 */
+    vehiclesAllCount: 0,
+    /** 是否展开全部车辆；命中 focus 时默认 false */
+    expandedAllVehicles: true,
+    /** 是否折叠到主车（vehiclesAllCount > 1 且 vehiclesList.length === 1） */
+    collapsedToFocus: false,
+    /** 主车 vehicleId（折叠/展开切换依据） */
+    focusVehicleId: '',
     /** 聚焦车牌输入时展示绑定车牌快捷选择 */
     plateSuggestionVisible: false,
     shareToken: '',
@@ -155,7 +172,9 @@ Page({
       this._loadBoundPlateList().then((list) => {
         if (this.data.step !== 2) return;
         const hint = this._computeVerifiedPlateMismatchHint(this.data.vehiclesList, this.data.selectedVehicleIndex, list);
-        this.setData({ boundPlateList: list, verifiedPlateMismatchHint: hint });
+        const all = (this.data.vehiclesListAll && this.data.vehiclesListAll.length) ? this.data.vehiclesListAll : this.data.vehiclesList;
+        const userDeclaredPlateHint = this._computeUserDeclaredPlateHint(this.data.userDeclaredPlate, all);
+        this.setData({ boundPlateList: list, verifiedPlateMismatchHint: hint, userDeclaredPlateHint });
       });
     }
   },
@@ -168,9 +187,28 @@ Page({
       const res = await getLeadDamageReport(t);
       if (loadToken !== this._reportLoadToken) return;
       const ar = res.analysis_result || {};
-      const vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      const viMeta = res.vehicle_info && typeof res.vehicle_info === 'object' ? res.vehicle_info : {};
+      const userDeclaredPlate = String(viMeta.plate_number || '').trim();
+      const focusFromMeta = String(viMeta.analysis_focus_vehicle_id || '').trim();
+      const vehiclesListAll = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      const focusVehicleId = this._pickFocusVehicleId(vehiclesListAll, userDeclaredPlate, focusFromMeta);
+      const shouldCollapse = !!focusVehicleId && vehiclesListAll.length > 1;
+      const vehiclesList = shouldCollapse
+        ? vehiclesListAll.filter((v) => String(v.vehicleId || '').trim() === focusVehicleId)
+        : vehiclesListAll;
+      const selectedVehicleIndex = shouldCollapse
+        ? 0
+        : this._pickInitialVehicleIndex(vehiclesList, userDeclaredPlate);
+      const vehicleEdits = {};
+      if (userDeclaredPlate && vehiclesList.length) {
+        vehicleEdits[selectedVehicleIndex] = { plate_number: userDeclaredPlate };
+      }
       const boundPlateList = getToken() ? await this._loadBoundPlateList() : [];
-      const verifiedPlateMismatchHint = this._computeVerifiedPlateMismatchHint(vehiclesList, 0, boundPlateList);
+      const verifiedPlateMismatchHint = this._computeVerifiedPlateMismatchHint(vehiclesList, selectedVehicleIndex, boundPlateList);
+      const userDeclaredPlateHint = this._computeUserDeclaredPlateHint(userDeclaredPlate, vehiclesListAll);
+      const declarePlatePromptHint = !userDeclaredPlate && vehiclesListAll.length > 1
+        ? '请先在下方填写您的车牌，以锁定您的车辆，否则可能误锁他人车辆。'
+        : '';
       const damages = ar.damages || [];
       const totalEst = ar.total_estimate || [0, 0];
       const report = {
@@ -185,8 +223,17 @@ Page({
         reportId: res.report_id,
         report,
         vehiclesList,
-        selectedVehicleIndex: 0,
-        vehicleEdits: {},
+        vehiclesListAll,
+        vehiclesAllCount: vehiclesListAll.length,
+        expandedAllVehicles: !shouldCollapse,
+        collapsedToFocus: shouldCollapse,
+        focusVehicleId,
+        selectedVehicleIndex,
+        vehicleEdits,
+        userDeclaredPlate,
+        userDeclaredPlateHint,
+        declarePlatePromptHint,
+        insuranceChoice: '',
         boundPlateList,
         verifiedPlateMismatchHint,
         plateSuggestionVisible: false,
@@ -196,7 +243,7 @@ Page({
         shareToken: '',
         leadToken: t,
       }, () => {
-        this._updateVehicleDisplay(0);
+        this._updateVehicleDisplay(selectedVehicleIndex);
         this._loadBiddingLocation();
       });
     } catch (err) {
@@ -235,6 +282,11 @@ Page({
         report: null,
         reportId: '',
         vehiclesList: [],
+        vehiclesListAll: [],
+        vehiclesAllCount: 0,
+        expandedAllVehicles: true,
+        collapsedToFocus: false,
+        focusVehicleId: '',
         selectedVehicleIndex: 0,
         vehicleEdits: {},
         plateMatchInput: '',
@@ -248,6 +300,10 @@ Page({
         imageUrls,
         userDescription: (res.user_description || '').trim(),
         vehicleInfo,
+        userDeclaredPlate: '',
+        userDeclaredPlateHint: '',
+        declarePlatePromptHint: '',
+        insuranceChoice: '',
       });
       ui.showSuccess('已带入历史材料，可补充后重新提交');
       this._loadDailyQuota();
@@ -338,6 +394,11 @@ Page({
       ui.showWarning('请先填写车牌号');
       return;
     }
+    const insBuilt = this._buildInsuranceInfoFromForm();
+    if (insBuilt.error) {
+      ui.showWarning(insBuilt.error);
+      return;
+    }
     this.setData({ analyzing: true, analyzeProgress: 0, progressStyle: 'width: 0%' });
     try {
       const progressStep = 60 / images.length;
@@ -386,7 +447,7 @@ Page({
       const biddingRes = await createBidding({
         report_id: res.report_id,
         range: 5,
-        insurance_info: { is_insurance: false },
+        insurance_info: insBuilt.info,
         vehicle_info: {
           plate_number: plate,
           brand: String(this.data.vehicleInfo?.brand || '').trim() || undefined,
@@ -411,9 +472,48 @@ Page({
     this.setData({ rangeKm: isNaN(v) ? 0 : v });
   },
 
-  onInsuranceTap(e) {
-    const v = e.currentTarget.dataset.value;
-    this.setData({ isInsurance: v === 'true' || v === true });
+  onInsuranceChoiceTap(e) {
+    const c = String(e.currentTarget.dataset.choice || '').trim();
+    if (c !== 'self' && c !== 'insurance') return;
+    this.setData({ insuranceChoice: c });
+  },
+
+  /**
+   * 构建竞价 insurance_info；未选自费/保险或走保险但保险公司未选全时返回 error。
+   */
+  _buildInsuranceInfoFromForm() {
+    const {
+      insuranceChoice,
+      accidentTypes,
+      accidentTypeIndex,
+      insuranceCompanies,
+      insuranceCompanyIndex,
+      insuranceCompanyOtherIndex
+    } = this.data;
+    if (insuranceChoice !== 'self' && insuranceChoice !== 'insurance') {
+      return { error: '请选择「自费」或「走保险」' };
+    }
+    if (insuranceChoice === 'self') {
+      return { info: { is_insurance: false } };
+    }
+    const accType = accidentTypes[accidentTypeIndex];
+    const selfOk = !accType?.needSelf || insuranceCompanyIndex > 0;
+    const otherOk = !accType?.needOther || insuranceCompanyOtherIndex > 0;
+    if (!selfOk || !otherOk) {
+      return { error: '请选择对应的保险公司' };
+    }
+    const selfCompany = insuranceCompanyIndex > 0 ? insuranceCompanies[insuranceCompanyIndex] : '';
+    const otherCompany = insuranceCompanyOtherIndex > 0 ? insuranceCompanies[insuranceCompanyOtherIndex] : '';
+    const needBoth = accType?.needSelf && accType?.needOther;
+    return {
+      info: {
+        is_insurance: true,
+        accident_type: accType?.value || 'single',
+        insurance_company: accType?.needSelf ? selfCompany : otherCompany,
+        insurance_company_other: needBoth ? (accType?.needSelf ? otherCompany : selfCompany) : undefined,
+        main_responsible: accType?.mainNote || undefined
+      }
+    };
   },
 
   onAccidentChange(e) {
@@ -496,13 +596,67 @@ Page({
       this._plateBlurTimer = null;
     }
     this._updateVehicleDisplay(idx);
+    const userPlate = String(this.data.userDeclaredPlate || '').trim();
+    const vehicleEdits = { ...this.data.vehicleEdits };
+    if (userPlate) {
+      vehicleEdits[idx] = { ...(vehicleEdits[idx] || {}), plate_number: userPlate };
+    }
     const hint = this._computeVerifiedPlateMismatchHint(this.data.vehiclesList, idx, this.data.boundPlateList);
+    const userDeclaredPlateHint = this._computeUserDeclaredPlateHint(this.data.userDeclaredPlate, this.data.vehiclesListAll || this.data.vehiclesList);
     this.setData({
       selectedVehicleIndex: idx,
+      vehicleEdits,
       verifiedPlateMismatchHint: hint,
+      userDeclaredPlateHint,
       plateSuggestionVisible: false,
       ...extra
     });
+  },
+
+  /** 折叠 ↔ 展开 step2 的全部车辆 */
+  onToggleAllVehicles() {
+    const { expandedAllVehicles, focusVehicleId, vehiclesListAll, vehicleEdits, userDeclaredPlate } = this.data;
+    if (!Array.isArray(vehiclesListAll) || vehiclesListAll.length <= 1) return;
+    if (expandedAllVehicles) {
+      // 展开 → 折叠：仅保留主车
+      if (!focusVehicleId) return;
+      const matchedIdx = vehiclesListAll.findIndex((v) => String(v.vehicleId || '').trim() === focusVehicleId);
+      if (matchedIdx < 0) return;
+      const collapsedList = [vehiclesListAll[matchedIdx]];
+      const newEdits = {};
+      const userPlate = String(userDeclaredPlate || '').trim();
+      const prevEdit = vehicleEdits && vehicleEdits[matchedIdx] ? vehicleEdits[matchedIdx] : {};
+      newEdits[0] = { ...prevEdit };
+      if (userPlate) newEdits[0].plate_number = userPlate;
+      this.setData({
+        vehiclesList: collapsedList,
+        selectedVehicleIndex: 0,
+        vehicleEdits: newEdits,
+        expandedAllVehicles: false,
+        collapsedToFocus: true,
+      }, () => {
+        this._updateVehicleDisplay(0);
+      });
+    } else {
+      // 折叠 → 展开：恢复全量
+      const matchedIdx = vehiclesListAll.findIndex((v) => String(v.vehicleId || '').trim() === focusVehicleId);
+      const restoredIdx = matchedIdx >= 0 ? matchedIdx : 0;
+      // 把折叠态对主车的编辑迁移到展开态对应索引
+      const newEdits = {};
+      const collapsedEdit = vehicleEdits && vehicleEdits[0] ? vehicleEdits[0] : {};
+      if (collapsedEdit && Object.keys(collapsedEdit).length) {
+        newEdits[restoredIdx] = { ...collapsedEdit };
+      }
+      this.setData({
+        vehiclesList: vehiclesListAll,
+        selectedVehicleIndex: restoredIdx,
+        vehicleEdits: newEdits,
+        expandedAllVehicles: true,
+        collapsedToFocus: false,
+      }, () => {
+        this._updateVehicleDisplay(restoredIdx);
+      });
+    }
   },
 
   onReportPlateFocus() {
@@ -550,6 +704,57 @@ Page({
       if (vDesc && inputDesc && (vDesc.includes(inputDesc) || inputDesc.includes(vDesc))) return i;
     }
     return -1;
+  },
+
+  /** 多车时优先选中与用户声明车牌完全一致的车辆，否则尝试模糊匹配，再否则 0 */
+  _pickInitialVehicleIndex(vehiclesList, userPlate) {
+    const list = vehiclesList || [];
+    if (!list.length) return 0;
+    const norm = this._normalizePlate(userPlate);
+    if (norm) {
+      for (let i = 0; i < list.length; i++) {
+        const vp = this._normalizePlate(list[i].plateNumber || list[i].plate_number);
+        if (vp && vp === norm) return i;
+      }
+    }
+    const fuzzy = this._matchVehicleByInput(userPlate, list);
+    return fuzzy >= 0 ? fuzzy : 0;
+  },
+
+  /**
+   * 计算 focus vehicleId：优先 analysis_focus_vehicle_id（已落库）→ userDeclaredPlate 精确匹配 → 否则空。
+   * 入参 vehiclesList 应为「全量」识别结果。
+   */
+  _pickFocusVehicleId(vehiclesListAll, userDeclaredPlate, focusFromMeta) {
+    const list = Array.isArray(vehiclesListAll) ? vehiclesListAll : [];
+    if (!list.length) return '';
+    const fid = String(focusFromMeta || '').trim();
+    if (fid) {
+      const ok = list.some((v) => String(v && v.vehicleId ? v.vehicleId : '').trim() === fid);
+      if (ok) return fid;
+    }
+    const un = this._normalizePlate(userDeclaredPlate);
+    if (un) {
+      for (const v of list) {
+        const vp = this._normalizePlate(v && (v.plateNumber || v.plate_number));
+        if (vp && vp === un) return String(v.vehicleId || '').trim();
+      }
+    }
+    return '';
+  },
+
+  /** 用户声明车牌与 AI 返回的各车车牌均不一致时提示核对 */
+  _computeUserDeclaredPlateHint(userDeclaredPlate, vehiclesList) {
+    const u = String(userDeclaredPlate || '').trim();
+    if (!u || !vehiclesList || !vehiclesList.length) return '';
+    const un = this._normalizePlate(u);
+    if (!un) return '';
+    const anyMatch = vehiclesList.some((v) => {
+      const vp = this._normalizePlate(v.plateNumber || v.plate_number || '');
+      return vp && vp === un;
+    });
+    if (anyMatch) return '';
+    return `您填写的车牌为「${u}」，AI 识别结果中的车牌均不一致，请人工选择对应车辆；发起竞价将以您填写的车牌为准，可在下方修改。`;
   },
 
   _computePerVehicleEstimate(vehicleId, repairSuggestions) {
@@ -646,11 +851,13 @@ Page({
   },
 
   _updateVehicleDisplay(selectedIndex) {
-    const { report, vehiclesList } = this.data;
+    const { report, vehiclesList, vehiclesListAll } = this.data;
     if (!report || !vehiclesList.length) return;
     const v = vehiclesList[selectedIndex];
     const vehicleId = v?.vehicleId || '车辆' + (selectedIndex + 1);
-    const isMulti = vehiclesList.length > 1;
+    // 折叠态时 vehiclesList.length === 1 但全量 > 1，仍需按 vehicleId 过滤损伤
+    const fullLen = (vehiclesListAll && vehiclesListAll.length) ? vehiclesListAll.length : vehiclesList.length;
+    const isMulti = fullLen > 1;
     const ar = report?.analysis_result || report;
     const damages = (ar.damages || report?.damages || []).filter((d) => {
       if (!isMulti) return true;
@@ -685,8 +892,25 @@ Page({
 
   onReportPlateInput(e) {
     const { index } = e.currentTarget.dataset;
-    const key = 'vehicleEdits.' + index + '.plate_number';
-    this.setData({ [key]: (e.detail.value || '').trim() });
+    const idx = Number(index);
+    const value = (e.detail.value || '').trim();
+    const key = 'vehicleEdits.' + idx + '.plate_number';
+    const patch = { [key]: value };
+    // 实时把当前 tab 的车牌同步为 userDeclaredPlate（入口 A 在 step2 才形成「用户声明车牌」）
+    const all = Array.isArray(this.data.vehiclesListAll) && this.data.vehiclesListAll.length
+      ? this.data.vehiclesListAll
+      : this.data.vehiclesList;
+    if (idx === this.data.selectedVehicleIndex) {
+      patch.userDeclaredPlate = value;
+      patch.userDeclaredPlateHint = this._computeUserDeclaredPlateHint(value, all);
+      // 重新挑选 focus 候选（不强制折叠，避免打断输入）
+      const focus = this._pickFocusVehicleId(all, value, '');
+      patch.focusVehicleId = focus;
+      // 已声明则清掉 declarePlatePromptHint（折叠按钮的可点性由 focusVehicleId + 全量长度共同决定）
+      if (value) patch.declarePlatePromptHint = '';
+      else if ((all || []).length > 1) patch.declarePlatePromptHint = '请先在下方填写您的车牌，以锁定您的车辆，否则可能误锁他人车辆。';
+    }
+    this.setData(patch);
   },
   onReportBrandInput(e) {
     const { index } = e.currentTarget.dataset;
@@ -797,19 +1021,28 @@ Page({
         return;
       }
       const ar = res.analysis_result || {};
-      // 历史报告：若已写入 analysis_focus_vehicle_id，则仅展示该车（避免出现多车选择）
       const metaVehicleInfo = (res && res.vehicle_info && typeof res.vehicle_info === 'object') ? res.vehicle_info : {};
-      const focusVehicleId = String(metaVehicleInfo.analysis_focus_vehicle_id || '').trim();
+      const focusFromMeta = String(metaVehicleInfo.analysis_focus_vehicle_id || '').trim();
+      const userDeclaredPlate = String(metaVehicleInfo.plate_number || '').trim();
 
-      let vehiclesList = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      const vehiclesListAll = this._normalizeVehiclesList(ar.vehicle_info, { analysis_result: ar, vehicle_info: res.vehicle_info });
+      const focusVehicleId = this._pickFocusVehicleId(vehiclesListAll, userDeclaredPlate, focusFromMeta);
+      const shouldCollapse = !!focusVehicleId && vehiclesListAll.length > 1;
+      const vehiclesList = shouldCollapse
+        ? vehiclesListAll.filter((v) => String(v.vehicleId || '').trim() === focusVehicleId)
+        : vehiclesListAll;
       let selectedVehicleIndex = 0;
-      if (focusVehicleId && vehiclesList && vehiclesList.length > 1) {
-        const idx = vehiclesList.findIndex((v) => String(v && v.vehicleId ? v.vehicleId : '').trim() === focusVehicleId);
-        if (idx >= 0) {
-          vehiclesList = [vehiclesList[idx]];
-          selectedVehicleIndex = 0;
-        }
+      if (!shouldCollapse && vehiclesList.length > 1) {
+        selectedVehicleIndex = this._pickInitialVehicleIndex(vehiclesList, userDeclaredPlate);
       }
+      const vehicleEdits = {};
+      if (userDeclaredPlate && vehiclesList.length) {
+        vehicleEdits[selectedVehicleIndex] = { plate_number: userDeclaredPlate };
+      }
+      const userDeclaredPlateHint = this._computeUserDeclaredPlateHint(userDeclaredPlate, vehiclesListAll);
+      const declarePlatePromptHint = !userDeclaredPlate && vehiclesListAll.length > 1
+        ? '请先在下方填写您的车牌，以锁定您的车辆，否则可能误锁他人车辆。'
+        : '';
       const boundPlateList = await this._loadBoundPlateList();
       const verifiedPlateMismatchHint = this._computeVerifiedPlateMismatchHint(vehiclesList, selectedVehicleIndex, boundPlateList);
       const damages = ar.damages || [];
@@ -831,8 +1064,17 @@ Page({
         reportId: res.report_id,
         report,
         vehiclesList,
+        vehiclesListAll,
+        vehiclesAllCount: vehiclesListAll.length,
+        expandedAllVehicles: !shouldCollapse,
+        collapsedToFocus: shouldCollapse,
+        focusVehicleId,
         selectedVehicleIndex,
-        vehicleEdits: {},
+        vehicleEdits,
+        userDeclaredPlate,
+        userDeclaredPlateHint,
+        declarePlatePromptHint,
+        insuranceChoice: '',
         boundPlateList,
         plateSuggestionVisible: false,
         verifiedPlateMismatchHint,
@@ -873,6 +1115,15 @@ Page({
       vehicleInfo: { plate_number: '', brand: '', model: '' },
       boundPlateList: [],
       verifiedPlateMismatchHint: '',
+      userDeclaredPlate: '',
+      userDeclaredPlateHint: '',
+      declarePlatePromptHint: '',
+      vehiclesListAll: [],
+      vehiclesAllCount: 0,
+      expandedAllVehicles: true,
+      collapsedToFocus: false,
+      focusVehicleId: '',
+      insuranceChoice: '',
       plateSuggestionVisible: false,
       leadToken: ''
     });
@@ -921,7 +1172,7 @@ Page({
   },
 
   async onCreateBidding() {
-    const { reportId, report, vehicleInfo, vehiclesList, selectedVehicleIndex, vehicleEdits, rangeKm, isInsurance, accidentTypeIndex, insuranceCompanyIndex, insuranceCompanyOtherIndex, insuranceCompanies, accidentTypes, submitting, locationLat, locationLng, leadToken } = this.data;
+    const { reportId, report, vehicleInfo, vehiclesList, selectedVehicleIndex, vehicleEdits, rangeKm, submitting, locationLat, locationLng, leadToken } = this.data;
     if (!reportId || submitting) return;
 
     if (!getToken()) {
@@ -929,11 +1180,13 @@ Page({
       return;
     }
 
+    let effectiveReportId = reportId;
     // 外部引流：先认领 token，确保该报告归属到当前用户；若已被他人使用，则引导重新上传
     if (leadToken) {
       try {
         const claimed = await claimDamageReportByToken(leadToken);
         if (claimed && claimed.report_id) {
+          effectiveReportId = claimed.report_id;
           this.setData({ reportId: claimed.report_id });
         }
       } catch (e) {
@@ -950,14 +1203,10 @@ Page({
       }
     }
 
-    if (isInsurance) {
-      const accType = accidentTypes[accidentTypeIndex];
-      const selfOk = !accType?.needSelf || insuranceCompanyIndex > 0;
-      const otherOk = !accType?.needOther || insuranceCompanyOtherIndex > 0;
-      if (!selfOk || !otherOk) {
-        ui.showWarning('请选择对应的保险公司');
-        return;
-      }
+    const insBuilt = this._buildInsuranceInfoFromForm();
+    if (insBuilt.error) {
+      ui.showWarning(insBuilt.error);
+      return;
     }
 
     // 位置必填：优先用已选位置，否则尝试实时定位
@@ -985,8 +1234,13 @@ Page({
 
     const v = vehiclesList[selectedVehicleIndex];
     const edits = vehicleEdits[selectedVehicleIndex] || {};
+    const userDeclared = String(this.data.userDeclaredPlate || '').trim();
+    let plateSrc = edits.plate_number;
+    if (plateSrc === undefined) {
+      plateSrc = userDeclared || v?.plateNumber || vehicleInfo.plate_number || '';
+    }
     const bidVehicleInfo = {
-      plate_number: (edits.plate_number !== undefined ? edits.plate_number : (v?.plateNumber || vehicleInfo.plate_number || '')).trim(),
+      plate_number: String(plateSrc || '').trim(),
       brand: edits.brand !== undefined ? edits.brand : (v?.brand || ''),
       model: edits.model !== undefined ? edits.model : (v?.model || vehicleInfo.model || ''),
       vehicle_price_tier: v?.vehicle_price_tier ?? undefined,
@@ -1019,28 +1273,22 @@ Page({
 
     this.setData({ submitting: true });
     try {
-
-      const accType = accidentTypes[accidentTypeIndex];
-      const selfCompany = insuranceCompanyIndex > 0 ? insuranceCompanies[insuranceCompanyIndex] : '';
-      const otherCompany = insuranceCompanyOtherIndex > 0 ? insuranceCompanies[insuranceCompanyOtherIndex] : '';
-      const needBoth = accType?.needSelf && accType?.needOther;
-      const insurance_info = isInsurance
-        ? {
-            is_insurance: true,
-            accident_type: accType?.value || 'single',
-            insurance_company: accType?.needSelf ? selfCompany : otherCompany,
-            insurance_company_other: needBoth ? (accType?.needSelf ? otherCompany : selfCompany) : undefined,
-            main_responsible: accType?.mainNote || undefined
-          }
-        : { is_insurance: false };
+      const insurance_info = insBuilt.info;
 
       const rangeToSend = rangeKm === 0 ? 999 : (rangeKm || 5);
-      const focusAiVehicleId =
-        (this.data.vehiclesList || []).length > 1
-          ? (v && v.vehicleId) || '车辆' + (selectedVehicleIndex + 1)
-          : '';
+      // 折叠态：vehiclesList 仅 1 辆但全量 > 1，需把 focus id 显式传给后端落库；
+      // 展开态多车：取当前选中 tab 的 vehicleId。
+      const allCount = (this.data.vehiclesListAll || this.data.vehiclesList || []).length;
+      let focusAiVehicleId = '';
+      if (this.data.collapsedToFocus && this.data.focusVehicleId) {
+        focusAiVehicleId = this.data.focusVehicleId;
+      } else if ((this.data.vehiclesList || []).length > 1) {
+        focusAiVehicleId = (v && v.vehicleId) || '车辆' + (selectedVehicleIndex + 1);
+      } else if (allCount > 1 && v && v.vehicleId) {
+        focusAiVehicleId = v.vehicleId;
+      }
       const res = await createBidding({
-        report_id: reportId,
+        report_id: effectiveReportId,
         range: rangeToSend,
         insurance_info,
         vehicle_info: {

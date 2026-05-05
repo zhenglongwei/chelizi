@@ -3,6 +3,7 @@ const { getLogger } = require('../../../../utils/logger');
 const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantAppeals } = require('../../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../../utils/util');
+const { formatBeijingDateTimeShort, parseBackendDate } = require('../../../../utils/beijing-time');
 
 const logger = getLogger('MerchantAppealList');
 
@@ -57,11 +58,14 @@ Page({
       const params = { limit: 50 };
       if (this.data.tabIndex === 0) params.status = 0;
       const res = await getMerchantAppeals(params);
-      const list = (res.list || []).map((item) => ({
-        ...item,
-        deadline_short: item.deadline ? item.deadline.slice(0, 16).replace('T', ' ') : '',
-        is_overdue: item.deadline && new Date(item.deadline) < new Date()
-      }));
+      const list = (res.list || []).map((item) => {
+        const deadlineDt = parseBackendDate(item.deadline);
+        return {
+          ...item,
+          deadline_short: formatBeijingDateTimeShort(item.deadline),
+          is_overdue: !!(deadlineDt && deadlineDt.getTime() < Date.now())
+        };
+      });
       this.setData({
         list,
         loading: false,

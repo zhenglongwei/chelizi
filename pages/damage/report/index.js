@@ -18,11 +18,23 @@ Page({
     error: '',
     pageRootStyle: 'padding-top: 88px',
     shareToken: '',
+    /** 用户声明车牌与 AI 多车车牌均不一致时的提示 */
+    userPlateMismatchHint: '',
+    /** AI 识别到的所有车辆数量；折叠态下 vehiclesTabs 仅含主车 */
+    vehiclesAllCount: 0,
+    /** 是否展开所有车辆 tabs；命中 focus 时默认 false（仅展示主车） */
+    expandedAllVehicles: true,
+    /** 当前是否处于「折叠到主车」的状态（即 vehiclesAllCount > 1 且 vehiclesTabs.length === 1） */
+    collapsedToFocus: false,
+    /** 主车 vehicleId（命中 focus 时记录，用于折叠/展开切换） */
+    focusVehicleId: '',
     caps: null,
     _polling: false,
     _pollCancelToken: 0,
     _rawAnalysisResult: null,
     _rawVehicles: [],
+    /** 备份：折叠态下保留全量 tabs，便于点击「查看其它车辆」展开 */
+    _rawVehiclesTabsAll: [],
   },
 
   onLoad(options) {
@@ -54,9 +66,32 @@ Page({
       const ar = res.analysis_result || res;
       const viMeta = res.vehicle_info && typeof res.vehicle_info === 'object' ? res.vehicle_info : {};
       const focusId = viMeta.analysis_focus_vehicle_id || '';
+      const userDeclaredPlate = String(viMeta.plate_number || '').trim();
       const vehicles = Array.isArray(ar.vehicles) ? ar.vehicles : [];
-      const tabs = this._buildVehicleTabs(vehicles, Array.isArray(ar.vehicle_info) ? ar.vehicle_info : []);
-      const initialVehicleId = this.data.selectedVehicleId || focusId || (tabs[0] && tabs[0].vehicleId) || '';
+      const viArr = Array.isArray(ar.vehicle_info) ? ar.vehicle_info : [];
+      const tabsFull = this._buildVehicleTabs(vehicles, viArr);
+      // 计算 focusVehicleId：优先 analysis_focus_vehicle_id（已存）→ userDeclaredPlate 精确匹配 → 否则空
+      let focusVehicleId = '';
+      if (focusId) {
+        const ok = tabsFull.some((t) => t.vehicleId === focusId);
+        if (ok) focusVehicleId = focusId;
+      }
+      if (!focusVehicleId && userDeclaredPlate && tabsFull.length) {
+        const matched = this._matchVehicleIdByPlate(tabsFull, viArr, userDeclaredPlate);
+        if (matched) focusVehicleId = matched;
+      }
+      // 默认折叠：命中 focus 且 tabs 全量 > 1 → 仅展示主车
+      const shouldCollapse = !!focusVehicleId && tabsFull.length > 1;
+      const tabs = shouldCollapse ? tabsFull.filter((t) => t.vehicleId === focusVehicleId) : tabsFull;
+      let initialVehicleId = String(this.data.selectedVehicleId || '').trim();
+      if (!initialVehicleId && focusVehicleId) initialVehicleId = focusVehicleId;
+      if (!initialVehicleId) initialVehicleId = focusId || (tabs[0] && tabs[0].vehicleId) || '';
+      const userPlateMismatchHint =
+        userDeclaredPlate && tabsFull.length && !this._matchVehicleIdByPlate(tabsFull, viArr, userDeclaredPlate)
+          ? (tabsFull.length > 1
+            ? `您填写的车牌「${userDeclaredPlate}」与当前 AI 识别出的车牌均不一致，请切换上方车辆核对；发起竞价时将以您填写的车牌为准。`
+            : `您填写的车牌「${userDeclaredPlate}」与 AI 识别结果不一致，请核对；发起竞价时将以您填写的车牌为准。`)
+          : '';
       const report = {
         report_id: res.report_id,
         status: res.status != null ? res.status : 0,
@@ -78,12 +113,18 @@ Page({
         reportVm: vm,
         vehiclesTabs: tabs,
         selectedVehicleId: initialVehicleId,
+        userPlateMismatchHint,
+        vehiclesAllCount: tabsFull.length,
+        expandedAllVehicles: !shouldCollapse,
+        collapsedToFocus: shouldCollapse,
+        focusVehicleId,
         communicationScript: guidance.communicationScript,
         arrivalNotes: guidance.arrivalNotes,
         reportId: id,
         loading: false,
         _rawAnalysisResult: ar,
         _rawVehicles: vehicles,
+        _rawVehiclesTabsAll: tabsFull,
       });
       if (report.status === 0) this._pollUntilReady(id);
       // 预生成分享 token，避免用户分享时落到 fallback 路径
@@ -94,6 +135,28 @@ Page({
     }
   }
   ,
+
+  _normalizePlate(s) {
+    return String(s || '').replace(/[\s·\-]/g, '').toUpperCase();
+  },
+
+  /** 按用户声明车牌匹配多车 tab 的 vehicleId */
+  _matchVehicleIdByPlate(tabs, vehicleInfoArray, userPlate) {
+    const un = this._normalizePlate(userPlate);
+    if (!un || !tabs || !tabs.length) return '';
+    const viArr = Array.isArray(vehicleInfoArray) ? vehicleInfoArray : [];
+    const infoById = new Map();
+    viArr.forEach((v, i) => {
+      const id = String(v.vehicleId || `车辆${i + 1}`).trim() || `车辆${i + 1}`;
+      infoById.set(id, v);
+    });
+    for (const tab of tabs) {
+      const meta = infoById.get(tab.vehicleId) || {};
+      const plate = String(meta.plateNumber || meta.plate_number || '').trim();
+      if (this._normalizePlate(plate) === un) return tab.vehicleId;
+    }
+    return '';
+  },
 
   _buildVehicleTabs(vehicles, vehicleInfoArray) {
     const out = [];
@@ -157,6 +220,40 @@ Page({
       communicationScript: guidance.communicationScript,
       arrivalNotes: guidance.arrivalNotes,
     });
+  },
+
+  /** 折叠 ↔ 展开所有车辆 tabs（折叠态仅展示主车） */
+  onToggleAllVehicles() {
+    const { expandedAllVehicles, focusVehicleId, _rawVehiclesTabsAll, vehiclesAllCount } = this.data;
+    if (!_rawVehiclesTabsAll || _rawVehiclesTabsAll.length <= 1) return;
+    if (expandedAllVehicles) {
+      // 展开 → 折叠：仅保留主车
+      if (!focusVehicleId) return;
+      const matched = _rawVehiclesTabsAll.filter((t) => t.vehicleId === focusVehicleId);
+      if (!matched.length) return;
+      const ar = this.data._rawAnalysisResult;
+      const vehicles = this.data._rawVehicles;
+      const vm = ar
+        ? buildAccidentReportViewModel({ mode: 'miniapp', analysis_result: ar, analysis_focus_vehicle_id: focusVehicleId })
+        : this.data.reportVm;
+      const guidance = this._pickGuidanceForVehicle(vehicles, focusVehicleId);
+      this.setData({
+        vehiclesTabs: matched,
+        selectedVehicleId: focusVehicleId,
+        expandedAllVehicles: false,
+        collapsedToFocus: true,
+        reportVm: vm,
+        communicationScript: guidance.communicationScript,
+        arrivalNotes: guidance.arrivalNotes,
+      });
+    } else {
+      // 折叠 → 展开：恢复全量
+      this.setData({
+        vehiclesTabs: _rawVehiclesTabsAll,
+        expandedAllVehicles: true,
+        collapsedToFocus: false,
+      });
+    }
   },
 
   async onCopyCommunication() {

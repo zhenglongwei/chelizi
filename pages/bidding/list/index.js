@@ -2,18 +2,13 @@
 const { getToken, getUserBiddings } = require('../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../utils/util');
 const navigation = require('../../../utils/navigation');
-
-function formatDate(str) {
-  if (!str) return '';
-  const d = new Date(str);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
+const { formatBeijingDateTimeShort, parseBackendDate } = require('../../../utils/beijing-time');
 
 /** 截止时间已到（与 status 是否已落库无关，用于列表展示一致） */
 function isExpireAtPassed(expireAt) {
-  if (!expireAt) return false;
-  const t = new Date(expireAt).getTime();
-  return t > 0 && t <= Date.now();
+  const d = parseBackendDate(expireAt);
+  if (!d) return false;
+  return d.getTime() <= Date.now();
 }
 
 /** 列表页辅助说明：预报价/分发/定位与商户可见性关系 */
@@ -98,8 +93,8 @@ Page({
           ...item,
           statusText,
           title,
-          created_at: formatDate(item.created_at),
-          expire_at_fmt: formatDate(item.expire_at),
+          created_at: formatBeijingDateTimeShort(item.created_at),
+          expire_at_fmt: formatBeijingDateTimeShort(item.expire_at),
           badgeVariant,
           hasQuotes,
           viewBtnText,

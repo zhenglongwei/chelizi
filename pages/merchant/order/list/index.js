@@ -4,6 +4,7 @@ const ui = require('../../../../utils/ui');
 const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
 const { getMerchantToken, getMerchantOrders } = require('../../../../utils/api');
 const { getNavBarHeight, getSystemInfo } = require('../../../../utils/util');
+const { formatBeijingDateTimeShort } = require('../../../../utils/beijing-time');
 
 const logger = getLogger('MerchantOrderList');
 
@@ -82,7 +83,7 @@ Page({
         return {
           ...item,
           status_text: STATUS_MAP[item.status] || '未知',
-          created_short: item.created_at ? item.created_at.slice(0, 16).replace('T', ' ') : '',
+          created_short: formatBeijingDateTimeShort(item.created_at),
           vehicle_display: vehicleDisplay
         };
       });

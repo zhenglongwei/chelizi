@@ -3,11 +3,7 @@ const ui = require('../../../../utils/ui');
 const navigation = require('../../../../utils/navigation');
 const { getToken, getUserProductOrder } = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
-
-function formatTime(s) {
-  if (!s) return '';
-  return typeof s === 'string' ? s.replace('T', ' ').slice(0, 19) : s;
-}
+const { formatBeijingDateTimeFull } = require('../../../../utils/beijing-time');
 
 Page({
   data: {
@@ -57,7 +53,7 @@ Page({
         productName: o.product_name || '商品',
         quantity: o.quantity || 1,
         amountText: (Number.isFinite(amt) ? amt : 0).toFixed(2),
-        paidAtText: formatTime(o.paid_at),
+        paidAtText: formatBeijingDateTimeFull(o.paid_at),
         loading: false,
         loadError: false
       });

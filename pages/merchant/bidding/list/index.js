@@ -4,20 +4,9 @@ const ui = require('../../../../utils/ui');
 const { getMerchantToken, getMerchantBiddings } = require('../../../../utils/api');
 const { getNavBarHeight } = require('../../../../utils/util');
 const { requestMerchantSubscribe } = require('../../../../utils/subscribe');
+const { formatBeijingDateTimeShort, formatExpireCountdown } = require('../../../../utils/beijing-time');
 
 const logger = getLogger('MerchantBiddingList');
-
-function formatCountdown(expireAt) {
-  if (!expireAt) return '--';
-  const end = new Date(expireAt).getTime();
-  const diff = end - Date.now();
-  if (diff <= 0) return '已结束';
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  if (h > 0) return `${h}小时后`;
-  if (m > 0) return `${m}分钟后`;
-  return '即将结束';
-}
 
 Page({
   data: {
@@ -92,8 +81,8 @@ Page({
         return Object.assign({}, item, {
           vehicle_info: vi,
           vehicle_display: vehicleDisplay,
-          countdown_text: formatCountdown(item.expire_at),
-          created_short: item.created_at ? String(item.created_at).slice(0, 16).replace('T', ' ') : '',
+          countdown_text: formatExpireCountdown(item.expire_at),
+          created_short: formatBeijingDateTimeShort(item.created_at),
           quote_status_text: quoteStatusText
         });
       });

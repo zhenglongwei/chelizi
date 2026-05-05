@@ -181,8 +181,8 @@
       <text class="text-muted fs-cap quote-proposal-hint">每轮须附证明材料并经您确认；历史均可在评价页再次公示。</text>
       <view class="quote-proposal-row" wx:for="{{quoteProposalList}}" wx:key="proposal_id" wx:for-index="qpIdx">
         <view class="quote-proposal-head fs-body fw-medium">{{item.display_round_label}} · {{item.status_text}}</view>
-        <text class="text-muted fs-cap" wx:if="{{item.submitted_at}}">提交 {{item.submitted_at}}</text>
-        <text class="text-muted fs-cap quote-proposal-time-block" wx:if="{{item.resolved_at}}">处理 {{item.resolved_at}}</text>
+        <text class="text-muted fs-cap" wx:if="{{item.submitted_at_display}}">提交 {{item.submitted_at_display}}</text>
+        <text class="text-muted fs-cap quote-proposal-time-block" wx:if="{{item.resolved_at_display}}">处理 {{item.resolved_at_display}}</text>
         <text class="fs-body quote-proposal-amount-line" wx:if="{{item.amount != null}}">金额 ¥{{item.amount}} · 工期{{item.duration != null ? item.duration : '-'}}天</text>
         <text class="text-muted fs-sm quote-proposal-note-line" wx:if="{{item.supplement_note}}">说明：{{item.supplement_note}}</text>
         <view class="evidence-grid evidence-grid--spaced" wx:if="{{item.photo_urls && item.photo_urls.length}}">
