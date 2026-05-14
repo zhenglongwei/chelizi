@@ -1,0 +1,29 @@
+<custom-nav-bar title="维修相册" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="card">
+    <text class="label">相册 ID</text>
+    <text class="val">{{album.album_id}}</text>
+    <text class="label">状态</text>
+    <text class="val">{{album.status}}</text>
+    <text class="label" wx:if="{{publication}}">发布审核</text>
+    <text class="val" wx:if="{{publication}}">{{publication.review_status}}</text>
+    <text class="label" wx:if="{{publication.published_url}}">公网链接</text>
+    <text class="val link" wx:if="{{publication.published_url}}" selectable="true">{{publication.published_url}}</text>
+  </view>
+
+  <view class="section" wx:for="{{nodes}}" wx:key="node_code">
+    <view class="section-hd">
+      <text class="section-title">{{item.node_code}}</text>
+      <button size="mini" data-code="{{item.node_code}}" bindtap="onPickPhoto">上传照片</button>
+    </view>
+    <text class="note">{{item.note}}</text>
+    <view class="thumbs">
+      <image wx:for="{{mediaByNode[item.node_code]}}" wx:for-item="m" wx:key="media_id" src="{{m.url}}" mode="aspectFill" class="thumb" />
+    </view>
+  </view>
+
+  <view class="actions">
+    <button bindtap="onSubmitPublish">提交脱敏发布审核</button>
+    <button type="primary" bindtap="onApprovePublish">审核通过并生成公网页（测试/非生产或 MERCHANT_SELF_PUBLISH_CASE）</button>
+  </view>
+</view>

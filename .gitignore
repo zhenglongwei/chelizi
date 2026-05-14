@@ -48,3 +48,9 @@ web/api-server/uploads/
 project.private.config.json
 
 web/web.zip
+
+# 本地计划/笔记（不纳入仓库）
+/修正计划.md
+/新的思考.md
+/汽修点评平台_面向GEO的完整冷启动计划_V1.0.md
+/透明维修平台产品改造方案.md

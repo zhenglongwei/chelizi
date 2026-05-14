@@ -1,0 +1,6 @@
+# Next.js
+.next/
+out/
+
+# 依赖（根目录已忽略 node_modules，此处显式声明便于独立 clone 该子项目）
+node_modules/

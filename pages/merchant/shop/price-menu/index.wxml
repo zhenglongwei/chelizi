@@ -1,0 +1,19 @@
+<custom-nav-bar title="价格菜单" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="hint">以下为到店前「区间预期」，实际费用以拆检后为准。</view>
+  <view wx:if="{{!tableReady}}" class="hint">表未初始化，请执行数据库迁移。</view>
+  <view class="card" wx:for="{{list}}" wx:key="menu_row_id">
+    <text class="t">{{item.service_name}}</text>
+    <text class="m">{{item.parts_type}} · {{item.craft_standard}}</text>
+    <text class="p">¥{{item.ref_min}} - ¥{{item.ref_max}}</text>
+    <button size="mini" data-id="{{item.menu_row_id}}" bindtap="onDel">删除</button>
+  </view>
+  <view class="form card">
+    <input placeholder="服务项目" value="{{form.service_name}}" bindinput="onF" data-k="service_name" />
+    <input placeholder="配件类型" value="{{form.parts_type}}" bindinput="onF" data-k="parts_type" />
+    <input placeholder="工艺标准" value="{{form.craft_standard}}" bindinput="onF" data-k="craft_standard" />
+    <input placeholder="下限(元)" type="digit" value="{{form.ref_min}}" bindinput="onF" data-k="ref_min" />
+    <input placeholder="上限(元)" type="digit" value="{{form.ref_max}}" bindinput="onF" data-k="ref_max" />
+    <button type="primary" bindtap="onAdd">添加一行</button>
+  </view>
+</view>

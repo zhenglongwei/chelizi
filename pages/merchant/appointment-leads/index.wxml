@@ -1,0 +1,17 @@
+<custom-nav-bar title="预约线索" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view wx:if="{{!tableReady}}" class="hint">表未初始化</view>
+  <view class="card" wx:for="{{list}}" wx:key="lead_id">
+    <text class="t">{{item.contact_phone}} {{item.contact_name || ''}}</text>
+    <text class="m">{{item.vehicle_plate || ''}} {{item.vehicle_model || ''}}</text>
+    <text class="m">{{item.note}}</text>
+    <text class="s">{{item.status}} · {{item.created_at}}</text>
+    <text class="fee" wx:if="{{item.lead_fee_yuan != null}}">平台线索费 ¥{{item.lead_fee_yuan}}</text>
+    <view class="row-actions" wx:if="{{item.status !== 'done' && item.status !== 'cancelled'}}">
+      <button class="btn-mini" size="mini" data-id="{{item.lead_id}}" data-status="confirmed" bindtap="onPatchStatus">跟进中</button>
+      <button class="btn-mini" size="mini" data-id="{{item.lead_id}}" data-status="done" bindtap="onPatchStatus">已到店/成交</button>
+      <button class="btn-mini btn-muted" size="mini" data-id="{{item.lead_id}}" data-status="cancelled" bindtap="onPatchStatus">无效</button>
+    </view>
+  </view>
+  <view wx:if="{{tableReady && empty}}" class="hint">暂无预约线索</view>
+</view>

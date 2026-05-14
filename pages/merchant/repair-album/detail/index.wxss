@@ -1,0 +1,12 @@
+.page-root { padding: 24rpx; padding-bottom: 80rpx; }
+.card { background: #fff; border-radius: 16rpx; padding: 24rpx; margin-bottom: 24rpx; }
+.label { display: block; font-size: 24rpx; color: #64748b; margin-top: 12rpx; }
+.val { display: block; font-size: 28rpx; }
+.val.link { color: #0f766e; word-break: break-all; }
+.section { background: #fff; border-radius: 16rpx; padding: 20rpx; margin-bottom: 20rpx; }
+.section-hd { display: flex; justify-content: space-between; align-items: center; }
+.section-title { font-weight: 600; font-size: 28rpx; }
+.note { font-size: 24rpx; color: #64748b; margin: 12rpx 0; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.thumb { width: 160rpx; height: 160rpx; border-radius: 8rpx; background: #f1f5f9; }
+.actions { display: flex; flex-direction: column; gap: 16rpx; margin-top: 24rpx; }

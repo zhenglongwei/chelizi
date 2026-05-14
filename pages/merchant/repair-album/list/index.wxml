@@ -1,0 +1,15 @@
+<custom-nav-bar title="维修相册" showBack="{{true}}" />
+<view class="page-root" style="{{pageRootStyle}}">
+  <view class="toolbar">
+    <button class="btn-primary" bindtap="onCreate">新建相册</button>
+  </view>
+  <view wx:if="{{!tableReady}}" class="hint">相册表未初始化，请在服务器执行 web/database/migrations/20260214_repair_albums_geo_v1.sql</view>
+  <view wx:elif="{{empty}}" class="hint">暂无相册，点击「新建相册」开始记录维修过程</view>
+  <view wx:else class="list">
+    <view class="card item" wx:for="{{list}}" wx:key="album_id" data-id="{{item.album_id}}" bindtap="onOpen">
+      <text class="title">{{item.album_id}}</text>
+      <text class="meta">状态：{{item.status}} · {{item.updated_at}}</text>
+      <text class="meta" wx:if="{{item.public_case_slug}}">公网：/zhejian/case/{{item.public_case_slug}}</text>
+    </view>
+  </view>
+</view>

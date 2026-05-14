@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "相册详情",
+  "usingComponents": {
+    "custom-nav-bar": "/components/custom-nav-bar/custom-nav-bar"
+  }
+}
